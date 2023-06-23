@@ -1,0 +1,74 @@
+"""
+Lifting function file.
+"""
+
+"""
+Lifting map structure.
+
+# Fields
+- `N`: number of variables of the original nonlinear dynamics
+- `Nl`: number of variables of the lifted system
+- `lift_funcs`: array of lifting transformation functions 
+- `map`: function to map the data to the new mapped states including original states
+- `mapNL`: function to map the data to only the additional lifted states 
+"""
+struct lifting
+    N::Int64
+    Nl::Int64
+    lift_funcs::AbstractArray{Function}
+    map::Function
+    mapNL::Function
+
+    function lifting(N, Nl, lift_funcs)
+        if (Nl - N) != length(lift_funcs)
+            error("Number of lifting functions does not match given dimension of lifted states")
+        end
+
+        lift_map = Vector{Function}(undef, Nl)
+        for i in 1:N
+            lift_map[i] = x -> x[i]
+        end
+
+        i = 0
+        for j in (N+1):Nl
+            lift_map[j] = lift_funcs[i+=1]
+        end
+
+        # Map all the original and the lifted variables
+        function map(x::Union{Vector{Vector{T}},Vector{Matrix{T}},
+            Vector{SparseVector{T,Int64}},Vector{SparseMatrixCSC{T,Int64}}}) where {T<:Real}
+            splat(i) = lift_map[i](x)
+            return reduce(vcat, splat.(1:Nl))
+        end
+
+        # Map only the nonlinear lifted variables
+        function mapNL(x::Union{Vector{Vector{T}},Vector{Matrix{T}},
+            Vector{SparseVector{T,Int64}},Vector{SparseMatrixCSC{T,Int64}}}) where {T<:Real}
+            splat(i) = lift_map[i](x)
+            return reduce(vcat, splat.(N+1:Nl))
+        end
+        new(N, Nl, lift_funcs, map, mapNL)
+    end
+end
+
+
+"""
+Create the block-diagonal POD basis for the new lifted system.
+
+# Arguments
+- `w`: lifted data matrix
+- `Nl`: number of variables of the lifted state dynamics
+- `ro`: vector of the reduced orders for each basis
+
+# Return
+- `Vr`: block diagonal POD basis
+"""
+function liftedBasis(W::Matrix, Nl::Real, ro::Vector)
+    V = Vector{Matrix{Float64}}()
+    for i in 1:Nl
+        w = svd(W)
+        push!(V, w.U[:, 1:ro[i]])
+    end
+    Vr = BlockDiagonal(V)
+    return Vr
+end
