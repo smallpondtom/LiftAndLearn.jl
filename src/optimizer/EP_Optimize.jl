@@ -95,7 +95,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     Constraint           = Energy-Preserving Hard Equality Constraint
     Linear Regulation    = $(options.λ_lin)
     Quadratic Regulation = $(options.λ_quad)
-    Warm Start           = $(options.initial_guess_for_opt)
+    Warm Start           = $(options.optim.initial_guess)
     order                = $(n)
     solve time           = $(solve_time(model))
     termination_status   = $(termination_status(model))
@@ -220,7 +220,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     Constraint           = Energy-Preserving Hard Equality Constraint
     Linear Regulation    = $(options.λ_lin)
     Quadratic Regulation = $(options.λ_quad)
-    Warm Start           = $(options.initial_guess_for_opt)
+    Warm Start           = $(options.optim.initial_guess)
     order                = $(n)
     solve time           = $(solve_time(model))
     termination_status   = $(termination_status(model))
@@ -348,7 +348,7 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     Constraint           = Energy-Preserving Soft Inequality Constraint
     Linear Regulation    = $(options.λ_lin)
     Quadratic Regulation = $(options.λ_quad)
-    Warm Start           = $(options.initial_guess_for_opt)
+    Warm Start           = $(options.optim.initial_guess)
     order                = $(n)
     solve time           = $(solve_time(model))
     termination_status   = $(termination_status(model))
@@ -483,7 +483,7 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     Constraint           = Energy-Preserving Soft Inequality Constraint
     Linear Regulation    = $(options.λ_lin)
     Quadratic Regulation = $(options.λ_quad)
-    Warm Start           = $(options.initial_guess_for_opt)
+    Warm Start           = $(options.optim.initial_guess)
     order                = $(n)
     solve time           = $(solve_time(model))
     termination_status   = $(termination_status(model))
@@ -599,7 +599,7 @@ function EPUC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     EP Weight            = $(options.α)
     Linear Regulation    = $(options.λ_lin)
     Quadratic Regulation = $(options.λ_quad)
-    Warm Start           = $(options.initial_guess_for_opt)
+    Warm Start           = $(options.optim.initial_guess)
     order                = $(n)
     solve time           = $(solve_time(model))
     termination_status   = $(termination_status(model))
