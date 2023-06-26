@@ -5,7 +5,39 @@ https://sites.google.com/view/elizabeth-qian/research/ace-group)
 
 ---
 
-LiftAndLearn.jl is an implementation of the Lift and Learn as well as the operator inference algorithm proposed in the papers in the papers listed below. 
+LiftAndLearn.jl is an implementation of the Lift and Learn as well as the operator inference algorithm proposed in the papers listed in [References](#references). 
+
+### Operator Inference (OpInf)
+Operator Inference is a scientific machine-learning framework used in data-driven modeling of dynamical systems that aims to learn the governing equations or operators from observed data without explicit knowledge of the underlying physics or dynamics (but with some information such as the structure, e.g., linear, quadratic, bilinear, etc.). To know more about OpInf, please refer to these resources by [Willcox Research Group](https://kiwi.oden.utexas.edu/research/operator-inference) and [ACE Lab](https://github.com/elizqian/operator-inference/tree/master).
+
+### Lift and Learn (LnL)
+Lift and Learn is a physics-informed method for learning low-dimensional models for large-scale dynamical systems. Lifting refers to the transformation of the original nonlinear system to a linear, quadratic, bilinear, or polynomial system by mapping the original state space to a new space with additional auxiliary variables. After lifting the system to a more approachable form we can learn a reduced model using the OpInf approach. 
+
+### Installation
+
+```julia-repl
+(@v1.8) pkg> dev 
+```
+
+
+### TODO
+
+- [ ] Generalize the Learn & Lift Julia package for public use and for my personal research
+    - [ ] Make an operation where the user gives all the settings and training data then the code outputs the inferred operators
+    - [ ] Make an operation where the user inputs the inferred operators and the testing data then the error analysis is automatically completed.
+- [ ] Expand opinf
+    - [ ] Allow quad-linear (quadratic state and linear input)
+    - [ ] Allow quadratic input (U * U')
+    - [ ] Allow linear-quad (linear state and quadratic input) (this is experimental)
+- [ ] Make example test cases for both operator inference and lift & learn
+    - [x] one-dimensional heat equation
+    - [x] burger's equation
+    - [x] Fitzhugh-Nagumo equation
+    - [ ] Kuramoto-Sivashinsky equation
+- [ ] Zubov's Domain of Attraction Project
+
+
+### References
 
 1. Peherstorfer, B. and Willcox, K. 
 [Data-driven operator inference for non-intrusive projection-based model reduction.](https://www.sciencedirect.com/science/article/pii/S0045782516301104)
@@ -63,34 +95,3 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
     eprint = {https://doi.org/10.1137/21M1393972},
 }
 ```
-
-## Summary
-
-### Operator Inference (OpInf)
-Operator Inference is a scientific machine-learning framework used in data-driven modeling of dynamical systems that aims to learn the governing equations or operators from observed data without explicit knowledge of the underlying physics or dynamics (but with some information such as the structure, e.g., linear, quadratic, bilinear, etc.). To know more about OpInf, please refer to these resources by [Willcox Research Group](https://kiwi.oden.utexas.edu/research/operator-inference) and [ACE Lab](https://github.com/elizqian/operator-inference/tree/master).
-
-### Lift and Learn (LnL)
-Lift and Learn is a physics-informed method for learning low-dimensional models for large-scale dynamical systems. Lifting refers to the transformation of the original nonlinear system to a linear, quadratic, bilinear, or polynomial system by mapping the original state space to a new space with additional auxiliary variables. After lifting the system to a more approachable form we can learn a reduced model using the OpInf approach. 
-
-### Installation
-
-```julia-repl
-(@v1.8) pkg> dev 
-```
-
-
-### TODO
-
-- [ ] Generalize the Learn & Lift Julia package for public use and for my personal research
-    - [ ] Make an operation where the user gives all the settings and training data then the code outputs the inferred operators
-    - [ ] Make an operation where the user inputs the inferred operators and the testing data then the error analysis is automatically completed.
-- [ ] Expand opinf
-    - [ ] Allow quad-linear (quadratic state and linear input)
-    - [ ] Allow quadratic input (U * U')
-    - [ ] Allow linear-quad (linear state and quadratic input) (this is experimental)
-- [ ] Make example test cases for both operator inference and lift & learn
-    - [x] one-dimensional heat equation
-    - [x] burger's equation
-    - [x] Fitzhugh-Nagumo equation
-    - [ ] Kuramoto-Sivashinsky equation
-- [ ] Zubov's Domain of Attraction Project
