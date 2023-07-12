@@ -83,6 +83,8 @@ function tikhonov(b::AbstractArray, A::AbstractArray, k::Real, tol::Real)
     Aplus_svd = svd(Aplus)
     sing_idx = findfirst(Aplus_svd.S .< tol)
 
+    # If singular values are nearly singular, truncate at a certain threshold
+    # and fill in the rest with zeros
     if sing_idx !== nothing
         @warn "Rank difficient, rank = $(sing_idx), tol = $(Aplus_svd.S[sing_idx]).\n"
         foo = [1 ./ Aplus_svd.S[1:sing_idx-1]; zeros(length(Aplus_svd.S[sing_idx:end]))]

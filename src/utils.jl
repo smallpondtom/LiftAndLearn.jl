@@ -238,6 +238,29 @@ end
 
 
 """
+Inserting values into the F matrix for higher dimensions
+
+# Arguments
+- `Fi`: F matrix to insert
+- `N`: the larger order
+
+# Return
+- inserted F matrix
+"""
+function insert2F(Fi, N)
+    F = spzeros(N, Int(N * (N + 1) / 2))
+    Ni = size(Fi, 1)
+
+    xsq_idx = [1 + (N + 1) * (n - 1) - n * (n - 1) / 2 for n in 1:N]
+    insert_idx = [collect(x:x+(Ni-i)) for (i, x) in enumerate(xsq_idx[1:Ni])]
+    idx = Int.(reduce(vcat, insert_idx))
+    F[1:Ni, idx] = Fi
+    return F
+end
+
+
+
+"""
 Extracting the H matrix for POD basis of dimensions (N, r)
 
 # Arguments
@@ -262,8 +285,49 @@ end
 
 
 """
+Inserting values into the H matrix for higher dimensions
+
+# Arguments
+- `Hi`: H matrix to insert
+- `N`: the larger order
+
+# Return
+- inserted H matrix
+"""
+function insert2H(Hi, N)
+    H = spzeros(N, Int(N^2))
+    Ni = size(Hi, 1)
+
+    tmp = [(N*i-N+1):(N*i-N+Ni) for i in 1:Ni]
+    idx = Int.(reduce(vcat, tmp))
+    H[1:Ni, idx] = Hi
+    return H
+end
+
+
+"""
+Inserting the values into the bilinear matrix (N) for higher dimensions
+
+# Arguments
+- `X`: bilinear matrix to insert
+- `N`: the larger order
+
+# Return
+- Inserted bilinear matrix
+"""
+function insert2bilin(X, N, p)
+    Ni = size(X, 1)
+    BL = zeros(N, N*p)
+    for i in 1:p
+        idx = (i-1)*N+1
+        BL[1:Ni, idx:(idx+Ni-1)] = X[:, (i-1)*Ni+1:i*Ni]
+    end
+    return BL
+end
+
+
+"""
 Inverse vectorization.
->>>>>>> energy-preserve
 # Arguments
 - `r`: the input vector
 - `m`: the row dimension

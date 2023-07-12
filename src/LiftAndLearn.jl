@@ -12,7 +12,7 @@ using SparseArrays
 using MatrixEquations
 using Statistics
 using JuMP
-using Ipopt, HiGHS, SCS
+using Ipopt, NLopt, MadNLP
 
 
 include("utils.jl")
