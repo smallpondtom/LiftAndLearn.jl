@@ -98,8 +98,8 @@ function generateEPmatrix(model::Burgers, μ::Float64)
 
     # Create A matrix
     A = diagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
-    A[1, N] = μ / Δx^2
-    A[N, 1] = μ / Δx^2
+    A[1, N] = μ / Δx^2  # periodic boundary condition
+    A[N, 1] = μ / Δx^2  # periodic boundary condition
 
     # Create F matrix
     S = Int(N * (N + 1) / 2)
@@ -115,11 +115,15 @@ function generateEPmatrix(model::Burgers, μ::Float64)
         vv = reshape([-ones(1,N-2); ones(1,N-2); -ones(1,N-2); ones(1,N-2)],4*N-8)/(6*Δx);
         F = sparse(ii,jj,vv,N,S)
 
-        # Boundary conditions
+        # Boundary conditions (Periodic)
         F[1,2] = -1/6/Δx
         F[1,N+1] = -1/6/Δx
+        F[1,N] = 1/6/Δx
+        F[1,end] = 1/6/Δx
         F[N,end-1] = 1/6/Δx
         F[N,end-2] = 1/6/Δx
+        F[N,1] = -1/6/Δx
+        F[N,N] = -1/6/Δx
     else
         F = zeros(N, S)
     end

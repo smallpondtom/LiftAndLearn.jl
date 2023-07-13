@@ -21,11 +21,11 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     w = dims[:w]
 
     @info "Initialize optimization model."
-    # model = Model(Ipopt.Optimizer; add_bridges=false)
+    model = Model(Ipopt.Optimizer; add_bridges=false)
+    set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
     # model = Model(NLopt.Optimizer)
     # set_optimizer_attribute(model, "algorithm", :LN_COBYLA)
-    model = Model(()->MadNLP.Optimizer(print_level=MadNLP.INFO, max_iter=3000))
-    # set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
+    # model = Model(()->MadNLP.Optimizer(print_level=MadNLP.INFO, max_iter=3000))
     if !options.optim.verbose
         set_silent(model)
     end
@@ -143,11 +143,11 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     w = dims[:w]
 
     @info "Initialize optimization model."
-    # model = Model(Ipopt.Optimizer; add_bridges=false)
+    model = Model(Ipopt.Optimizer; add_bridges=false)
+    set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
     # model = Model(NLopt.Optimizer)
     # set_optimizer_attribute(model, "algorithm", :LD_MMA)
-    # set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
-    model = Model(()->MadNLP.Optimizer(print_level=MadNLP.INFO, max_iter=3000))
+    # model = Model(()->MadNLP.Optimizer(print_level=MadNLP.INFO, max_iter=3000))
     if !options.optim.verbose
         set_silent(model)
     end
