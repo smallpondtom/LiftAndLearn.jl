@@ -32,7 +32,11 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
-        tmp = Ahat
+
+        # Set it to be symmetric or nearly symmetric
+        @expression(model, Ahat_s,  0.5 * (Ahat + Ahat'))
+
+        tmp = Ahat_s
     end
 
     if options.system.has_control
@@ -154,6 +158,10 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
+
+        # # Set it to be symmetric or nearly symmetric
+        # @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
+
         set_start_value.(Ahat, IG.A)
         tmp = Ahat
     end
@@ -218,6 +226,12 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
             delta(j,k)*Fhat[i,fidx(n,j,k)] + delta(i,k)*Fhat[j,fidx(n,i,k)] + delta(j,i)*Fhat[k,fidx(n,j,i)] == 0
            )
     end
+
+    # Symmetry equality constraint
+    constraint(model, Ahat .- Ahat' .== 0)
+    # Eigenvalue on diagonals equality constraint
+    
+
     @info "Done."
 
     @info "Optimize model."
@@ -278,7 +292,11 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
-        tmp = Ahat
+
+        # Set it to be symmetric or nearly symmetric
+        @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
+
+        tmp = Ahat_s
     end
 
     if options.system.has_control
@@ -407,8 +425,12 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
+
+        # Set it to be symmetric or nearly symmetric
+        @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
+
         set_start_value.(Ahat, IG.A)
-        tmp = Ahat
+        tmp = Ahat_s
     end
 
     if options.system.has_control
@@ -542,31 +564,41 @@ function EPUC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
+
+        # # Set it to be symmetric or nearly symmetric
+        # @expression(model, Ahat_s = 0.5 * (Ahat + Ahat'))
+        
+        set_start_value.(Ahat, IG.A)
         tmp = Ahat
     end
 
     if options.system.has_control
         @variable(model, Bhat[1:n, 1:p])
+        set_start_value.(Bhat, IG.B)
         tmp = (@isdefined tmp) ? hcat(tmp, Bhat) : Bhat
     end
 
     if options.system.is_quad
         if options.optim.which_quad_term == "H"
             @variable(model, Hhat[1:n, 1:v])
+            set_start_value.(Hhat, IG.H)
             tmp = (@isdefined tmp) ? hcat(tmp, Hhat) : Hhat
         else
             @variable(model, Fhat[1:n, 1:s])
+            set_start_value.(Fhat, IG.F)
             tmp = (@isdefined tmp) ? hcat(tmp, Fhat) : Fhat
         end
     end
 
     if options.system.is_bilin
         @variable(model, Nhat[1:n, 1:w])
+        set_start_value.(Nhat, IG.N)
         tmp = (@isdefined tmp) ? hcat(tmp, Nhat) : Nhat
     end
 
     if options.system.has_const
         @variable(model, Khat[1:n, 1])
+        set_start_value.(Khat, IG.K)
         tmp = (@isdefined tmp) ? hcat(tmp, Khat) : Khat
     end
 

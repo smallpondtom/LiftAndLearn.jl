@@ -259,6 +259,17 @@ function insert2F(Fi, N)
 end
 
 
+function insert2randF(Fi, N)
+    F = sprandn(N, Int(N * (N + 1) / 2), 0.8)
+    Ni = size(Fi, 1)
+
+    xsq_idx = [1 + (N + 1) * (n - 1) - n * (n - 1) / 2 for n in 1:N]
+    insert_idx = [collect(x:x+(Ni-i)) for (i, x) in enumerate(xsq_idx[1:Ni])]
+    idx = Int.(reduce(vcat, insert_idx))
+    F[1:Ni, idx] = Fi
+    return F
+end
+
 
 """
 Extracting the H matrix for POD basis of dimensions (N, r)
