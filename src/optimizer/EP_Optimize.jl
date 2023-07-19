@@ -304,11 +304,11 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     end
 
     # Symmetry inequality constraint
-    @constraint(model, c3[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
-    @constraint(model, c4[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .>= -1e-2)
+    # @constraint(model, c3[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
+    # @constraint(model, c4[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .>= -1e-2)
     # Eigenvalue on diagonals equality constraint
-    y = (x) -> 2/x + 1
-    @constraint(model, c5[i=1:n-1], Ahat[i,i] * y(i) >= Ahat[i+1,i+1])
+    # y = (x) -> 2/x + 1
+    # @constraint(model, c5[i=1:n-1], Ahat[i,i] * y(i) >= Ahat[i+1,i+1])
 
     @info "Done."
 
@@ -462,11 +462,11 @@ function EPUC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     end
 
     # Symmetry inequality constraint
-    @constraint(model, c1[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
-    @constraint(model, c2[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .>= -1e-2)
+    # @constraint(model, c1[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
+    # @constraint(model, c2[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .>= -1e-2)
     # Eigenvalue on diagonals equality constraint
-    y = (x) -> 2/x + 1
-    @constraint(model, c3[i=1:n-1], Ahat[i,i] * y(i) >= Ahat[i+1,i+1])
+    # y = (x) -> 2/x + 1
+    # @constraint(model, c3[i=1:n-1], Ahat[i,i] * y(i) >= Ahat[i+1,i+1])
 
     # Define the objective of the optimization problem
     @objective(model, Min, REG + options.α * EP)
