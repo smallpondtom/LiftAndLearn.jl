@@ -276,27 +276,15 @@ function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
         Ahat, Bhat, Chat, Fhat, Hhat, Nhat, Khat = LS_solve(D, Rt, Y, Xhat_t, dims, options)
         Qhat = 0.0
     elseif options.method == "NC"  # Non-constrained
-        if options.optim.initial_guess
-            Ahat, Bhat, Fhat, Hhat, Nhat, Khat = NC_Optimize(D, Rt, dims, options, IG)
-        else
-            Ahat, Bhat, Fhat, Hhat, Nhat, Khat = NC_Optimize(D, Rt, dims, options)
-        end
+        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = NC_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
         Qhat = 0.0
     elseif options.method == "EPHEC" || options.method == "EPHC"
-        if options.optim.initial_guess
-            Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims, options, IG)
-        else
-            Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims, options)
-        end
+        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
         Qhat = H2Q(Hhat)
     elseif options.method == "EPSC" || options.method == "EPSIC"
-        if options.optim.initial_guess
-            Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPSIC_Optimize(D, Rt, dims, options, IG)
-        else
-            Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPSIC_Optimize(D, Rt, dims, options)
-        end
+        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPSIC_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
         Qhat = H2Q(Hhat)
     elseif options.method == "EPUC"

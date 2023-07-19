@@ -65,6 +65,7 @@ Information about the optimization.
 - `max_iter::Int64`: the maximum number of iterations for the optimization
 - `which_quad_term::String`: choose main quadratic operator (H or F) to use for computation
 - `reproject::Bool`: use reprojection method for derivative data
+- `SIGE::Bool`: use successive initial guess estimation
 """
 @with_kw mutable struct opt_settings
     verbose::Bool = false
@@ -72,6 +73,7 @@ Information about the optimization.
     max_iter::Int64 = 3000
     which_quad_term::String = "F"
     reproject::Bool = false
+    SIGE::Bool = false  # Successive Initial Guess Estimation
 end
 
 
