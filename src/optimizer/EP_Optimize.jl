@@ -33,10 +33,10 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
 
-        # Set it to be symmetric or nearly symmetric
-        @expression(model, Ahat_s,  0.5 * (Ahat + Ahat'))
+        # # Set it to be symmetric or nearly symmetric
+        # @expression(model, Ahat_s,  0.5 * (Ahat + Ahat'))
 
-        tmp = Ahat_s
+        tmp = Ahat
     end
 
     if options.system.has_control
@@ -159,11 +159,11 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
 
-        # # Set it to be symmetric or nearly symmetric
-        # @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
+        # Set it to be symmetric or nearly symmetric
+        @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
 
         set_start_value.(Ahat, IG.A)
-        tmp = Ahat
+        tmp = Ahat_s
     end
 
     if options.system.has_control
@@ -227,10 +227,13 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
            )
     end
 
-    # Symmetry equality constraint
-    constraint(model, Ahat .- Ahat' .== 0)
+    # Symmetry inequality constraint
+    # @constraint(model, c2[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
+    # @constraint(model, c3[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .>= -1e-2)
     # Eigenvalue on diagonals equality constraint
-    
+    @constraint(model, c4[i=1:n], Ahat[i,i] + 1e-3 <= 0)
+    # y = (x) -> 2/x + 1
+    # @constraint(model, c4[i=1:n-1], Ahat[i,i] * y(i) >= Ahat[i+1,i+1])
 
     @info "Done."
 
@@ -293,10 +296,10 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
 
-        # Set it to be symmetric or nearly symmetric
-        @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
+        # # Set it to be symmetric or nearly symmetric
+        # @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
 
-        tmp = Ahat_s
+        tmp = Ahat
     end
 
     if options.system.has_control
@@ -426,11 +429,11 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
 
-        # Set it to be symmetric or nearly symmetric
-        @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
+        # # Set it to be symmetric or nearly symmetric
+        # @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
 
         set_start_value.(Ahat, IG.A)
-        tmp = Ahat_s
+        tmp = Ahat
     end
 
     if options.system.has_control
@@ -474,6 +477,7 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         end
     end
 
+
     # Define the objective of the optimization problem
     @objective(model, Min, REG)
 
@@ -503,6 +507,14 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
             delta(j,k)*Fhat[i,fidx(n,j,k)] + delta(i,k)*Fhat[j,fidx(n,i,k)] + delta(j,i)*Fhat[k,fidx(n,j,i)] .>= -options.ϵ
         )
     end
+
+    # Symmetry inequality constraint
+    @constraint(model, c3[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
+    @constraint(model, c4[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .>= -1e-2)
+    # Eigenvalue on diagonals equality constraint
+    y = (x) -> 2/x + 1
+    @constraint(model, c5[i=1:n-1], Ahat[i,i] * y(i) >= Ahat[i+1,i+1])
+
     @info "Done."
 
     @info "Optimize model."
@@ -625,6 +637,13 @@ function EPUC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
             sum(sum((delta(j,k)*Fhat[i,fidx(n,j,k)] + delta(i,k)*Fhat[j,fidx(n,i,k)] + delta(j,i)*Fhat[k,fidx(n,j,i)]).^2) for i=1:n, j=1:i, k=1:j)
         )
     end
+
+    # Symmetry inequality constraint
+    @constraint(model, c1[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
+    @constraint(model, c2[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .>= -1e-2)
+    # Eigenvalue on diagonals equality constraint
+    y = (x) -> 2/x + 1
+    @constraint(model, c3[i=1:n-1], Ahat[i,i] * y(i) >= Ahat[i+1,i+1])
 
     # Define the objective of the optimization problem
     @objective(model, Min, REG + options.α * EP)
