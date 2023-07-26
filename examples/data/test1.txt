@@ -1,0 +1,8 @@
+DS = 100
+mu = [0.03, 0.15] with 5 data points
+Amp = [0.5, 1.0, 1.5]
+Freq = [1, 2, 3]
+Phase = [-1, 0, 1]
+
+rmin = 1
+rmax = 10
