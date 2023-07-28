@@ -287,8 +287,8 @@ function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
         Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPSIC_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
         Qhat = H2Q(Hhat)
-    elseif options.method == "EPUC"
-        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPUC_Optimize(D, Rt, dims, options, IG)
+    elseif options.method == "EPP"
+        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPP_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
         Qhat = H2Q(Hhat)
     else

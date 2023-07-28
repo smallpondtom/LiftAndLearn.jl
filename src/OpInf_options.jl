@@ -172,7 +172,7 @@ end
 
 
 """
-Energy-Preserving Unconstrained Operator Inference.
+Energy-Preserving Penalty Operator Inference.
 
 # Fields
 - `method::String`: the name of the method
@@ -184,8 +184,8 @@ Energy-Preserving Unconstrained Operator Inference.
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 - `α::Float64`: the weight for the energy-preserving term in the cost function
 """
-@with_kw mutable struct EPUC_options <: Abstract_Options
-    method::String = "EPUC"
+@with_kw mutable struct EPP_options <: Abstract_Options
+    method::String = "EPP"
     system::sys_struct = sys_struct()
     vars::vars = vars()
     data::data = data()

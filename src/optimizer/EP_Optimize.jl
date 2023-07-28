@@ -340,7 +340,7 @@ end
 
 
 """
-Energy preserved unconstrained operator inference optimization (EPUC)
+Energy preserving penalty operator inference optimization (EPP)
 
 # Arguments
 - `D`: data matrix
@@ -353,7 +353,7 @@ Energy preserved unconstrained operator inference optimization (EPUC)
 - Inferred operators
 
 """
-function EPUC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
+function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     dims::Dict, options::Abstract_Options, IG::operators)
     # Some dimensions to unpack for convenience
     n = dims[:n]

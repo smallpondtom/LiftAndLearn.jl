@@ -6,3 +6,8 @@ Phase = [-1, 0, 1]
 
 rmin = 1
 rmax = 10
+
+# Test (outside)
+Amp = [0.1, 0.5] and [1.5, 1.9]
+Freq = [1, 2, 3] but randomly sample from these three
+Phase = [-1.5, -1] and [1, 1.5]
