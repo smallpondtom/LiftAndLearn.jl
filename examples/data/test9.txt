@@ -1,4 +1,4 @@
-DS = 200
+DS = 100
 mu = [0.05, 0.15] with 6 data points
 ic_a = range(0.8, 1.2, length=5)
 ic_b = [1, 2, 3]
