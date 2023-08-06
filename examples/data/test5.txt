@@ -11,3 +11,5 @@ rmax = 10
 a = [0.01, 10]
 b = [0.01 8]
 c = [-pi/2, pi/2]
+
+init_wave = (a,b,c) -> exp.(-a * cos.(ceil(b) .* π .* burger.x .+ c).^2) .- 0.4

@@ -11,3 +11,5 @@ rmax = 10
 Amp = [0.01, 1) and (9, 15]
 Freq = [-pi/2, -pi/4) and (pi/4, pi/2]
 Phase = [-1, -0.5) and (0.5, 1]
+
+init_wave = (a,b,c) -> exp.(-a * cos.(π .* burger.x .+ b).^2 .+ sin.(4*π .* burger.x .+ π/3).^2 .- cos.(3*π .* burger.x).^2) .+ c

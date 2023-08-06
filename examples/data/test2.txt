@@ -11,3 +11,6 @@ rmax = 15
 Amp = [0.2, 0.8] and [1.2, 1.8]
 Freq = [1, 2, 3] but randomly sample from these three
 Phase = [-1.0, -0.5] and [0.5, 1.0]
+
+
+init_wave = (A,a,b) -> A .* sin.(2 * pi * ceil(a) * burger.x .+ b) 

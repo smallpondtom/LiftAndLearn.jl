@@ -1,0 +1,15 @@
+DS = 200
+mu = [0.05, 0.15] with 6 data points
+ic_a = range(0.8, 1.2, length=5)
+ic_b = [1, 2, 3]
+ic_c = range(-0.25, 0.25, length=5)
+ic_a_out = [0.5, 1.5]
+ic_b_out = [0.1, 5]
+ic_c_out = [-0.5, 0.5]
+
+50 samples for each tests
+
+rmin = 1
+rmax = 10
+
+init_wave = (A,a,b) -> A .* sin.(2 * pi * ceil(a) * burger.x .+ b) 
