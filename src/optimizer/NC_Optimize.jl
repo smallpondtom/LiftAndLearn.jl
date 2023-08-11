@@ -26,7 +26,6 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
     # Model with options
     model = Model(Ipopt.Optimizer)
     set_optimizer_attribute(model, "max_iter", options.optim.max_iter)    # maximum number of iterations
-    set_optimizer_attribute(model, "warm_start_init_point", "yes")  # warm start using initial conditions
     if !options.optim.verbose
         set_silent(model)
     end
@@ -95,6 +94,10 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
             REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
         end
     end
+
+    # Define the objective of the optimization problem
+    @objective(model, Min, REG)
+
     @info "Done."
 
     # Logging from the optimizer
@@ -115,7 +118,7 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
     """
 
     # Assign the inferred matrices
-    Ahat = value.(Ahat)
+    Ahat = options.system.is_lin ? value.(Ahat) : 0
     Bhat = options.system.has_control ? value.(Bhat)[:, :] : 0
     Fhat = options.system.is_quad ? options.optim.which_quad_term=="F" ? value.(Fhat) : H2F(value.(Hhat)) : 0
     Hhat = options.system.is_quad ? options.optim.which_quad_term=="H" ? value.(Hhat) : F2Hs(value.(Fhat)) : 0
