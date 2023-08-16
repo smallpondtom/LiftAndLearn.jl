@@ -1,2 +1,0 @@
-Test 4 but without SIGE
-init_wave = (a,b,c) -> exp.(-a * cos.(π .* burger.x .+ b).^2 .+ sin.(4*π .* burger.x .+ π/3).^2 .- cos.(3*π .* burger.x).^2) .+ c

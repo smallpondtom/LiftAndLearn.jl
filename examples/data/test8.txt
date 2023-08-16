@@ -1,4 +1,0 @@
-
-Same test as 4, 6, and 7 but with much higher viscosity [0.1, 0.9]
-and without SIGE
-init_wave = (a,b,c) -> exp.(-a * cos.(π .* burger.x .+ b).^2 .+ sin.(4*π .* burger.x .+ π/3).^2 .- cos.(3*π .* burger.x).^2) .+ c
