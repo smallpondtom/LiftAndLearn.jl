@@ -33,60 +33,60 @@ function DoA(P::Matrix)
 end
 
 
-function opt_zubov_Q(X, Ahat, Fhat, P, Qi, Qtilde, η)
-    n, m = size(X)
+# function opt_zubov_Q(X, Ahat, Fhat, P, Qi, Qtilde, η)
+#     n, m = size(X)
     
-    # Construct some values used in the optimization
-    X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-    X2 = squareMatStates(X)'
-    X = X' # now we want the columns to be the states and rows to be time
+#     # Construct some values used in the optimization
+#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
+#     X2 = squareMatStates(X)'
+#     X = X' # now we want the columns to be the states and rows to be time
     
-    model = Model(Ipopt.Optimizer)
-    set_silent(model)
-    @variable(model, Q[1:n, 1:n])
-    set_start_value.(Q, Qi)
-    @expression(model, Qs, 0.5 * (Q + Q'))
-    @expression(
-        model, 
-        PDEnorm, 
-        sum((X*Ahat'*P'*X' + X2*Fhat'*P'*X' - 0.25*X*P'*X'*X*Qs*X' + 0.5*X*Qs*X').^2)
-    )
-    @expression(model, Qnorm, sum((Qtilde - Qs).^2)*η)
-    @objective(model, Min, PDEnorm + Qnorm)
-    JuMP.optimize!(model)
-    return value.(Q), model
-end
+#     model = Model(Ipopt.Optimizer)
+#     set_silent(model)
+#     @variable(model, Q[1:n, 1:n])
+#     set_start_value.(Q, Qi)
+#     @expression(model, Qs, 0.5 * (Q + Q'))
+#     @expression(
+#         model, 
+#         PDEnorm, 
+#         sum((X*Ahat'*P'*X' + X2*Fhat'*P'*X' - 0.25*X*P'*X'*X*Qs*X' + 0.5*X*Qs*X').^2)
+#     )
+#     @expression(model, Qnorm, sum((Qtilde - Qs).^2)*η)
+#     @objective(model, Min, PDEnorm + Qnorm)
+#     JuMP.optimize!(model)
+#     return value.(Q), model
+# end
 
 
 # FIX! - This function is not working. Should try with Convex.jl and Gurobi
-function opt_zubov(X, Ahat, Fhat, Pi, Qi, Ptilde, Qtilde, η)
-    n, m = size(X)
+# function opt_zubov(X, Ahat, Fhat, Pi, Qi, Ptilde, Qtilde, η)
+#     n, m = size(X)
     
-    # Construct some values used in the optimization
-    X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-    X2 = squareMatStates(X)'
-    X = X' # now we want the columns to be the states and rows to be time
+#     # Construct some values used in the optimization
+#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
+#     X2 = squareMatStates(X)'
+#     X = X' # now we want the columns to be the states and rows to be time
     
-    model = Model(NLopt.Optimizer)
-    set_optimizer_attribute(model, "algorithm", :LD_MMA)
-    @variable(model, P[1:n, 1:n])
-    @variable(model, Q[1:n, 1:n])
-    set_start_value.(P, Pi)
-    set_start_value.(Q, Qi)
-    @expression(model, Ps, 0.5 * (P + P'))
-    @expression(model, Qs, 0.5 * (Q + Q'))
-    @NLexpression(
-        model, 
-        PDEnorm, 
-        sum(abs2(X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Qs*X' + 0.5*X*Qs*X')[i,j] for i in 1:m, j in 1:m)
-    )
-    @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
-    @expression(model, Qnorm, sum((Qtilde - Qs).^2)*η)
-    @constraint(model, c, X*Ps*X' .<= 0.9999)
-    @NLobjective(model, Min, PDEnorm + Pnorm + Qnorm)
-    JuMP.optimize!(model)
-    return value.(P), value.(Q), model
-end
+#     model = Model(NLopt.Optimizer)
+#     set_optimizer_attribute(model, "algorithm", :LD_MMA)
+#     @variable(model, P[1:n, 1:n])
+#     @variable(model, Q[1:n, 1:n])
+#     set_start_value.(P, Pi)
+#     set_start_value.(Q, Qi)
+#     @expression(model, Ps, 0.5 * (P + P'))
+#     @expression(model, Qs, 0.5 * (Q + Q'))
+#     @NLexpression(
+#         model, 
+#         PDEnorm, 
+#         sum(abs2(X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Qs*X' + 0.5*X*Qs*X')[i,j] for i in 1:m, j in 1:m)
+#     )
+#     @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
+#     @expression(model, Qnorm, sum((Qtilde - Qs).^2)*η)
+#     @constraint(model, c, X*Ps*X' .<= 0.9999)
+#     @NLobjective(model, Min, PDEnorm + Pnorm + Qnorm)
+#     JuMP.optimize!(model)
+#     return value.(P), value.(Q), model
+# end
 
 function est_stab_rad(Ahat, Hhat, Q)
     P = lyapc(Ahat', 0.5*Q)
