@@ -12,7 +12,8 @@ using SparseArrays
 using MatrixEquations
 using Statistics
 using JuMP
-using Ipopt, NLopt, MadNLP
+using Ipopt
+using FFTW
 
 
 include("utils.jl")
