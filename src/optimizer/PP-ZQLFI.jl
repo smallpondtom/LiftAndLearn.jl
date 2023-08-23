@@ -10,13 +10,14 @@ function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
     set_silent(model)
     @variable(model, P[1:n, 1:n])
     set_start_value.(P, Pi)
-    @expression(model, Ps, 0.5 * (P + P'))
+    @expression(model, Pα, P .- α.*I)
+    @expression(model, Ps, 0.5 * (Pα + Pα'))
     @expression(
         model, 
         PDEnorm, 
         sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q'*X' + 0.5*X*Q'*X').^2)
     )
-    @expression(model, Pnorm, sum((Ptilde - (Ps .- α.*I(n))).^2)*η)
+    @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
     @constraint(model, c, X*Ps*X' .<= 0.99999)
     @objective(model, Min, PDEnorm + Pnorm)
     JuMP.optimize!(model)
@@ -75,6 +76,7 @@ function pp_zqlfi(
 )
     # Initialize 
     Jzubov_lm1 = 0  # Jzubov(l-1)
+    diff_lm1 = 0  # ||P(l-1) - P(l-1)'||_F
     Zerr_lm1 = 0  # Zerr(l-1)
     Zerrbest = 1e+8
     γ_err_int = 0  # integral error for γ
@@ -82,6 +84,7 @@ function pp_zqlfi(
     γ_ref = γ/10  # reference γ value for the PID control
     check = 0    # run a few extra iterations to make sure the error is decreasing
     not_pos_ct = 0  # count the number of times the Ps matrix does not have all posiive eigenvalues
+    symm_no_change_ct = 0  # count the number of times the symmetry error does not change
 
     for l in 1:max_iter
         # Run the optimization of Zubov
@@ -99,25 +102,29 @@ function pp_zqlfi(
         λ_Ps, V_Ps = eigen(Ps)  # eigenvalue decomposition of Ps
         λ_Ps_copy = deepcopy(λ_Ps)  # make a copy of the eigenvalues of Ps for later use
 
-        not_pos_ct += (any(λ_Ps .< 0))  # increment counter if Ps does not have all positive eigenvalues
+        # not_pos_ct += (any(λ_Ps .< 0))  # increment counter if Ps does not have all positive eigenvalues
+        # if not_pos_ct > 5  # if Ps does not have all positive eigenvalues for more than 5 iterations
+        if (any(λ_Ps .< 0))
+            abs_min_λ_Ps = abs(minimum(λ_Ps))
+            α = abs_min_λ_Ps + 10^(floor(log10(abs_min_λ_Ps)))  # shift the eigenvalues of P by the minimum eigenvalue of Ps
+        end
         λ_Ps[real.(λ_Ps) .< 0] .= γ  # project the negative eigenvalues to γ
         Ptilde = V_Ps * Diagonal(λ_Ps) * (V_Ps\I)  # reconstruct Ptilde from the projected eigenvalues
-
-        if not_pos_ct > 5  # if Ps does not have all positive eigenvalues for more than 5 iterations
-            # γ = γ * 10  # increase γ by a factor of 10
-            min_λ_Ps = minimum(λ_Ps)
-            α = abs(min_λ_Ps) + 10^(floor(log10(min_λ_Ps))) / 2  # shift the eigenvalues of P by the minimum eigenvalue of Ps
-        end
-
-        if any(λ_P_real .< 0) || any(imag.(λ_P) .!= 0)  # if all eigenvalues of P are not positive and real
-            Pi = Ps  # then update the next iteration's initial P matrix
-        end  # if not just use the Pi matrix from the previous iteration
 
         # Compute some metrics to check the convergence
         diff = norm(P - P', 2)
         Zerr = zubov_error(Xr, A, F, P, Q)
         ∇Zerr = abs(Zerr - Zerr_lm1)  # gradient of the Zubov error
         Zerr_lm1 = Zerr  # update Zerr(l-1)
+
+        # If the symmetry error does not change for a prolonged period of time, change the η value to make the Ptilde term more important
+        if diff - diff_lm1 < 1e-4
+            symm_no_change_ct += 1
+            if symm_no_change_ct > 5
+                η += 1.0
+                symm_no_change_ct = 0  # reset the counter
+            end
+        end
         
         # Save the best one
         if all(λ_P_real .> 0) && (Zerr < Zerrbest)
@@ -125,6 +132,12 @@ function pp_zqlfi(
             Zerrbest = Zerr
             ∇Jzubovbest = ∇Jzubov
         end
+
+        # if any(λ_P_real .> 0) && all(imag.(λ_P) .== 0)  # if all eigenvalues of P are positive and real
+        #     Pi = Ps  # then update the next iteration's initial P matrix
+        # end  # if not just use the Pi matrix from the previous iteration
+        # Pi = Ptilde
+        Pi = Ps + α*I
 
         # Logging
         @info """[Zubov-LFI Iteration $l]
@@ -138,6 +151,7 @@ function pp_zqlfi(
         dim(P):                              $(size(P))
         γ:                                   $(γ)
         α:                                   $(α)
+        η:                                   $(η)
         """
 
         # Check if the resulting P satisfies the tolerance
@@ -164,7 +178,6 @@ function pp_zqlfi(
             γ_err_der = γ_err - γ_err_lm1
             γ = Kg["p"] * γ_err + Kg["i"] * γ_err_int + Kg["d"] * γ_err_der
             γ = 1e+2 < γ ? 1e+2 : (γ < 1e-3 ? 1e-3 : γ)  # add saturation to γ
-
             γ_err_lm1 = γ_err
         end
     end
