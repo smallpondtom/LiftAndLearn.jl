@@ -15,8 +15,8 @@ function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
     @expression(
         model, 
         PDEnorm, 
-        sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q'*X' + 0.5*X*Q'*X').^2)
-    )
+        sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q*X' + 0.5*X*Q*X').^2)  # DID change Q' to Q (check if this effects anything)
+    )  
     @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
     @constraint(model, c, X*Ps*X' .<= 0.99999)
     @objective(model, Min, PDEnorm + Pnorm)
@@ -83,7 +83,7 @@ function pp_zqlfi(
     γ_err_lm1 = 0  # error at l-1 for γ
     γ_ref = γ/10  # reference γ value for the PID control
     check = 0    # run a few extra iterations to make sure the error is decreasing
-    not_pos_ct = 0  # count the number of times the Ps matrix does not have all posiive eigenvalues
+    # not_pos_ct = 0  # count the number of times the Ps matrix does not have all posiive eigenvalues
     symm_no_change_ct = 0  # count the number of times the symmetry error does not change
 
     for l in 1:max_iter
