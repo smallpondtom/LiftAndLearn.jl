@@ -1,4 +1,4 @@
-function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
+function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, D)
     n, m = size(X)
     
     # Construct some values used in the optimization
@@ -10,7 +10,8 @@ function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
     set_silent(model)
     @variable(model, P[1:n, 1:n])
     set_start_value.(P, Pi)
-    @expression(model, Pα, P .- α.*I)
+    # @expression(model, Pα, P .- D)
+    Pα = P - D
     @expression(model, Ps, 0.5 * (Pα + Pα'))
     @expression(
         model, 
@@ -18,7 +19,7 @@ function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
         sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q*X' + 0.5*X*Q*X').^2)  # DID change Q' to Q (check if this effects anything)
     )  
     @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
-    @constraint(model, c, X*Ps*X' .<= 0.99999)
+    @constraint(model, c, X*Ps*X' <= 0.99999)
     @objective(model, Min, PDEnorm + Pnorm)
     JuMP.optimize!(model)
     return value.(P), model
@@ -60,13 +61,16 @@ function pp_zqlfi(
     Q,                          # predefined Quadratic matrix for Zubov method
     Pi;                         # Initial P matrix for the optimization
     γ=0.1,                      # Control parameter for the Zubov method
-    α=0.0,                      # Eigenvalue shift parameter
-    Ptilde=γ*1.0I(size(A,1)),   # Initial target P matrix for the optimization
+    # α=0.0,                      # Eigenvalue shift parameter
+    N=size(A,1),
+    D=zeros(N, N),
+    Ptilde=γ*1.0I(N),           # Initial target P matrix for the optimization
     δS=1e-3,                    # Symmetricity tolerance for P
     δJ=1e-3,                    # Objective value tolerance for the optimization
     δe=1e-1,                    # Error tolerance for the Zubov method
     max_iter=100,               # Maximum number of iterations for the optimization
     η=1,                        # Weighting parameter for the Ptilde term
+    ξ = 1.1,                    # 10% factor for the shfting parameter
     Kg=Dict(                    # PID gains for the control parameter γ 
         "p" => 5.5,            
         "i" => 0.25, 
@@ -83,12 +87,15 @@ function pp_zqlfi(
     γ_err_lm1 = 0  # error at l-1 for γ
     γ_ref = γ/10  # reference γ value for the PID control
     check = 0    # run a few extra iterations to make sure the error is decreasing
-    # not_pos_ct = 0  # count the number of times the Ps matrix does not have all posiive eigenvalues
     symm_no_change_ct = 0  # count the number of times the symmetry error does not change
+
+    # TODO: Initialize the positive definite shifting optimization stuff
+    model = Model(SCS.Optimizer)
+    set_silent(model)
 
     for l in 1:max_iter
         # Run the optimization of Zubov
-        P, mdl_P = opt_zubov(Xr, A, F, Q, Pi, Ptilde, η, α)
+        P, mdl_P = opt_zubov(Xr, A, F, Q, Pi, Ptilde, η, D)
         λ_P, _ = eigen(P)  # eigenvalue decomposition of P
         λ_P_real = real.(λ_P)  # real part of the eigenvalues of P
         
@@ -102,14 +109,39 @@ function pp_zqlfi(
         λ_Ps, V_Ps = eigen(Ps)  # eigenvalue decomposition of Ps
         λ_Ps_copy = deepcopy(λ_Ps)  # make a copy of the eigenvalues of Ps for later use
 
-        # not_pos_ct += (any(λ_Ps .< 0))  # increment counter if Ps does not have all positive eigenvalues
-        # if not_pos_ct > 5  # if Ps does not have all positive eigenvalues for more than 5 iterations
-        if (any(λ_Ps .< 0))
-            abs_min_λ_Ps = abs(minimum(λ_Ps))
-            α = abs_min_λ_Ps + 10^(floor(log10(abs_min_λ_Ps)))  # shift the eigenvalues of P by the minimum eigenvalue of Ps
+        # TODO: Write the part for the eigenvalue shift optimization here
+        if any(λ_Ps .< 0)
+            # Solve the semi-definite program to find the optimal D matrix
+            @variable(model, D[1:N, 1:N], PSD)
+            @expression(model, d, diag(D))
+            @objective(model, Min, sum(d))
+            @constraint(model, Ps + D in PSDCone())
+            JuMP.optimize!(model)
+            Dopt = value.(D)
+            JuMP.unregister(model, :D)
+            JuMP.unregister(model, :d)
+            
+            # Find the shifted D matrix to shift Ps to positive definite
+            P_psd = Ps + Dopt
+            λpsd, _ = eigen(P_psd)
+            λpsd_min = minimum(λpsd)
+            D_pd = Dopt + ξ * abs(λpsd_min) * I
+            
+            # Project the negative eigenvalues to γ
+            λ_Ps[real.(λ_Ps) .< 0] .= γ  
+            Ptilde = V_Ps * Diagonal(λ_Ps) * (V_Ps\I)  # reconstruct Ptilde from the projected eigenvalues
+            Pi = Ps + D_pd
+        else
+            Ptilde = Ps
+            Pi = Ps
         end
-        λ_Ps[real.(λ_Ps) .< 0] .= γ  # project the negative eigenvalues to γ
-        Ptilde = V_Ps * Diagonal(λ_Ps) * (V_Ps\I)  # reconstruct Ptilde from the projected eigenvalues
+    
+        # if (any(λ_Ps .< 0))
+        #     abs_min_λ_Ps = abs(minimum(λ_Ps))
+        #     α = abs_min_λ_Ps + 10^(floor(log10(abs_min_λ_Ps)))  # shift the eigenvalues of P by the minimum eigenvalue of Ps
+        #     λ_Ps[real.(λ_Ps) .< 0] .= γ  # project the negative eigenvalues to γ
+        # end
+        # Ptilde = V_Ps * Diagonal(λ_Ps) * (V_Ps\I)  # reconstruct Ptilde from the projected eigenvalues
 
         # Compute some metrics to check the convergence
         diff = norm(P - P', 2)
@@ -133,12 +165,6 @@ function pp_zqlfi(
             ∇Jzubovbest = ∇Jzubov
         end
 
-        # if any(λ_P_real .> 0) && all(imag.(λ_P) .== 0)  # if all eigenvalues of P are positive and real
-        #     Pi = Ps  # then update the next iteration's initial P matrix
-        # end  # if not just use the Pi matrix from the previous iteration
-        # Pi = Ptilde
-        Pi = Ps + α*I
-
         # Logging
         @info """[Zubov-LFI Iteration $l]
         Zubov Equation Error:                $(Zerr)
@@ -150,9 +176,9 @@ function pp_zqlfi(
         # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
         dim(P):                              $(size(P))
         γ:                                   $(γ)
-        α:                                   $(α)
         η:                                   $(η)
         """
+        # α:                                   $(α)
 
         # Check if the resulting P satisfies the tolerance
         if diff < δS && all(λ_P_real .> 0) && ∇Jzubov < δJ && ∇Zerr < δe
