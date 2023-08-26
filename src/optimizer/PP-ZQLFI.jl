@@ -1,4 +1,4 @@
-function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, D)
+function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
     n, m = size(X)
     
     # Construct some values used in the optimization
@@ -10,8 +10,7 @@ function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, D)
     set_silent(model)
     @variable(model, P[1:n, 1:n])
     set_start_value.(P, Pi)
-    # @expression(model, Pα, P .- D)
-    Pα = P - D
+    @expression(model, Pα, P .- α.*I)
     @expression(model, Ps, 0.5 * (Pα + Pα'))
     @expression(
         model, 
@@ -19,7 +18,7 @@ function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, D)
         sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q*X' + 0.5*X*Q*X').^2)  # DID change Q' to Q (check if this effects anything)
     )  
     @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
-    @constraint(model, c, X*Ps*X' <= 0.99999)
+    @constraint(model, c, X*Ps*X' .<= 0.99999)
     @objective(model, Min, PDEnorm + Pnorm)
     JuMP.optimize!(model)
     return value.(P), model
@@ -61,7 +60,7 @@ function pp_zqlfi(
     Q,                          # predefined Quadratic matrix for Zubov method
     Pi;                         # Initial P matrix for the optimization
     γ=0.1,                      # Control parameter for the Zubov method
-    # α=0.0,                      # Eigenvalue shift parameter
+    α=0.0,                      # Eigenvalue shift parameter
     N=size(A,1),
     D=zeros(N, N),
     Ptilde=γ*1.0I(N),           # Initial target P matrix for the optimization
@@ -70,7 +69,7 @@ function pp_zqlfi(
     δe=1e-1,                    # Error tolerance for the Zubov method
     max_iter=100,               # Maximum number of iterations for the optimization
     η=1,                        # Weighting parameter for the Ptilde term
-    ξ = 1.1,                    # 10% factor for the shfting parameter
+    # ξ = 1.1,                    # 10% factor for the shfting parameter
     Kg=Dict(                    # PID gains for the control parameter γ 
         "p" => 5.5,            
         "i" => 0.25, 
@@ -82,6 +81,7 @@ function pp_zqlfi(
     Jzubov_lm1 = 0  # Jzubov(l-1)
     diff_lm1 = 0  # ||P(l-1) - P(l-1)'||_F
     Zerr_lm1 = 0  # Zerr(l-1)
+    Ptilde_lm1 = Pi  # Ptilde(l-1)
     Zerrbest = 1e+8
     γ_err_int = 0  # integral error for γ
     γ_err_lm1 = 0  # error at l-1 for γ
@@ -95,7 +95,7 @@ function pp_zqlfi(
 
     for l in 1:max_iter
         # Run the optimization of Zubov
-        P, mdl_P = opt_zubov(Xr, A, F, Q, Pi, Ptilde, η, D)
+        P, mdl_P = opt_zubov(Xr, A, F, Q, Pi, Ptilde, η, α)
         λ_P, _ = eigen(P)  # eigenvalue decomposition of P
         λ_P_real = real.(λ_P)  # real part of the eigenvalues of P
         
@@ -124,17 +124,26 @@ function pp_zqlfi(
             # Find the shifted D matrix to shift Ps to positive definite
             P_psd = Ps + Dopt
             λpsd, _ = eigen(P_psd)
-            λpsd_min = minimum(λpsd)
-            D_pd = Dopt + ξ * abs(λpsd_min) * I
+            λpsd_min = ceil(abs(minimum(λpsd)); sigdigits=4)
+            D = Dopt + λpsd_min * I
+            α = λpsd_min
+
+            abs_min_λ_Ps = abs(minimum(λ_Ps))
+            α = abs_min_λ_Ps + 10^(floor(log10(abs_min_λ_Ps)))  # shift the eigenvalues of P by the minimum eigenvalue of Ps
             
             # Project the negative eigenvalues to γ
-            λ_Ps[real.(λ_Ps) .< 0] .= γ  
-            Ptilde = V_Ps * Diagonal(λ_Ps) * (V_Ps\I)  # reconstruct Ptilde from the projected eigenvalues
-            Pi = Ps + D_pd
+            # λ_Ps[real.(λ_Ps) .< 0] .= γ  
+            # Ptilde = V_Ps * Diagonal(λ_Ps) * (V_Ps\I)  # reconstruct Ptilde from the projected eigenvalues
+            Ptilde = Ps + D
+            # Pi = Ptilde_lm1
+            # Ptilde_lm1 = Ptilde
         else
             Ptilde = Ps
-            Pi = Ps
+            # Pi = Ptilde_lm1
+            # Ptilde_lm1 = Ptilde
+            α = 0
         end
+        Pi = Ps + α*I
     
         # if (any(λ_Ps .< 0))
         #     abs_min_λ_Ps = abs(minimum(λ_Ps))
