@@ -12,7 +12,7 @@ using SparseArrays
 using MatrixEquations
 using Statistics
 using JuMP
-using Ipopt
+using Ipopt, SCS
 using FFTW
 
 
