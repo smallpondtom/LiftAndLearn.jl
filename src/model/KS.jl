@@ -21,6 +21,7 @@ mutable struct KS
     model_FT::Function  # model using Fourier Transform
     model_FD::Function  # model using Finite Difference
     integrator::Function  # integrator using Crank-Nicholson Adams-Bashforth method
+    integrator_fourier::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
 end
 
 function KS(Omega, T, D, Δx, Δt, Pdim)
@@ -33,7 +34,7 @@ function KS(Omega, T, D, Δx, Δt, Pdim)
 
     KS(
         Omega, T, D, Δx, Δt, IC, x, t, μs, Xdim, Tdim, Pdim,
-        model_FFT, model_FT, model_FD, integrator
+        model_FFT, model_FT, model_FD, integrator, integrator_fourier
     )
 end
 
@@ -99,12 +100,13 @@ function model_FFT(model::KS, μ::Float64)
     )
     
     idx = 1  # index
-    F = spzeros(N, Int(N * (N + 1) / 2))
+    F = spzeros(Complex{Float64}, N, Int(N * (N + 1) / 2))
     for k in -N/2:1.0:(N/2-1)
         β = -π * 1.0im * k / L
         F[idx, :] .= β
         idx += 1
     end       
+    return A, F
 end
 
 
@@ -169,22 +171,26 @@ end
 function integrator_fourier(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
+    FTreal_dim = Int(Xdim/2+1)
+    foo = zeros(ComplexF64, FTreal_dim)
 
     # Plan the fourier transform and inverse fourier transform
-    prfft = plan_rfft(IC; flags=FFTW.ESTIMATE, timelimit=Inf)
-    pirfft = plan_irfft(IC, Xdim; flags=FFTW.ESTIMATE, timelimit=Inf)
+    prfft = plan_rfft(IC)
+    pirfft = plan_irfft(foo, Xdim)
 
     u = zeros(Xdim, Tdim)  # state in the physical space
     u[:, 1] = IC
-    uhat = zeros(Xdim, Tdim)  # state in the Fourier space
+    uhat = zeros(ComplexF64, FTreal_dim, Tdim)  # state in the Fourier space
     uhat[:, 1] = fftshift(prfft * u[:, 1]) / Xdim
-    uhat2_lm1 = Vector{Float64}()  # u2 at j-2 placeholder
+    uhat2_lm1 = Vector{ComplexF64}()  # u2 at j-2 placeholder
 
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        uhat2 = vech(uh[:, j-1] * uh[:, j-1]')
+        uhat2 = vech(uhat[:, j-1] * uhat[:, j-1]')
 
         if j == 2
+            # FIXME: If I use ifft the dimensions become N/2+1 and that does not agree with the 
+            # dimensions of the A and F matrices so I probably will have to use fft and not rfft 
             uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + F * uhat2 * Δt)
         else
             uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + F * uhat2 * 3*Δt/2 - F * uhat2_lm1 * Δt/2)
