@@ -171,17 +171,16 @@ end
 function integrator_fourier(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
-    FTreal_dim = Int(Xdim/2+1)
-    foo = zeros(ComplexF64, FTreal_dim)
+    foo = zeros(ComplexF64, Xdim)
 
     # Plan the fourier transform and inverse fourier transform
-    prfft = plan_rfft(IC)
-    pirfft = plan_irfft(foo, Xdim)
+    pfft = plan_fft(IC)
+    pifft = plan_ifft(foo)
 
     u = zeros(Xdim, Tdim)  # state in the physical space
     u[:, 1] = IC
     uhat = zeros(ComplexF64, FTreal_dim, Tdim)  # state in the Fourier space
-    uhat[:, 1] = fftshift(prfft * u[:, 1]) / Xdim
+    uhat[:, 1] = fftshift(pfft * u[:, 1]) / Xdim
     uhat2_lm1 = Vector{ComplexF64}()  # u2 at j-2 placeholder
 
     for j in 2:Tdim
@@ -189,8 +188,6 @@ function integrator_fourier(A, F, tdata, IC)
         uhat2 = vech(uhat[:, j-1] * uhat[:, j-1]')
 
         if j == 2
-            # FIXME: If I use ifft the dimensions become N/2+1 and that does not agree with the 
-            # dimensions of the A and F matrices so I probably will have to use fft and not rfft 
             uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + F * uhat2 * Δt)
         else
             uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + F * uhat2 * 3*Δt/2 - F * uhat2_lm1 * Δt/2)
@@ -198,7 +195,7 @@ function integrator_fourier(A, F, tdata, IC)
         uhat2_lm1 = uhat2
 
         # Get the state in the physical space
-        u[:, j] = pirfft * (ifftshift(uhat[:, j]))
+        u[:, j] = pifft * (ifftshift(uhat[:, j]))
     end
     return u, uhat
 end
