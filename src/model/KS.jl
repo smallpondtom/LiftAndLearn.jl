@@ -7,19 +7,26 @@ mutable struct KS
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
+<<<<<<< HEAD
     nx::Float64  # number of spatial grid points
+=======
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
     Δx::Float64  # spatial grid size
     Δt::Float64  # temporal step size
     IC::VecOrMat{Float64}  # initial condition
     x::Vector{Float64}  # spatial grid points
     t::Vector{Float64}  # temporal points
+<<<<<<< HEAD
     k::Vector{Float64}  # Fourier modes
+=======
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
     μs::Union{Vector{Float64},Float64}  # parameter vector
     Xdim::Int64  # spatial dimension
     Tdim::Int64  # temporal dimension
     Pdim::Int64  # parameter dimension
 
     model_FFT::Function  # model using Fast Fourier Transform
+<<<<<<< HEAD
     model_FFT_ew::Function  # model using Fast Fourier Transform (element-wise)
     model_FT::Function  # model using Fourier Transform
     model_FD::Function  # model using Finite Difference
@@ -34,17 +41,34 @@ function KS(Omega, T, D, nx, Δt, Pdim)
     t = collect(T[1]:Δt:T[2])
     k = collect(-nx/2:1.0:nx/2-1)  
 
+=======
+    model_FT::Function  # model using Fourier Transform
+    model_FD::Function  # model using Finite Difference
+    integrator::Function  # integrator using Crank-Nicholson Adams-Bashforth method
+    integrator_fourier::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
+end
+
+function KS(Omega, T, D, Δx, Δt, Pdim)
+    x = collect(Omega[1]:Δx:Omega[2]-Δx)  # assuming a periodic boundary condition
+    t = collect(T[1]:Δt:T[2])
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
     μs = Pdim == 1 ? D[1] : collect(range(D[1], D[2], Pdim))
     Xdim = length(x)
     Tdim = length(t)
     IC = zeros(Xdim, 1)
 
+<<<<<<< HEAD
     @assert nx == Xdim "nx must be equal to Xdim"
 
     KS(
         Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim,
         model_FFT, model_FFT_ew, model_FT, model_FD, integrate_FD, 
         integrate_FFT, integrate_FFT_ew
+=======
+    KS(
+        Omega, T, D, Δx, Δt, IC, x, t, μs, Xdim, Tdim, Pdim,
+        model_FFT, model_FT, model_FD, integrator, integrator_fourier
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
     )
 end
 
@@ -100,6 +124,7 @@ function model_FD(model::KS, μ::Float64)
 end
 
 
+<<<<<<< HEAD
 """
     Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Fast Fourier Transform method.
 
@@ -112,10 +137,15 @@ end
     - `F`: F matrix
 """
 function model_FFT(model::KS, μ::Float64)
+=======
+function model_FFT(model::KS, μ::Float64)
+    N = model.Xdim
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
     L = model.Omega[2]
 
     # Create A matrix
     A = spdiagm(
+<<<<<<< HEAD
         0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
     )
     
@@ -145,6 +175,18 @@ function model_FFT_ew(model::KS, μ::Float64)
     A = [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
     # Create F matix
     F = [-π * 1.0im * k / L for k in model.k]
+=======
+        0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in -N/2:1.0:(N/2-1)]
+    )
+    
+    idx = 1  # index
+    F = spzeros(Complex{Float64}, N, Int(N * (N + 1) / 2))
+    for k in -N/2:1.0:(N/2-1)
+        β = -π * 1.0im * k / L
+        F[idx, :] .= β
+        idx += 1
+    end       
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
     return A, F
 end
 
@@ -174,7 +216,11 @@ end
 
 
 """
+<<<<<<< HEAD
     Integrator using Crank-Nicholson Adams-Bashforth method for (FD)
+=======
+    Integrator using Crank-Nicholson Adams-Bashforth method
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
 
     # Arguments
     - `A`: A matrix
@@ -185,7 +231,11 @@ end
     # Return
     - `state`: state matrix
 """
+<<<<<<< HEAD
 function integrate_FD(A, F, tdata, IC)
+=======
+function integrator(A, F, tdata, IC)
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
     Xdim = length(IC)
     Tdim = length(tdata)
     u = zeros(Xdim, Tdim)
@@ -206,6 +256,7 @@ function integrate_FD(A, F, tdata, IC)
 end
 
 
+<<<<<<< HEAD
 """
     Integrator using Crank-Nicholson Adams-Bashforth method for (FFT)
 
@@ -219,6 +270,10 @@ end
     - `state`: state matrix
 """
 function integrate_FFT(A, F, tdata, IC)
+=======
+
+function integrator_fourier(A, F, tdata, IC)
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
     Xdim = length(IC)
     Tdim = length(tdata)
     foo = zeros(ComplexF64, Xdim)
@@ -229,6 +284,7 @@ function integrate_FFT(A, F, tdata, IC)
 
     u = zeros(Xdim, Tdim)  # state in the physical space
     u[:, 1] = IC
+<<<<<<< HEAD
     uhat = zeros(ComplexF64, Xdim, Tdim)  # state in the Fourier space
     uhat[:, 1] = fftshift(pfft * u[:, 1]) / Xdim
     uhat2_lm1 = Vector{ComplexF64}()  # uhat2 at j-2 placeholder
@@ -236,12 +292,22 @@ function integrate_FFT(A, F, tdata, IC)
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
         uhat2 = fftshift(pfft * (u[:, j-1].^2)) / Xdim
+=======
+    uhat = zeros(ComplexF64, FTreal_dim, Tdim)  # state in the Fourier space
+    uhat[:, 1] = fftshift(pfft * u[:, 1]) / Xdim
+    uhat2_lm1 = Vector{ComplexF64}()  # u2 at j-2 placeholder
+
+    for j in 2:Tdim
+        Δt = tdata[j] - tdata[j-1]
+        uhat2 = vech(uhat[:, j-1] * uhat[:, j-1]')
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
 
         if j == 2
             uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + F * uhat2 * Δt)
         else
             uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + F * uhat2 * 3*Δt/2 - F * uhat2_lm1 * Δt/2)
         end
+<<<<<<< HEAD
 
         # Get the state in the physical space
         u[:, j] = real.(Xdim *pifft * (ifftshift(uhat[:, j])))
@@ -300,3 +366,12 @@ function integrate_FFT_ew(A, F, tdata, IC)
     end
     return u, uhat
 end
+=======
+        uhat2_lm1 = uhat2
+
+        # Get the state in the physical space
+        u[:, j] = pifft * (ifftshift(uhat[:, j]))
+    end
+    return u, uhat
+end
+>>>>>>> 739fbe04b3313290cc1fc89c04d5cb9de74aa0e1
