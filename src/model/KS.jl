@@ -21,11 +21,12 @@ mutable struct KS
 
     model_FFT::Function  # model using Fast Fourier Transform
     model_FFT_ew::Function  # model using Fast Fourier Transform (element-wise)
-    model_FT::Function  # model using Fourier Transform
+    model_FT::Function  # model using second method of Fourier Transform that does not use FFT
     model_FD::Function  # model using Finite Difference
     integrate_FD::Function  # integrator using Crank-Nicholson Adams-Bashforth method
     integrate_FFT::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
     integrate_FFT_ew::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
+    integrate_FT::Function  # integrator for second method of Fourier Transform without FFT
 end
 
 function KS(Omega, T, D, nx, Δt, Pdim)
@@ -44,7 +45,7 @@ function KS(Omega, T, D, nx, Δt, Pdim)
     KS(
         Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim,
         model_FFT, model_FFT_ew, model_FT, model_FD, integrate_FD, 
-        integrate_FFT, integrate_FFT_ew
+        integrate_FFT, integrate_FFT_ew, integrate_FT
     )
 end
 
@@ -109,7 +110,7 @@ end
 
     # Return
     - `A`: A matrix
-    - `F`: F matrix
+    - `F`: F matrix  (take out 1.0im)
 """
 function model_FFT(model::KS, μ::Float64)
     L = model.Omega[2]
@@ -121,7 +122,7 @@ function model_FFT(model::KS, μ::Float64)
     
     # Create F matix
     F = spdiagm(
-        0 => [-π * 1.0im * k / L for k in model.k]
+        0 => [-π * k / L for k in model.k]
     )
     return A, F
 end
@@ -149,7 +150,43 @@ function model_FFT_ew(model::KS, μ::Float64)
 end
 
 
-function model_FT()
+function model_FT(model::KS, μ::Float64)
+    N = model.Xdim
+    L = model.Omega[2]
+
+    # Create A matrix
+    A = spdiagm(
+        0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
+    )
+
+    # Create F matrix
+    # WARNING: The 1.0im is taken out from F
+    foo = zeros(N, N)
+    F = spzeros(N, Int(N*(N+1)/2))
+    for k in model.k
+        idx = Int(k + N/2 + 1)
+        for m in model.k
+            # map from k to n
+            p = Int(m + N/2 + 1)
+            q = k - m
+            # map from (k-m) to k
+            if q < -N/2
+                q += N
+            elseif N/2 <= q 
+                q -= N
+            end
+            # map from k to n
+            q = Int(q + N/2 + 1)
+
+            if q > p
+                foo[q, p] += 1
+            else 
+                foo[p, q] += 1
+            end
+        end
+        F[idx, :] = -π * k / L * vech(foo)
+    end
+    return A, F
 end
 
 
@@ -237,14 +274,15 @@ function integrate_FFT(A, F, tdata, IC)
         Δt = tdata[j] - tdata[j-1]
         uhat2 = fftshift(pfft * (u[:, j-1].^2)) / Xdim
 
+        # WARNING: The 1.0im is taken out from F
         if j == 2
-            uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + F * uhat2 * Δt)
+            uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + 1.0im * F * uhat2 * Δt)
         else
-            uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + F * uhat2 * 3*Δt/2 - F * uhat2_lm1 * Δt/2)
+            uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + 1.0im * F * uhat2 * 3*Δt/2 - 1.0im * F * uhat2_lm1 * Δt/2)
         end
 
         # Get the state in the physical space
-        u[:, j] = real.(Xdim *pifft * (ifftshift(uhat[:, j])))
+        u[:, j] = real.(Xdim * pifft * (ifftshift(uhat[:, j])))
 
         # Clean
         uhat[:, j] = fftshift(pfft * u[:, j]) / Xdim
@@ -289,6 +327,43 @@ function integrate_FFT_ew(A, F, tdata, IC)
             uhat[:, j] = (1.0 ./ (1.0 .- Δt/2 * A)) .* ((1.0 .+ Δt/2 * A) .* uhat[:, j-1] + F .* uhat2 * Δt)
         else
             uhat[:, j] = (1.0 ./ (1.0 .- Δt/2 * A)) .* ((1.0 .+ Δt/2 * A) .* uhat[:, j-1] + F .* uhat2 * 3*Δt/2 - F .* uhat2_lm1 * Δt/2)
+        end
+
+        # Get the state in the physical space
+        u[:, j] = real.(Xdim * pifft * (ifftshift(uhat[:, j])))
+
+        # Clean
+        uhat[:, j] = fftshift(pfft * u[:, j]) / Xdim
+        uhat2_lm1 = uhat2
+    end
+    return u, uhat
+end
+
+
+function integrate_FT(A, F, tdata, IC)
+    Xdim = length(IC)
+    Tdim = length(tdata)
+    foo = zeros(ComplexF64, Xdim)
+
+    # Plan the fourier transform and inverse fourier transform
+    pfft = plan_fft(IC)
+    pifft = plan_ifft(foo)
+
+    u = zeros(Xdim, Tdim)  # state in the physical space
+    u[:, 1] = IC
+    uhat = zeros(ComplexF64, Xdim, Tdim)  # state in the Fourier space
+    uhat[:, 1] = fftshift(pfft * u[:, 1]) / Xdim
+    uhat2_lm1 = Vector{ComplexF64}()  # uhat2 at j-2 placeholder
+
+    for j in 2:Tdim
+        Δt = tdata[j] - tdata[j-1]
+        uhat2 = vech(uhat[:, j-1] * uhat[:, j-1]')
+
+        # WARNING: The 1.0im is taken out from F
+        if j == 2
+            uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + 1.0im * F * uhat2 * Δt)
+        else
+            uhat[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * uhat[:, j-1] + 1.0im * F * uhat2 * 3*Δt/2 - 1.0im * F * uhat2_lm1 * Δt/2)
         end
 
         # Get the state in the physical space
