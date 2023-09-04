@@ -161,9 +161,9 @@ function model_FT(model::KS, μ::Float64)
 
     # Create F matrix
     # WARNING: The 1.0im is taken out from F
-    foo = zeros(N, N)
     F = spzeros(N, Int(N*(N+1)/2))
     for k in model.k
+        foo = zeros(N, N)
         idx = Int(k + N/2 + 1)
         for m in model.k
             # map from k to n
@@ -179,12 +179,12 @@ function model_FT(model::KS, μ::Float64)
             q = Int(q + N/2 + 1)
 
             if q > p
-                foo[q, p] += 1
+                foo[q, p] += -π * (k+m) / L
             else 
-                foo[p, q] += 1
+                foo[p, q] += -π * (k+m) / L
             end
         end
-        F[idx, :] = -π * k / L * vech(foo)
+        F[idx, :] = vech(foo)
     end
     return A, F
 end
@@ -357,7 +357,10 @@ function integrate_FT(A, F, tdata, IC)
 
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        uhat2 = vech(uhat[:, j-1] * uhat[:, j-1]')
+        # INFO: uhat * uhat' is hermitian and not transpose.
+        # the diagonal entries are always real but the off-diagonal entries are complex with complex conjugate pairs.
+        # So for the half-vectorization, we only need the real part.
+        uhat2 = complex.(real.(vech(uhat[:, j-1] * uhat[:, j-1]')))
 
         # WARNING: The 1.0im is taken out from F
         if j == 2
