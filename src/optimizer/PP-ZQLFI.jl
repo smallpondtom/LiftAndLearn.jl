@@ -24,7 +24,57 @@
 # end
 
 
-function optimize_P(X, Ahat, Fhat, Q, Pi, Ptilde, η)
+# function optimize_P(X, Ahat, Fhat, Q, Pi, Ptilde, η)
+#     n, m = size(X)
+    
+#     # Construct some values used in the optimization
+#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
+#     X2 = squareMatStates(X)'
+#     X = X' # now we want the columns to be the states and rows to be time
+    
+#     model = Model(Ipopt.Optimizer)
+#     set_silent(model)
+#     @variable(model, P[1:n, 1:n])
+#     set_start_value.(P, Pi)
+#     @expression(model, Ps, 0.5 * (P + P'))
+#     @expression(
+#         model, 
+#         PDEnorm, 
+#         sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q*X' + 0.5*X*Q*X').^2) 
+#     )  
+#     @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
+#     @constraint(model, c, X*Ps*X' .<= 0.99999)
+#     @objective(model, Min, PDEnorm + Pnorm)
+#     JuMP.optimize!(model)
+#     return value.(P), model
+# end
+
+
+# function optimize_Q(X, Ahat, Fhat, P, Qi, Qtilde, η)
+#     n, m = size(X)
+    
+#     # Construct some values used in the optimization
+#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
+#     X2 = squareMatStates(X)'
+#     X = X' # now we want the columns to be the states and rows to be time
+    
+#     model = Model(Ipopt.Optimizer)
+#     set_silent(model)
+#     @variable(model, Q[1:n, 1:n])
+#     set_start_value.(Q, Qi)
+#     @expression(model, Qs, 0.5 * (Q + Q'))
+#     @expression(
+#         model, 
+#         PDEnorm, 
+#         sum((X*Ahat'*P*X' + X2*Fhat'*P*X' - 0.25*X*P*X'*X*Qs*X' + 0.5*X*Qs*X').^2)  
+#     )  
+#     @expression(model, Qnorm, sum((Qtilde - Qs).^2)*η)
+#     @objective(model, Min, PDEnorm + Qnorm)
+#     JuMP.optimize!(model)
+#     return value.(Q), model
+# end
+
+function optimize_P(X, Ahat, Fhat, Q, Pi, α)
     n, m = size(X)
     
     # Construct some values used in the optimization
@@ -34,23 +84,24 @@ function optimize_P(X, Ahat, Fhat, Q, Pi, Ptilde, η)
     
     model = Model(Ipopt.Optimizer)
     set_silent(model)
-    @variable(model, P[1:n, 1:n])
-    set_start_value.(P, Pi)
-    @expression(model, Ps, 0.5 * (P + P'))
-    @expression(
+    register(model, :.+, n, .+, autodiff=true)
+    @variable(model, Pc[1:n, 1:n])
+    set_start_value.(Pc, Pi)
+    @NLexpression(model, P, Pc*Pc' .+ α*I)
+    @NLexpression(
         model, 
         PDEnorm, 
-        sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q*X' + 0.5*X*Q*X').^2) 
+        sum((X*Ahat'*P*X' + X2*Fhat'*P*X' - 0.25*X*P*X'*X*Q*X' + 0.5*X*Q*X').^2) 
     )  
-    @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
-    @constraint(model, c, X*Ps*X' .<= 0.99999)
-    @objective(model, Min, PDEnorm + Pnorm)
+    @NLconstraint(model, c, X*P*X' .<= 0.99999)
+    @NLobjective(model, Min, PDEnorm)
     JuMP.optimize!(model)
-    return value.(P), model
+    Pc_sol = value.(Pc)
+    return Pc_sol * Pc_sol', Pc_sol, model
 end
 
 
-function optimize_Q(X, Ahat, Fhat, P, Qi, Qtilde, η)
+function optimize_Q(X, Ahat, Fhat, P, Qi, α)
     n, m = size(X)
     
     # Construct some values used in the optimization
@@ -59,21 +110,21 @@ function optimize_Q(X, Ahat, Fhat, P, Qi, Qtilde, η)
     X = X' # now we want the columns to be the states and rows to be time
     
     model = Model(Ipopt.Optimizer)
+    register(model, :.+, n, .+, autodiff=true)
     set_silent(model)
-    @variable(model, Q[1:n, 1:n])
-    set_start_value.(Q, Qi)
-    @expression(model, Qs, 0.5 * (Q + Q'))
-    @expression(
+    @variable(model, Qc[1:n, 1:n])
+    set_start_value.(Qc, Qi)
+    @NLexpression(model, Q, Qc*Qc' .+ α*I)
+    @NLexpression(
         model, 
         PDEnorm, 
-        sum((X*Ahat'*P*X' + X2*Fhat'*P*X' - 0.25*X*P*X'*X*Qs*X' + 0.5*X*Qs*X').^2)  
+        sum((X*Ahat'*P*X' + X2*Fhat'*P*X' - 0.25*X*P*X'*X*Q*X' + 0.5*X*Q*X').^2)  
     )  
-    @expression(model, Qnorm, sum((Qtilde - Qs).^2)*η)
-    @objective(model, Min, PDEnorm + Qnorm)
+    @NLobjective(model, Min, PDEnorm)
     JuMP.optimize!(model)
-    return value.(Q), model
+    Qc_sol = value.(Qc)
+    return Qc_sol * Qc_sol', Qc_sol, model
 end
-
 
 
 function DoA(P::Matrix)
@@ -162,48 +213,18 @@ function PR_Zubov_LFInf(
 
     for l in 1:max_iter
         # Optimize for the P matrix
-        P, model_P = optimize_P(Xr, A, F, Q, Pi, Ptilde, η)
+        P, Pc, model_P = optimize_P(Xr, A, F, Q, Pi, α)
         λ_P, _ = eigen(P) 
         λ_P_real = real.(λ_P) 
-        
-        # Project the P matrix to the positive definite space
-        Ps = 0.5 * (P + P') 
-        λ_Ps, _ = eigen(Ps)
-        λ_Ps_copy = deepcopy(λ_Ps)  
-
-        Ptilde, pd_flag_P = pdp(Ps, N, γ_lb)
-        @assert pd_flag_P "Ptidle is not positive definite"
-        if (any(λ_Ps .< 0))
-            abs_min_λ_Ps = abs(minimum(λ_Ps))
-            α = abs_min_λ_Ps + 10^(floor(log10(abs_min_λ_Ps))) 
-            Pi = P + α*I
-        else
-            Pi = P
-        end
-
+        Pi = Pc 
 
         # Optimize for the Q matrix
-        Q, _ = optimize_Q(Xr, A, F, P, Qi, Qtilde, η)
+        Q, Qc, model_Q = optimize_Q(Xr, A, F, P, Qi, β)
         λ_Q, _ = eigen(Q)
         λ_Q_real = real.(λ_Q)
+        Qi = Qc
 
-        # Project the Q matrix to the positive definite space
-        Qs = 0.5 * (Q + Q')
-        λ_Qs, _ = eigen(Qs)
-        λ_Qs_copy = deepcopy(λ_Qs)
-
-        Qtilde, pd_flag_Q = pdp(Qs, N, γ_lb)
-        @assert pd_flag_Q "Qtilde is not positive definite"
-
-        if (any(λ_Qs .< 0))
-            abs_min_λ_Qs = abs(minimum(λ_Qs))
-            β = abs_min_λ_Qs + 10^(floor(log10(abs_min_λ_Qs))) 
-            Qi = Q + β*I
-        else
-            Qi = Q
-        end
-
-        Jzubov = objective_value(model_P) 
+        Jzubov = objective_value(model_Q) 
         ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
         Jzubov_lm1 = Jzubov 
 
@@ -265,6 +286,131 @@ end
 #####################
 ###### __old__ ######
 #####################
+
+# function PR_Zubov_LFInf(
+#     Xr,                         # Reduced order state trajectory data
+#     A,                          # Linear system matrix 
+#     F,                          # Quadratic system matrix
+#     Pi,                         # Initial P matrix for the optimization
+#     Qi;                         # Initial Q matrix for the optimization
+#     γ_lb=1e-8,                  # Control parameter for the Zubov method
+#     α=0.0,                      # Eigenvalue shift parameter for P
+#     β=0.0,                      # Eigenvalue shift parameter for Q
+#     N=size(A,1),                # Size of the system
+#     Ptilde=1.0I(N),             # Initial target P matrix for the optimization
+#     Qtilde=1.0I(N),             # Initial target Q matrix for the optimization
+#     δS=1e-5,                    # Symmetricity tolerance for P
+#     δJ=1e-5,                    # Objective value tolerance for the optimization
+#     max_iter=100,               # Maximum number of iterations for the optimization
+#     η=1,                        # Weighting parameter for the Ptilde term
+#     extra_iter=3                # Number of extra iterations to run after the optimization has converged
+# )
+#     # Convergence metrics
+#     Jzubov_lm1 = 0  # Jzubov(l-1)
+#     Zerrbest = 1e+8
+#     check = 0    # run a few extra iterations to make sure the error is decreasing
+
+#     # Initialize Q
+#     Q = 1.0I(N)
+
+#     for l in 1:max_iter
+#         # Optimize for the P matrix
+#         P, model_P = optimize_P(Xr, A, F, Q, Pi, Ptilde, η)
+#         λ_P, _ = eigen(P) 
+#         λ_P_real = real.(λ_P) 
+        
+#         # Project the P matrix to the positive definite space
+#         Ps = 0.5 * (P + P') 
+#         λ_Ps, _ = eigen(Ps)
+#         λ_Ps_copy = deepcopy(λ_Ps)  
+
+#         Ptilde, pd_flag_P = pdp(Ps, N, γ_lb)
+#         @assert pd_flag_P "Ptidle is not positive definite"
+#         if (any(λ_Ps .< 0))
+#             abs_min_λ_Ps = abs(minimum(λ_Ps))
+#             α = abs_min_λ_Ps + 10^(floor(log10(abs_min_λ_Ps))) 
+#             Pi = P + α*I
+#         else
+#             Pi = P
+#         end
+
+
+#         # Optimize for the Q matrix
+#         Q, _ = optimize_Q(Xr, A, F, P, Qi, Qtilde, η)
+#         λ_Q, _ = eigen(Q)
+#         λ_Q_real = real.(λ_Q)
+
+#         # Project the Q matrix to the positive definite space
+#         Qs = 0.5 * (Q + Q')
+#         λ_Qs, _ = eigen(Qs)
+#         λ_Qs_copy = deepcopy(λ_Qs)
+
+#         Qtilde, pd_flag_Q = pdp(Qs, N, γ_lb)
+#         @assert pd_flag_Q "Qtilde is not positive definite"
+
+#         if (any(λ_Qs .< 0))
+#             abs_min_λ_Qs = abs(minimum(λ_Qs))
+#             β = abs_min_λ_Qs + 10^(floor(log10(abs_min_λ_Qs))) 
+#             Qi = Q + β*I
+#         else
+#             Qi = Q
+#         end
+
+#         Jzubov = objective_value(model_P) 
+#         ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
+#         Jzubov_lm1 = Jzubov 
+
+#         # Compute some metrics to check the convergence
+#         diff_P = norm(P - P', 2)
+#         diff_Q = norm(Q - Q', 2)
+#         Zerr = zubov_error(Xr, A, F, P, Q)
+
+#         # Save the best one
+#         if all(λ_P_real .> 0) && all(λ_Q_real .> 0) && (Zerr < Zerrbest)
+#             Pbest = P
+#             Qbest = Q
+#             Zerrbest = Zerr
+#             ∇Jzubovbest = ∇Jzubov
+#         end
+
+#         # Logging
+#         @info """[Zubov-LFI Iteration $l]
+#         Zubov Equation Error:                $(Zerr)
+#         Gradient of Objective value:         $(∇Jzubov)
+#         ||P - P'||_F:                        $(diff_P)
+#         ||Q - Q'||_F:                        $(diff_Q)
+#         eigenvalues of P:                    $(λ_P)
+#         eigenvalues of Ps:                   $(λ_Ps_copy)
+#         eigenvalues of Q:                    $(λ_Q)
+#         eigenvalues of Qs:                   $(λ_Qs_copy)
+#         # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
+#         # of Real(λq) <= 0:                  $(count(i->(i <= 0), λ_Q_real))
+#         dimension:                           $(N)
+#         η:                                   $(η)
+#         α:                                   $(α)
+#         β:                                   $(β)
+#         """
+
+#         # Check if the resulting P satisfies the tolerance
+#         if diff_P < δS && diff_Q < δS && all(λ_P_real .> 0) && all(λ_Q_real .> 0) && ∇Jzubov < δJ
+#             check += 1
+#             if check == extra_iter
+#                 return P, Q, Zerr, ∇Jzubov
+#             end
+#         else
+#             check = 0  # reset if not converging continuously
+#         end    
+        
+#         # If the optimization did not end before the maximum iteration assign what we have best for now
+#         if l == max_iter
+#             if (@isdefined Pbest)
+#                 return Pbest, Qbest, Zerrbest, ∇Jzubovbest
+#             else
+#                 return P, Q, Zerr, ∇Jzubov
+#             end
+#         end
+#     end
+# end
 
 # function pp_zqlfi(
 #     Xr,                         # Reduced order state trajectory data
