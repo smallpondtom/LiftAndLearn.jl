@@ -150,6 +150,46 @@ function model_FFT_ew(model::KS, μ::Float64)
 end
 
 
+# function model_FT(model::KS, μ::Float64)
+#     N = model.Xdim
+#     L = model.Omega[2]
+
+#     # Create A matrix
+#     A = spdiagm(
+#         0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
+#     )
+
+#     # Create F matrix
+#     # WARNING: The 1.0im is taken out from F
+#     F = spzeros(N, Int(N*(N+1)/2))
+#     for k in model.k
+#         foo = zeros(N, N)
+#         idx = Int(k + N/2 + 1)
+#         for m in model.k
+#             # map from k to n
+#             p = Int(m + N/2 + 1)
+#             q = k - m
+#             # map from (k-m) to k
+#             if q < -N/2
+#                 q += N
+#             elseif N/2 <= q 
+#                 q -= N
+#             end
+#             # map from k to n
+#             q = Int(q + N/2 + 1)
+
+#             if q > p
+#                 foo[q, p] += 1
+#             else 
+#                 foo[p, q] += 1
+#             end
+#         end
+#         F[idx, :] = -π * k / L * vech(foo)
+#     end
+#     return A, F
+# end
+
+
 function model_FT(model::KS, μ::Float64)
     N = model.Xdim
     L = model.Omega[2]
@@ -159,32 +199,75 @@ function model_FT(model::KS, μ::Float64)
         0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
     )
 
+    function kmap(q)
+        if q < -N/2
+            return q + N
+        elseif N/2 <= q 
+            return q - N
+        else
+            return q
+        end
+    end
+
+    function nmap(t)
+        return Int(t + N/2 + 1)
+    end
+
     # Create F matrix
     # WARNING: The 1.0im is taken out from F
     F = spzeros(N, Int(N*(N+1)/2))
     for k in model.k
         foo = zeros(N, N)
-        idx = Int(k + N/2 + 1)
-        for m in model.k
+        idx = nmap(k)
+
+        # First summation 
+        for m in -N/2:k
             # map from k to n
-            p = Int(m + N/2 + 1)
-            q = k - m
+            p = nmap(m)
             # map from (k-m) to k
-            if q < -N/2
-                q += N
-            elseif N/2 <= q 
-                q -= N
-            end
+            q = kmap(k - m)
             # map from k to n
-            q = Int(q + N/2 + 1)
+            q = nmap(q)
 
             if q > p
-                foo[q, p] += -π * (k+m) / L
+                foo[q, p] += 1
             else 
-                foo[p, q] += -π * (k+m) / L
+                foo[p, q] += 1
             end
         end
-        F[idx, :] = vech(foo)
+
+        # Second summation
+        for m in k+1:(N/2-1)
+            # map from k to n
+            p = nmap(m)
+            # map from (m-k) to k
+            q = kmap(m - k)
+            # map from k to n
+            q = nmap(q)
+
+            if q > p
+                foo[q, p] -= 1
+            else 
+                foo[p, q] -= 1
+            end
+        end
+
+        # Third summation
+        for m in -N/2:(N/2-k)
+            # map from k to n
+            p = nmap(m)
+            # map from (m+k) to k
+            q = kmap(m + k)
+            # map from k to n
+            q = nmap(q)
+
+            if q > p
+                foo[q, p] -= 1
+            else 
+                foo[p, q] -= 1
+            end
+        end
+        F[idx, :] = -π * k / L * vech(foo)
     end
     return A, F
 end
