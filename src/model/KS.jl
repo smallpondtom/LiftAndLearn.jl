@@ -1,6 +1,7 @@
+using DSP
+using FFTW
 using LinearAlgebra
 using SparseArrays
-using FFTW
 
 
 mutable struct KS
@@ -19,6 +20,8 @@ mutable struct KS
     Tdim::Int64  # temporal dimension
     Pdim::Int64  # parameter dimension
 
+    type::String  # model type
+
     model_FFT::Function  # model using Fast Fourier Transform
     model_FFT_ew::Function  # model using Fast Fourier Transform (element-wise)
     model_FT::Function  # model using second method of Fourier Transform that does not use FFT
@@ -29,7 +32,7 @@ mutable struct KS
     integrate_FT::Function  # integrator for second method of Fourier Transform without FFT
 end
 
-function KS(Omega, T, D, nx, Δt, Pdim)
+function KS(Omega, T, D, nx, Δt, Pdim, type)
     Δx = (Omega[2] - Omega[1]) / nx
     x = collect(Omega[1]:Δx:Omega[2]-Δx)  # assuming a periodic boundary condition
     t = collect(T[1]:Δt:T[2])
@@ -41,9 +44,10 @@ function KS(Omega, T, D, nx, Δt, Pdim)
     IC = zeros(Xdim, 1)
 
     @assert nx == Xdim "nx must be equal to Xdim"
+    @assert (type == "c" || type == "nc" || type == "ep") "type must be either c, nc, or ep"
 
     KS(
-        Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim,
+        Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim, type,
         model_FFT, model_FFT_ew, model_FT, model_FD, integrate_FD, 
         integrate_FFT, integrate_FFT_ew, integrate_FT
     )
@@ -83,18 +87,67 @@ function model_FD(model::KS, μ::Float64)
     
     # Create F matrix
     S = Int(N * (N + 1) / 2)
-    if N >= 3
-        Fval = repeat([1.0, -1.0], outer=N - 2)
-        row_i = repeat(2:(N-1), inner=2)
-        seq = Int.([2 + (N + 1) * (x - 1) - x * (x - 1) / 2 for x in 1:(N-1)])
-        col_i = vcat(seq[1], repeat(seq[2:end-1], inner=2), seq[end])
-        F = sparse(row_i, col_i, Fval, N, S) / 2 / Δx
+    if model.type == "nc"
+        if N >= 3
+            Fval = repeat([1.0, -1.0], outer=N - 2)
+            row_i = repeat(2:(N-1), inner=2)
+            seq = Int.([2 + (N + 1) * (x - 1) - x * (x - 1) / 2 for x in 1:(N-1)])
+            col_i = vcat(seq[1], repeat(seq[2:end-1], inner=2), seq[end])
+            F = sparse(row_i, col_i, Fval, N, S) / 2 / Δx
 
-        # For the periodicity for the first and final indices
-        F[1, N] = 1 / 2 / Δx
-        F[N, N] = -1 / 2 / Δx
+            # For the periodicity for the first and final indices
+            F[1, 2] = - 1 / 2 / Δx
+            F[1, N] = 1 / 2 / Δx
+            F[N, N] = - 1 / 2 / Δx
+            F[N, end-1] = 1 / 2 / Δx 
+        else
+            F = zeros(N, S)
+        end
+    elseif model.type == "c"
+        if N >= 3
+            ii = repeat(2:(N-1), inner=2)
+            m = 2:N-1
+            mm = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) - (N-(m-2)) for m in 2:N-1])  # this is where the x_{i-1}^2 term is
+            mp = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) + (N-(m-1)) for m in 2:N-1])  # this is where the x_{i+1}^2 term is
+            jj = reshape([mp'; mm'],2*N-4);
+            vv = reshape([-ones(1,N-2); ones(1,N-2)],2*N-4)/(4*Δx);
+            F = sparse(ii,jj,vv,N,S)
+
+            # Boundary conditions (Periodic)
+            F[1,N+1] = -1/4/Δx
+            F[1,end] = 1/4/Δx
+            F[N,end-2] = 1/4/Δx
+            F[N,1] = -1/4/Δx
+        else
+            F = zeros(N, S)
+        end
+    elseif model.type == "ep"
+        if N >= 3
+            ii = repeat(2:(N-1), inner=4)
+            m = 2:N-1
+            mi = Int.([N*(N+1)/2 - (N-m)*(N-m+1)/2 - (N-m) for m in 2:N-1])               # this is where the xi^2 term is
+            mm = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) - (N-(m-2)) for m in 2:N-1])  # this is where the x_{i-1}^2 term is
+            mp = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) + (N-(m-1)) for m in 2:N-1])  # this is where the x_{i+1}^2 term is
+            jp = mi .+ 1  # this is the index of the x_{i+1}*x_i term
+            jm = mm .+ 1  # this is the index of the x_{i-1}*x_i term
+            jj = reshape([mp'; mm'; jp'; jm'],4*N-8);
+            vv = reshape([-ones(1,N-2); ones(1,N-2); -ones(1,N-2); ones(1,N-2)],4*N-8)/(6*Δx);
+            F = sparse(ii,jj,vv,N,S)
+
+            # Boundary conditions (Periodic)
+            F[1,2] = -1/6/Δx
+            F[1,N+1] = -1/6/Δx
+            F[1,N] = 1/6/Δx
+            F[1,end] = 1/6/Δx
+            F[N,end-1] = 1/6/Δx
+            F[N,end-2] = 1/6/Δx
+            F[N,1] = -1/6/Δx
+            F[N,N] = -1/6/Δx
+        else
+            F = zeros(N, S)
+        end
     else
-        F = zeros(N, S)
+        error("type must be either c, nc, or ep")
     end
 
     return A, F
@@ -150,46 +203,6 @@ function model_FFT_ew(model::KS, μ::Float64)
 end
 
 
-# function model_FT(model::KS, μ::Float64)
-#     N = model.Xdim
-#     L = model.Omega[2]
-
-#     # Create A matrix
-#     A = spdiagm(
-#         0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
-#     )
-
-#     # Create F matrix
-#     # WARNING: The 1.0im is taken out from F
-#     F = spzeros(N, Int(N*(N+1)/2))
-#     for k in model.k
-#         foo = zeros(N, N)
-#         idx = Int(k + N/2 + 1)
-#         for m in model.k
-#             # map from k to n
-#             p = Int(m + N/2 + 1)
-#             q = k - m
-#             # map from (k-m) to k
-#             if q < -N/2
-#                 q += N
-#             elseif N/2 <= q 
-#                 q -= N
-#             end
-#             # map from k to n
-#             q = Int(q + N/2 + 1)
-
-#             if q > p
-#                 foo[q, p] += 1
-#             else 
-#                 foo[p, q] += 1
-#             end
-#         end
-#         F[idx, :] = -π * k / L * vech(foo)
-#     end
-#     return A, F
-# end
-
-
 function model_FT(model::KS, μ::Float64)
     N = model.Xdim
     L = model.Omega[2]
@@ -199,78 +212,72 @@ function model_FT(model::KS, μ::Float64)
         0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
     )
 
-    function kmap(q)
-        if q < -N/2
-            return q + N
-        elseif N/2 <= q 
-            return q - N
-        else
-            return q
-        end
-    end
-
-    function nmap(t)
-        return Int(t + N/2 + 1)
-    end
-
     # Create F matrix
     # WARNING: The 1.0im is taken out from F
     F = spzeros(N, Int(N*(N+1)/2))
+
+    # for k in model.k
+    #     foo = zeros(N, N)
+    #     idx = Int(k + N/2 + 1)
+    #     for m in model.k
+
+    #         # condition
+    #         cond = -N/2 <= k-m <= N/2-1
+
+    #         # map from k to n
+    #         p = Int(m + N/2 + 1)
+    #         q = k - m
+
+    #         # # map from (k-m) to k
+    #         # if q < -N/2
+    #         #     q += N
+    #         # elseif N/2 <= q 
+    #         #     q -= N
+    #         # end
+
+    #         # map from k to n
+    #         q = Int(q + N/2 + 1)
+
+    #         if cond
+    #             if q > p
+    #                 foo[q, p] += 1
+    #             else 
+    #                 foo[p, q] += 1
+    #             end
+    #         end
+    #     end
+    #     H[idx, :] =  -π * k / L * vech(foo)
+    # end
+
     for k in model.k
         foo = zeros(N, N)
-        idx = nmap(k)
+        idx = Int(k + N/2 + 1)
+        for p in model.k, q in model.k
+            ct = 0
+            if (p + q == k) 
+                ct += 1
+            end
+            if (p + q == k - N) || (p + q == k + N)
+                ct += 1
+            end
 
-        # First summation 
-        for m in -N/2:k
             # map from k to n
-            p = nmap(m)
-            # map from (k-m) to k
-            q = kmap(k - m)
-            # map from k to n
-            q = nmap(q)
+            p = Int(p + N/2 + 1)
+            q = Int(q + N/2 + 1)
 
             if q > p
-                foo[q, p] += 1
+                foo[q, p] += ct
             else 
-                foo[p, q] += 1
+                foo[p, q] += ct
             end
         end
-
-        # Second summation
-        for m in k+1:(N/2-1)
-            # map from k to n
-            p = nmap(m)
-            # map from (m-k) to k
-            q = kmap(m - k)
-            # map from k to n
-            q = nmap(q)
-
-            if q > p
-                foo[q, p] -= 1
-            else 
-                foo[p, q] -= 1
-            end
-        end
-
-        # Third summation
-        for m in -N/2:(N/2-k)
-            # map from k to n
-            p = nmap(m)
-            # map from (m+k) to k
-            q = kmap(m + k)
-            # map from k to n
-            q = nmap(q)
-
-            if q > p
-                foo[q, p] -= 1
-            else 
-                foo[p, q] -= 1
-            end
-        end
-        F[idx, :] = -π * k / L * vech(foo)
+        F[idx, :] =  -π * k / L * vech(foo)
     end
+
     return A, F
 end
+
+
 
 
 """
