@@ -214,70 +214,87 @@ function model_FT(model::KS, μ::Float64)
 
     # Create F matrix
     # WARNING: The 1.0im is taken out from F
-    F = spzeros(N, Int(N*(N+1)/2))
+    # F = spzeros(N, Int(N*(N+1)/2))
 
     # for k in model.k
     #     foo = zeros(N, N)
     #     idx = Int(k + N/2 + 1)
     #     for m in model.k
-
-    #         # condition
-    #         cond = -N/2 <= k-m <= N/2-1
-
     #         # map from k to n
     #         p = Int(m + N/2 + 1)
     #         q = k - m
 
-    #         # # map from (k-m) to k
-    #         # if q < -N/2
-    #         #     q += N
-    #         # elseif N/2 <= q 
-    #         #     q -= N
-    #         # end
+    #         # map from (k-m) to k
+    #         if q < -N/2
+    #             q += N
+    #         elseif N/2 <= q 
+    #             q -= N
+    #         end
 
     #         # map from k to n
     #         q = Int(q + N/2 + 1)
 
-    #         if cond
-    #             if q > p
-    #                 foo[q, p] += 1
-    #             else 
-    #                 foo[p, q] += 1
-    #             end
+    #         if q > p
+    #             foo[q, p] += 1
+    #         else 
+    #             foo[p, q] += 1
     #         end
     #     end
-    #     H[idx, :] =  -π * k / L * vech(foo)
+    #     F[idx, :] =  -π * k / L * vech(foo)
     # end
 
-    for k in model.k
-        foo = zeros(N, N)
-        idx = Int(k + N/2 + 1)
-        for p in model.k, q in model.k
-            ct = 0
-            if (p + q == k) 
-                ct += 1
-            end
-            if (p + q == k - N) || (p + q == k + N)
-                ct += 1
-            end
+    # for k in model.k
+    #     foo = zeros(N, N)
+    #     idx = Int(k + N/2 + 1)
+    #     for p in model.k, q in model.k
+    #         ct = 0
+    #         if (p + q == k) 
+    #             ct += 1
+    #         end
+    #         if (p + q == k - N) || (p + q == k + N)
+    #             ct += 1
+    #         end
 
-            # map from k to n
-            p = Int(p + N/2 + 1)
-            q = Int(q + N/2 + 1)
+    #         # map from k to n
+    #         p = Int(p + N/2 + 1)
+    #         q = Int(q + N/2 + 1)
 
-            if q > p
-                foo[q, p] += ct
-            else 
-                foo[p, q] += ct
+    #         if q > p
+    #             foo[q, p] += ct
+    #         else 
+    #             foo[p, q] += ct
+    #         end
+    #     end
+    #     F[idx, :] =  -π * k / L * vech(foo)
+    # end
+
+
+    D = Dict{Integer, AbstractVector}()
+    for i in 0:-1:-N+1
+        D[i] = abs(i-1)*ones(N) .+ 1im*collect(1:N)
+    end
+    ConvIdxMat = spdiagm(2*N-1, N, D...)
+    ConvIdxMat = ConvIdxMat[Int(N/2):Int(N+N/2-1), :]
+    F = spzeros(N, Int(N*(N+1)/2))
+
+    for (i,k) in enumerate(model.k)
+        foo = spzeros(N, N)
+        for j in 1:N
+            idx = ConvIdxMat[i, j]
+            if idx != 0.0
+                p = idx |> real |> Int
+                q = idx |> imag |> Int
+                if p > q
+                    foo[p, q] += -π * k / L
+                else
+                    foo[q, p] += -π * k / L
+                end
             end
         end
-        F[idx, :] =  -π * k / L * vech(foo)
+        F[i, :] = vech(foo)
     end
-
     return A, F
 end
-
-
 
 
 """
@@ -439,18 +456,27 @@ function integrate_FT(A, F, tdata, IC)
     pfft = plan_fft(IC)
     pifft = plan_ifft(foo)
 
+    pfft2 = plan_fft(zeros(Int(Xdim*(Xdim+1)/2)))
+
     u = zeros(Xdim, Tdim)  # state in the physical space
     u[:, 1] = IC
     uhat = zeros(ComplexF64, Xdim, Tdim)  # state in the Fourier space
     uhat[:, 1] = fftshift(pfft * u[:, 1]) / Xdim
     uhat2_lm1 = Vector{ComplexF64}()  # uhat2 at j-2 placeholder
 
+    tmp = Int(floor(Xdim/6))
+    pad_idx = range(tmp+2, Xdim-tmp)
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
         # INFO: uhat * uhat' is hermitian and not transpose.
         # the diagonal entries are always real but the off-diagonal entries are complex with complex conjugate pairs.
         # So for the half-vectorization, we only need the real part.
-        uhat2 = complex.(real.(vech(uhat[:, j-1] * uhat[:, j-1]')))
+        uhat_dealias = [zeros(tmp+1); uhat[pad_idx, j-1]; zeros(tmp)]
+        uhat2 = complex.(real.(vech(uhat_dealias * uhat_dealias')))
+
+        # uhat2 = complex.(real.(vech(uhat[:, j-1] * uhat[:, j-1]')))
+
+        # uhat2 = fftshift(pfft2 * vech(u[:, j-1] * u[:, j-1]')) / Xdim / Xdim
 
         # WARNING: The 1.0im is taken out from F
         if j == 2

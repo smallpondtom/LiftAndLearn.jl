@@ -62,7 +62,7 @@ function generateABFmatrix(model::Burgers, μ::Float64)
     Δt = model.Δt
 
     # Create A matrix
-    A = diagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, 1:2] = [-1/Δt, 0]
     A[end, end-1:end] = [0, -1/Δt]
 
@@ -101,7 +101,7 @@ function generateMatrix_NC_periodic(model::Burgers, μ::Float64)
     Δx = model.Δx
 
     # Create A matrix
-    A = diagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, end] = μ / Δx^2  # periodic boundary condition
     A[end, 1] = μ / Δx^2  
 
@@ -142,7 +142,7 @@ function generateMatrix_C_periodic(model::Burgers, μ::Float64)
     Δx = model.Δx
 
     # Create A matrix
-    A = diagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, end] = μ / Δx^2  # periodic boundary condition
     A[end, 1] = μ / Δx^2  
 
@@ -186,7 +186,7 @@ function generateEPmatrix(model::Burgers, μ::Float64)
     Δx = model.Δx
 
     # Create A matrix
-    A = diagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, N] = μ / Δx^2  # periodic boundary condition
     A[N, 1] = μ / Δx^2  # periodic boundary condition
 
