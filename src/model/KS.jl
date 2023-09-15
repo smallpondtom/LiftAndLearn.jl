@@ -150,7 +150,7 @@ function model_FD(model::KS, μ::Float64)
         error("type must be either c, nc, or ep")
     end
 
-    return A, F
+    return A, sparse(F)
 end
 
 
