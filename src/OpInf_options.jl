@@ -66,6 +66,7 @@ Information about the optimization.
 - `which_quad_term::String`: choose main quadratic operator (H or F) to use for computation
 - `reproject::Bool`: use reprojection method for derivative data
 - `SIGE::Bool`: use successive initial guess estimation
+- `provide_reduced_orders::Bool`: provide reduced orders for the basis
 """
 @with_kw mutable struct opt_settings
     verbose::Bool = false

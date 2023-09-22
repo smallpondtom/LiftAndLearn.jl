@@ -551,7 +551,7 @@ end
 
 """
 Infer the operators using the previously defined functions (dispatch function: 
-this one includes the reprjection operation better results)
+this one includes the reprojection operation better results)
 
 # Arguments
 - `W`: lifted state data matrix

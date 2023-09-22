@@ -22,14 +22,14 @@ mutable struct KS
 
     type::String  # model type
 
-    model_FFT::Function  # model using Fast Fourier Transform
-    model_FFT_ew::Function  # model using Fast Fourier Transform (element-wise)
-    model_FT::Function  # model using second method of Fourier Transform that does not use FFT
+    model_PS::Function  # model using Pseudo-Spectral Method/Fast Fourier Transform
+    model_PS_ew::Function  # model using Pseudo-Spectral Method/Fast Fourier Transform (element-wise)
+    model_SG::Function  # model using Spectral-Galerkin Method
     model_FD::Function  # model using Finite Difference
     integrate_FD::Function  # integrator using Crank-Nicholson Adams-Bashforth method
-    integrate_FFT::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
-    integrate_FFT_ew::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
-    integrate_FT::Function  # integrator for second method of Fourier Transform without FFT
+    integrate_PS::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
+    integrate_PS_ew::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
+    integrate_SG::Function  # integrator for second method of Fourier Transform without FFT
 end
 
 function KS(Omega, T, D, nx, Δt, Pdim, type)
@@ -48,8 +48,8 @@ function KS(Omega, T, D, nx, Δt, Pdim, type)
 
     KS(
         Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim, type,
-        model_FFT, model_FFT_ew, model_FT, model_FD, integrate_FD, 
-        integrate_FFT, integrate_FFT_ew, integrate_FT
+        model_PS, model_PS_ew, model_SG, model_FD, integrate_FD, 
+        integrate_PS, integrate_PS_ew, integrate_SG
     )
 end
 
@@ -155,7 +155,7 @@ end
 
 
 """
-    Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Fast Fourier Transform method.
+    Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Pseudo-Spectral/Fast Fourier Transform method.
 
     # Arguments
     - `model`: Kuramoto-Sivashinsky equation model
@@ -165,7 +165,7 @@ end
     - `A`: A matrix
     - `F`: F matrix  (take out 1.0im)
 """
-function model_FFT(model::KS, μ::Float64)
+function model_PS(model::KS, μ::Float64)
     L = model.Omega[2]
 
     # Create A matrix
@@ -192,7 +192,7 @@ end
     - `A`: A matrix
     - `F`: F matrix
 """
-function model_FFT_ew(model::KS, μ::Float64)
+function model_PS_ew(model::KS, μ::Float64)
     L = model.Omega[2]
 
     # Create A matrix
@@ -203,7 +203,7 @@ function model_FFT_ew(model::KS, μ::Float64)
 end
 
 
-function model_FT(model::KS, μ::Float64)
+function model_SG(model::KS, μ::Float64)
     N = model.Xdim
     L = model.Omega[2]
 
@@ -214,85 +214,50 @@ function model_FT(model::KS, μ::Float64)
 
     # Create F matrix
     # WARNING: The 1.0im is taken out from F
-    # F = spzeros(N, Int(N*(N+1)/2))
-
-    # for k in model.k
-    #     foo = zeros(N, N)
-    #     idx = Int(k + N/2 + 1)
-    #     for m in model.k
-    #         # map from k to n
-    #         p = Int(m + N/2 + 1)
-    #         q = k - m
-
-    #         # map from (k-m) to k
-    #         if q < -N/2
-    #             q += N
-    #         elseif N/2 <= q 
-    #             q -= N
-    #         end
-
-    #         # map from k to n
-    #         q = Int(q + N/2 + 1)
-
-    #         if q > p
-    #             foo[q, p] += 1
-    #         else 
-    #             foo[p, q] += 1
-    #         end
-    #     end
-    #     F[idx, :] =  -π * k / L * vech(foo)
-    # end
-
-    # for k in model.k
-    #     foo = zeros(N, N)
-    #     idx = Int(k + N/2 + 1)
-    #     for p in model.k, q in model.k
-    #         ct = 0
-    #         if (p + q == k) 
-    #             ct += 1
-    #         end
-    #         if (p + q == k - N) || (p + q == k + N)
-    #             ct += 1
-    #         end
-
-    #         # map from k to n
-    #         p = Int(p + N/2 + 1)
-    #         q = Int(q + N/2 + 1)
-
-    #         if q > p
-    #             foo[q, p] += ct
-    #         else 
-    #             foo[p, q] += ct
-    #         end
-    #     end
-    #     F[idx, :] =  -π * k / L * vech(foo)
-    # end
-
-
-    D = Dict{Integer, AbstractVector}()
-    for i in 0:-1:-N+1
-        D[i] = abs(i-1)*ones(N) .+ 1im*collect(1:N)
-    end
-    ConvIdxMat = spdiagm(2*N-1, N, D...)
-    ConvIdxMat = ConvIdxMat[Int(N/2):Int(N+N/2-1), :]
-    F = spzeros(N, Int(N*(N+1)/2))
-
-    for (i,k) in enumerate(model.k)
-        foo = spzeros(N, N)
-        for j in 1:N
-            idx = ConvIdxMat[i, j]
-            if idx != 0.0
-                p = idx |> real |> Int
-                q = idx |> imag |> Int
-                if p > q
-                    foo[p, q] += -π * k / L
-                else
-                    foo[q, p] += -π * k / L
+    F = spzeros(N, Int(N * (N + 1) / 2))
+    for k in model.k
+        foo = zeros(N, N)
+        for p in model.k, q in model.k
+            if  p + q == k
+                pshift = Int(p + N/2 + 1)
+                qshift = Int(q + N/2 + 1)
+                if pshift > qshift
+                    foo[pshift, qshift] += -π * k / L
+                else 
+                    foo[qshift, pshift] += -π * k / L
                 end
             end
         end
-        F[i, :] = vech(foo)
+        F[Int(k+N/2+1), :] =  vech(foo)
     end
+
+    # # INFO: Another way to creat F matrix inspired by the convolution operator
+    # F = spzeros(N, Int(N * (N + 1) / 2))
+    # D = Dict{Integer, AbstractVector}()
+    # for i in 0:-1:-N+1
+    #     D[i] = abs(i-1)*ones(N) .+ 1im*collect(1:N)
+    # end
+    # ConvIdxMat = spdiagm(2*N-1, N, D...)
+    # ConvIdxMat = ConvIdxMat[Int(N/2)+1:Int(N+N/2), :]
+    # F = spzeros(N, Int(N*(N+1)/2))
+
+    # for (i,k) in enumerate(model.k)
+    #     foo = spzeros(N, N)
+    #     for j in 1:N
+    #         idx = ConvIdxMat[i, j]
+    #         if idx != 0.0
+    #             p = idx |> real |> Int
+    #             q = idx |> imag |> Int
+    #             if p > q
+    #                 foo[p, q] += -π * k / L
+    #             else
+    #                 foo[q, p] += -π * k / L
+    #             end
+    #         end
+    #     end
+    #     F[i, :] = vech(foo)
+    # end
+
     return A, F
 end
 
@@ -329,22 +294,38 @@ end
     # Return
     - `state`: state matrix
 """
-function integrate_FD(A, F, tdata, IC)
+function integrate_FD(A, F, tdata, IC; const_stepsize=true)
     Xdim = length(IC)
     Tdim = length(tdata)
     u = zeros(Xdim, Tdim)
     u[:, 1] = IC
     u2_lm1 = Vector{Float64}()  # u2 at j-2 placeholder
 
-    for j in 2:Tdim
-        Δt = tdata[j] - tdata[j-1]
-        u2 = vech(u[:, j-1] * u[:, j-1]')
-        if j == 2
-            u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * Δt)
-        else
-            u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_lm1 * Δt/2)
+    if const_stepsize
+        Δt = tdata[2] - tdata[1]  # assuming a constant time step size
+        ImdtA_inv = Matrix(1.0I(Xdim) - Δt/2 * A) \ 1.0I(Xdim) |> sparse
+        IpdtA = (1.0I(Xdim) + Δt/2 * A)
+
+        for j in 2:Tdim
+            u2 = vech(u[:, j-1] * u[:, j-1]')
+            if j == 2
+                u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * Δt)
+            else
+                u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_lm1 * Δt/2)
+            end
+            u2_lm1 = u2
         end
-        u2_lm1 = u2
+    else
+        for j in 2:Tdim
+            Δt = tdata[j] - tdata[j-1]
+            u2 = vech(u[:, j-1] * u[:, j-1]')
+            if j == 2
+                u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * Δt)
+            else
+                u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_lm1 * Δt/2)
+            end
+            u2_lm1 = u2
+        end
     end
     return u
 end
@@ -362,7 +343,7 @@ end
     # Return
     - `state`: state matrix
 """
-function integrate_FFT(A, F, tdata, IC)
+function integrate_PS(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
     foo = zeros(ComplexF64, Xdim)
@@ -411,7 +392,7 @@ end
     # Return
     - `state`: state matrix
 """
-function integrate_FFT_ew(A, F, tdata, IC)
+function integrate_PS_ew(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
     foo = zeros(ComplexF64, Xdim)
@@ -447,7 +428,19 @@ function integrate_FFT_ew(A, F, tdata, IC)
 end
 
 
-function integrate_FT(A, F, tdata, IC)
+"""
+    Integrator for model produced with Spectral-Galerkin method.
+
+    # Arguments
+    - `A`: A matrix
+    - `F`: F matrix
+    - `tdata`: temporal points
+    - `IC`: initial condition
+
+    # Return
+    - `state`: state matrix
+"""
+function integrate_SG(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
     foo = zeros(ComplexF64, Xdim)
@@ -456,27 +449,15 @@ function integrate_FT(A, F, tdata, IC)
     pfft = plan_fft(IC)
     pifft = plan_ifft(foo)
 
-    pfft2 = plan_fft(zeros(Int(Xdim*(Xdim+1)/2)))
-
     u = zeros(Xdim, Tdim)  # state in the physical space
     u[:, 1] = IC
     uhat = zeros(ComplexF64, Xdim, Tdim)  # state in the Fourier space
     uhat[:, 1] = fftshift(pfft * u[:, 1]) / Xdim
     uhat2_lm1 = Vector{ComplexF64}()  # uhat2 at j-2 placeholder
 
-    tmp = Int(floor(Xdim/6))
-    pad_idx = range(tmp+2, Xdim-tmp)
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        # INFO: uhat * uhat' is hermitian and not transpose.
-        # the diagonal entries are always real but the off-diagonal entries are complex with complex conjugate pairs.
-        # So for the half-vectorization, we only need the real part.
-        uhat_dealias = [zeros(tmp+1); uhat[pad_idx, j-1]; zeros(tmp)]
-        uhat2 = complex.(real.(vech(uhat_dealias * uhat_dealias')))
-
-        # uhat2 = complex.(real.(vech(uhat[:, j-1] * uhat[:, j-1]')))
-
-        # uhat2 = fftshift(pfft2 * vech(u[:, j-1] * u[:, j-1]')) / Xdim / Xdim
+        uhat2 = vech(uhat[:, j-1] * transpose(uhat[:, j-1]))
 
         # WARNING: The 1.0im is taken out from F
         if j == 2
