@@ -170,23 +170,39 @@ end
 # end
 
 
-function constraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_quad::String="H")
+function constraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_quad::String="H"; with_mmt=false)
     ϵX = 0
     mmt = 0
-    if which_quad == "H"
-        for i in 1:r, j in 1:r, k in 1:r
-            foo = X[i, r*(k-1)+j] + X[j, r*(k-1)+i] + X[k, r*(i-1)+j]
-            ϵX += abs(foo)
-            mmt += foo
+
+    if with_mmt
+        if which_quad == "H"
+            for i in 1:r, j in 1:r, k in 1:r
+                foo = X[i, r*(k-1)+j] + X[j, r*(k-1)+i] + X[k, r*(i-1)+j]
+                ϵX += abs(foo)
+                mmt += foo
+            end
+        else
+            for i in 1:r, j in 1:r, k in 1:r
+                foo = delta(j,k)*X[i, fidx(r,j,k)] + delta(i,k)*X[j, fidx(r,i,k)] + delta(j,i)*X[k, fidx(r,j,i)]
+                ϵX += abs(foo)
+                mmt += foo
+            end
         end
+        return ϵX, mmt
     else
-        for i in 1:r, j in 1:r, k in 1:r
-            foo = delta(j,k)*X[i, fidx(r,j,k)] + delta(i,k)*X[j, fidx(r,i,k)] + delta(j,i)*X[k, fidx(r,j,i)]
-            ϵX += abs(foo)
-            mmt += foo
+        if which_quad == "H"
+            for i in 1:r, j in 1:r, k in 1:r
+                foo = X[i, r*(k-1)+j] + X[j, r*(k-1)+i] + X[k, r*(i-1)+j]
+                ϵX += abs(foo)
+            end
+        else
+            for i in 1:r, j in 1:r, k in 1:r
+                foo = delta(j,k)*X[i, fidx(r,j,k)] + delta(i,k)*X[j, fidx(r,i,k)] + delta(j,i)*X[k, fidx(r,j,i)]
+                ϵX += abs(foo)
+            end
         end
+        return ϵX
     end
-    return ϵX, mmt
 end
 
 
