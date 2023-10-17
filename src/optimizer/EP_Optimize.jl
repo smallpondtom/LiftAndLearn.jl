@@ -22,15 +22,16 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     w = dims[:w]
 
     @info "Initialize optimization model."
-    model = Model(Ipopt.Optimizer; add_bridges=false)
+    model = Model(Ipopt.Optimizer; add_bridges = false)
+    set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+    set_attribute(model, "linear_solver", "ma97")
     set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
-    # model = Model(NLopt.Optimizer)
-    # set_optimizer_attribute(model, "algorithm", :LD_MMA)
-    # model = Model(()->MadNLP.Optimizer(print_level=MadNLP.INFO, max_iter=3000))
+    set_string_names_on_creation(model, false)
     if !options.optim.verbose
         set_silent(model)
     end
 
+    @info "Initialize linear"
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
 
@@ -43,6 +44,12 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
                 set_start_value.(Ahat, IG.A)
             end
         end
+
+        if options.optim.with_bnds
+            set_lower_bound.(Ahat, options.A_bnds[1])
+            set_upper_bound.(Ahat, options.A_bnds[2])
+        end
+
         tmp = Ahat
     end
 
@@ -54,6 +61,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = (@isdefined tmp) ? hcat(tmp, Bhat) : Bhat
     end
 
+    @info "Initialize quadratic"
     if options.system.is_quad
         if options.optim.which_quad_term == "H"
             @variable(model, Hhat[1:n, 1:v])
@@ -76,6 +84,12 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
                     set_start_value.(Fhat, IG.F)
                 end
             end
+
+            if options.optim.with_bnds
+                set_lower_bound.(Fhat, options.ForH_bnds[1])
+                set_upper_bound.(Fhat, options.ForH_bnds[2])
+            end
+
             tmp = (@isdefined tmp) ? hcat(tmp, Fhat) : Fhat
         end
     end
@@ -96,20 +110,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = (@isdefined tmp) ? hcat(tmp, Khat) : Khat
     end
 
-    Ot = @expression(model, tmp')
-    if options.λ_lin == 0 && options.λ_quad == 0 
-        REG = @expression(model, sum((D * Ot .- Rt).^2))
-    else
-        if options.optim.which_quad_term == "H"
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
-        else
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
-        end
-    end
-
-    # Define the objective of the optimization problem
-    @objective(model, Min, REG)
-
+    @info "Add constraints"
     # Energy preserving Hard equality constraint
     if options.optim.which_quad_term == "H"
         # NOTE: H matrix version
@@ -126,6 +127,27 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
             delta(j,k)*Fhat[i,fidx(n,j,k)] + delta(i,k)*Fhat[j,fidx(n,i,k)] + delta(j,i)*Fhat[k,fidx(n,j,i)] == 0
            )
     end
+
+    @info "Set objective"
+    Ot = @expression(model, tmp')
+    if options.λ_lin == 0 && options.λ_quad == 0 
+        @info "check 1"
+        n_tmp, m_tmp = size(Rt)
+        @variable(model, X[1:n_tmp, 1:m_tmp])
+        @constraint(model, X .== D * Ot .- Rt)  # this method answer on: https://discourse.julialang.org/t/write-large-least-square-like-problems-in-jump/35931
+        # REG = @expression(model, sum((D * Ot .- Rt).^2))
+    else
+        if options.optim.which_quad_term == "H"
+            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+        else
+            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+        end
+    end
+
+    # Define the objective of the optimization problem
+    @info "Check 2"
+    @objective(model, Min, sum(X.^2))
+
 
     # Symmetry inequality constraint
     # @constraint(model, c2[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
