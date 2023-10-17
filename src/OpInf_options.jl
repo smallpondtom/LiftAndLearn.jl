@@ -75,6 +75,7 @@ Information about the optimization.
     which_quad_term::String = "F"
     reproject::Bool = false
     SIGE::Bool = false  # Successive Initial Guess Estimation
+    with_bnds::Bool = false  # add bounds to the variables
 end
 
 
@@ -144,6 +145,8 @@ Energy-Preserving Hard Equality Constraint Operator Inference.
     optim::opt_settings = opt_settings()
     λ_lin::Real = 0
     λ_quad::Real = 0
+    A_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
+    ForH_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
 end
 
 
@@ -169,6 +172,8 @@ Energy-Preserving Soft Inequality Constraint Operator Inference.
     λ_lin::Real = 0
     λ_quad::Real = 0
     ϵ::Real = 0.1
+    A_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
+    ForH_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
 end
 
 
@@ -194,4 +199,6 @@ Energy-Preserving Penalty Operator Inference.
     λ_lin::Real = 0
     λ_quad::Real = 0
     α::Float64 = 1.0
+    A_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
+    ForH_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
 end

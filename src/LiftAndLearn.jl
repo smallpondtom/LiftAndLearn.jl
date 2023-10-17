@@ -14,6 +14,7 @@ using Statistics
 using JuMP
 using Ipopt, SCS
 using FFTW
+import HSL_jll
 
 
 include("utils.jl")
