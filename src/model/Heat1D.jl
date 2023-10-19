@@ -1,7 +1,9 @@
 using LinearAlgebra
 using SparseArrays
 
-mutable struct Heat1D
+abstract type Abstract_Models end
+
+mutable struct Heat1D <: Abstract_Models
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
