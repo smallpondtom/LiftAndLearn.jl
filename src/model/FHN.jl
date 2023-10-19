@@ -1,11 +1,13 @@
 using LinearAlgebra
 using SparseArrays
 
+abstract type Abstract_Models end
+
 """
 Struct for Fitzhugh-Nagumo PDE settings
 """
-mutable struct FHN
-    Ω::Vector{Float64}  # spatial domain
+mutable struct FHN <: Abstract_Models
+    Ω::Vector{Float64}  # spatial domain 
     T::Vector{Float64}  # temporal domain
     αD::Vector{Float64}  # alpha parameter domain
     βD::Vector{Float64}  # beta parameter domain

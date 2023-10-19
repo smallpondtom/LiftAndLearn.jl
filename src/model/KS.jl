@@ -3,8 +3,9 @@ using FFTW
 using LinearAlgebra
 using SparseArrays
 
+abstract type Abstract_Models end
 
-mutable struct KS
+mutable struct KS <: Abstract_Models
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
