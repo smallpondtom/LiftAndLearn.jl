@@ -291,11 +291,13 @@ end
     - `F`: F matrix
     - `tdata`: temporal points
     - `IC`: initial condition
+    - `const_stepsize`: whether to use a constant time step size
+    - `u2_lm1`: u2 at j-2
 
     # Return
     - `state`: state matrix
 """
-function integrate_FD(A, F, tdata, IC; const_stepsize=true)
+function integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)
     Xdim = length(IC)
     Tdim = length(tdata)
     u = zeros(Xdim, Tdim)
@@ -304,12 +306,12 @@ function integrate_FD(A, F, tdata, IC; const_stepsize=true)
 
     if const_stepsize
         Δt = tdata[2] - tdata[1]  # assuming a constant time step size
-        ImdtA_inv = Matrix(1.0I(Xdim) - Δt/2 * A) \ 1.0I(Xdim) |> sparse
+        ImdtA_inv = Matrix(1.0I(Xdim) - Δt/2 * A) \ 1.0I(Xdim) # |> sparse
         IpdtA = (1.0I(Xdim) + Δt/2 * A)
 
         for j in 2:Tdim
             u2 = vech(u[:, j-1] * u[:, j-1]')
-            if j == 2
+            if j == 2 & isnothing(u2_lm1)
                 u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * Δt)
             else
                 u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_lm1 * Δt/2)
@@ -320,7 +322,7 @@ function integrate_FD(A, F, tdata, IC; const_stepsize=true)
         for j in 2:Tdim
             Δt = tdata[j] - tdata[j-1]
             u2 = vech(u[:, j-1] * u[:, j-1]')
-            if j == 2
+            if j == 2 & isnothing(u2_lm1)
                 u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * Δt)
             else
                 u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_lm1 * Δt/2)
