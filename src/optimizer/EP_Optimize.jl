@@ -132,10 +132,23 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     Ot = @expression(model, tmp')
     if options.λ_lin == 0 && options.λ_quad == 0 
         @info "check 1"
+
+        # INFO: This is the original objective function
+        # REG = @expression(model, sum((D * Ot .- Rt).^2))
+
+        # INFO: This is the constrained version that was recommended online
         n_tmp, m_tmp = size(Rt)
         @variable(model, X[1:n_tmp, 1:m_tmp])
         @constraint(model, X .== D * Ot .- Rt)  # this method answer on: https://discourse.julialang.org/t/write-large-least-square-like-problems-in-jump/35931
-        # REG = @expression(model, sum((D * Ot .- Rt).^2))
+
+        # INFO: This is the vectorized version
+        # Nrx, Nry = size(Rt)
+        # @objective(
+        #     model,
+        #     Min,
+        #     sum(((D * Ot .- Rt).^2)[i,j] for i in 1:Nrx, j in 1:Nry)
+        # )
+
     else
         if options.optim.which_quad_term == "H"
             REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
@@ -146,6 +159,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     # Define the objective of the optimization problem
     @info "Check 2"
+    # @objective(model, Min, REG)
     @objective(model, Min, sum(X.^2))
 
 

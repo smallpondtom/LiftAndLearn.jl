@@ -78,6 +78,6 @@ options = LnL.EPHEC_options(
 op_ephec =  Array{LnL.operators}(undef, KSE.Pdim)
 
 for i in eachindex(KSE.μs)
-    op_ephec[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:20], Vr[i][:, 1:20]' * Rtr[i], options)
+    op_ephec[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i], options)
     @info "Loop $(i) out of $(KSE.Pdim) completed..."
 end
