@@ -31,7 +31,6 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         set_silent(model)
     end
 
-    @info "Initialize linear"
     if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
 
@@ -61,7 +60,6 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = (@isdefined tmp) ? hcat(tmp, Bhat) : Bhat
     end
 
-    @info "Initialize quadratic"
     if options.system.is_quad
         if options.optim.which_quad_term == "H"
             @variable(model, Hhat[1:n, 1:v])
@@ -130,38 +128,27 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     @info "Set objective"
     Ot = @expression(model, tmp')
-    if options.λ_lin == 0 && options.λ_quad == 0 
-        @info "check 1"
 
-        # INFO: This is the original objective function
-        # REG = @expression(model, sum((D * Ot .- Rt).^2))
+    # INFO: This is the original objective function
+    # REG = @expression(model, sum((D * Ot .- Rt).^2))
 
-        # INFO: This is the constrained version that was recommended online
-        n_tmp, m_tmp = size(Rt)
-        @variable(model, X[1:n_tmp, 1:m_tmp])
-        @constraint(model, X .== D * Ot .- Rt)  # this method answer on: https://discourse.julialang.org/t/write-large-least-square-like-problems-in-jump/35931
+    # INFO: This is the constrained version that was recommended online
+    n_tmp, m_tmp = size(Rt)
+    @variable(model, X[1:n_tmp, 1:m_tmp])
+    @constraint(model, X .== D * Ot .- Rt)  # this method answer on: https://discourse.julialang.org/t/write-large-least-square-like-problems-in-jump/35931
 
-        # INFO: This is the vectorized version
-        # Nrx, Nry = size(Rt)
-        # @objective(
-        #     model,
-        #     Min,
-        #     sum(((D * Ot .- Rt).^2)[i,j] for i in 1:Nrx, j in 1:Nry)
-        # )
-
+    if (options.λ_lin == 0 && options.λ_quad == 0)
+        # @objective(model, Min, REG)
+        @objective(model, Min, sum(X.^2))
     else
         if options.optim.which_quad_term == "H"
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+            PEN = @expression(model, options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+            @objective(model, Min, sum(X.^2) + PEN)
         else
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+            PEN = @expression(model, options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+            @objective(model, Min, sum(X.^2) + PEN)
         end
     end
-
-    # Define the objective of the optimization problem
-    @info "Check 2"
-    # @objective(model, Min, REG)
-    @objective(model, Min, sum(X.^2))
-
 
     # Symmetry inequality constraint
     # @constraint(model, c2[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
@@ -297,21 +284,45 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = (@isdefined tmp) ? hcat(tmp, Khat) : Khat
     end
 
+    # Ot = @expression(model, tmp')
+    # if options.λ_lin == 0 && options.λ_quad == 0 
+    #     REG = @expression(model, sum((D * Ot .- Rt).^2))
+    # else
+    #     if options.optim.which_quad_term == "H"
+    #         REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+    #     else
+    #         REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+    #     end
+    # end
+
+    @info "Set objective"
     Ot = @expression(model, tmp')
-    if options.λ_lin == 0 && options.λ_quad == 0 
-        REG = @expression(model, sum((D * Ot .- Rt).^2))
+
+    # INFO: This is the original objective function
+    # REG = @expression(model, sum((D * Ot .- Rt).^2))
+
+    # INFO: This is the constrained version that was recommended online
+    n_tmp, m_tmp = size(Rt)
+    @variable(model, X[1:n_tmp, 1:m_tmp])
+    @constraint(model, X .== D * Ot .- Rt)  # this method answer on: https://discourse.julialang.org/t/write-large-least-square-like-problems-in-jump/35931
+
+    if (options.λ_lin == 0 && options.λ_quad == 0)
+        # @objective(model, Min, REG)
+        @objective(model, Min, sum(X.^2))
     else
         if options.optim.which_quad_term == "H"
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+            PEN = @expression(model, options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+            @objective(model, Min, sum(X.^2) + PEN)
         else
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+            PEN = @expression(model, options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+            @objective(model, Min, sum(X.^2) + PEN)
         end
     end
 
-
     # Define the objective of the optimization problem
-    @objective(model, Min, REG)
+    # @objective(model, Min, REG)
 
+    @info "Add constraints"
     # Energy preserving Soft Inequality constraints
     if options.optim.which_quad_term == "H"
         # NOTE: H matrix version
@@ -473,17 +484,18 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = (@isdefined tmp) ? hcat(tmp, Khat) : Khat
     end
 
-    Ot = @expression(model, tmp')
-    if options.λ_lin == 0 && options.λ_quad == 0 
-        REG = @expression(model, sum((D * Ot .- Rt).^2))
-    else
-        if options.optim.which_quad_term == "H"
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
-        else
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
-        end
-    end
+    # Ot = @expression(model, tmp')
+    # if options.λ_lin == 0 && options.λ_quad == 0 
+    #     REG = @expression(model, sum((D * Ot .- Rt).^2))
+    # else
+    #     if options.optim.which_quad_term == "H"
+    #         REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+    #     else
+    #         REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+    #     end
+    # end
 
+    @info "Set penalty"
     # Unconstrained part for energy-preservation
     if options.optim.which_quad_term == "H"
         EP = @expression(
@@ -497,6 +509,30 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         )
     end
 
+    @info "Set objective"
+    Ot = @expression(model, tmp')
+
+    # INFO: This is the original objective function
+    # REG = @expression(model, sum((D * Ot .- Rt).^2))
+
+    # INFO: This is the constrained version that was recommended online
+    n_tmp, m_tmp = size(Rt)
+    @variable(model, X[1:n_tmp, 1:m_tmp])
+    @constraint(model, X .== D * Ot .- Rt)  # this method answer on: https://discourse.julialang.org/t/write-large-least-square-like-problems-in-jump/35931
+
+    if (options.λ_lin == 0 && options.λ_quad == 0)
+        # @objective(model, Min, REG)
+        @objective(model, Min, sum(X.^2) + options.α * EP)
+    else
+        if options.optim.which_quad_term == "H"
+            PEN = @expression(model, options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+            @objective(model, Min, sum(X.^2) + PEN + options.α * EP)
+        else
+            PEN = @expression(model, options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+            @objective(model, Min, sum(X.^2) + PEN + options.α * EP)
+        end
+    end
+
     # Symmetry inequality constraint
     # @constraint(model, c1[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .<= 1e-2)
     # @constraint(model, c2[i=1:n, j=1:n], Ahat[i,j] - Ahat[j,i] .>= -1e-2)
@@ -505,7 +541,7 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     # @constraint(model, c3[i=1:n-1], Ahat[i,i] * y(i) >= Ahat[i+1,i+1])
 
     # Define the objective of the optimization problem
-    @objective(model, Min, REG + options.α * EP)
+    # @objective(model, Min, REG + options.α * EP)
     @info "Done."
 
     @info "Optimize model."
@@ -536,66 +572,70 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 end
 
 
-"""
-Energy preserved (Hard Equality Constraint) operator inference optimization (EPHEC) 
-with successive initial guess optimization.
 
-# Arguments
-- `D`: data matrix
-- `Rt`: transpose of the derivative matrix
-- `dims`: important dimensions
-- `options`: options for the operator inference set by the user
 
-# Returns
-- Inferred operators
 
-"""
-function EPHEC_successive(D::Matrix, Rt::Union{Matrix,Transpose},
-    dims::Dict, options::Abstract_Options)
-    dims_copy = deepcopy(dims)
-    init_guess = operators()
 
-    @info "Start Successive Optimization of EPHEC."
-    for i in 1:dims[:n]
-        dims_copy[:n] = i
-        dims_copy[:s] = Int(i*(i+1)/2)
-        dims_copy[:v] = Int(i^2)
-        dims_copy[:w] = Int(i*dims[:p])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# """
+# Energy preserved (Hard Equality Constraint) operator inference optimization (EPHEC) 
+# with successive initial guess optimization.
+
+# # Arguments
+# - `D`: data matrix
+# - `Rt`: transpose of the derivative matrix
+# - `dims`: important dimensions
+# - `options`: options for the operator inference set by the user
+
+# # Returns
+# - Inferred operators
+
+# """
+# function EPHEC_successive(D::Matrix, Rt::Union{Matrix,Transpose},
+#     dims::Dict, options::Abstract_Options)
+#     dims_copy = deepcopy(dims)
+#     init_guess = operators()
+
+#     @info "Start Successive Optimization of EPHEC."
+#     for i in 1:dims[:n]
+#         dims_copy[:n] = i
+#         dims_copy[:s] = Int(i*(i+1)/2)
+#         dims_copy[:v] = Int(i^2)
+#         dims_copy[:w] = Int(i*dims[:p])
         
-        if i == 1
-            Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims_copy, options)
-        else
-            Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims_copy, options, init_guess)
-        end
+#         if i == 1
+#             Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims_copy, options)
+#         else
+#             Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims_copy, options, init_guess)
+#         end
 
-        # Update initial guess
-        if i != dims[:n]  # run except the last iteration
-            init_guess.A = options.system.is_lin ? [Ahat zeros(i, 1); zeros(1, i+1)] : 0
-            init_guess.B = options.system.has_control ? [Bhat; zeros(1, p)] : 0
-            init_guess.F = options.system.is_quad && options.optim.which_quad_term=="F" ? insert2F(Fhat, i+1) : 0
-            init_guess.H = options.system.is_quad && options.optim.which_quad_term=="H" ? insert2H(Hhat, i+1) : 0
-            init_guess.N = options.system.is_bilin ? insert2bilin(Nhat, i+1, p) : 0
-            init_guess.K = options.system.has_const ? [Khat; 0] : 0
-        end
-    end
-    @info "Successive Optimization Done."
-    return Ahat, Bhat, Fhat, Hhat, Nhat, Khat
-end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#         # Update initial guess
+#         if i != dims[:n]  # run except the last iteration
+#             init_guess.A = options.system.is_lin ? [Ahat zeros(i, 1); zeros(1, i+1)] : 0
+#             init_guess.B = options.system.has_control ? [Bhat; zeros(1, p)] : 0
+#             init_guess.F = options.system.is_quad && options.optim.which_quad_term=="F" ? insert2F(Fhat, i+1) : 0
+#             init_guess.H = options.system.is_quad && options.optim.which_quad_term=="H" ? insert2H(Hhat, i+1) : 0
+#             init_guess.N = options.system.is_bilin ? insert2bilin(Nhat, i+1, p) : 0
+#             init_guess.K = options.system.has_const ? [Khat; 0] : 0
+#         end
+#     end
+#     @info "Successive Optimization Done."
+#     return Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+# end
 
 
 # """

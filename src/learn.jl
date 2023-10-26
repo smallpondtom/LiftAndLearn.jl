@@ -62,41 +62,6 @@ end
 
 
 """
-Ridge regression (tikhonov)
-
-# Arguments
-- `b`: Ax = b right-hand side 
-- `A`: Ax = b left-hand side matrix
-- `k`: ridge regression parameter
-
-# Return
-- regression solution
-"""
-function tikhonov(b::AbstractArray, A::AbstractArray, k::Real, tol::Real)
-    q = size(b, 2)
-    p = size(A, 2)
-
-    pseudo = sqrt(k) * 1.0I(p)
-    Aplus = vcat(A, pseudo)
-    bplus = vcat(b, zeros(p, q))
-    
-    Aplus_svd = svd(Aplus)
-    sing_idx = findfirst(Aplus_svd.S .< tol)
-
-    # If singular values are nearly singular, truncate at a certain threshold
-    # and fill in the rest with zeros
-    if sing_idx !== nothing
-        @warn "Rank difficient, rank = $(sing_idx), tol = $(Aplus_svd.S[sing_idx]).\n"
-        foo = [1 ./ Aplus_svd.S[1:sing_idx-1]; zeros(length(Aplus_svd.S[sing_idx:end]))]
-        bar = Aplus_svd.Vt' * Diagonal(foo) * Aplus_svd.U'
-        return bar * bplus
-    else
-        return Aplus \ bplus
-    end
-end
-
-
-"""
 Get the data matrix for the regression problem
 
 # Arguments
@@ -173,6 +138,77 @@ end
 
 
 """
+Tikhonov regression
+
+# Arguments
+- `b`: Ax = b right-hand side 
+- `A`: Ax = b left-hand side matrix
+- `λ`: ridge regression parameter
+
+# Return
+- regression solution
+"""
+# function tikhonov(b::AbstractArray, A::AbstractArray, dims::Dict, λ::Union{Real, AbstractVector{Real}}, tol::Real)
+function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix)
+    # q = size(b, 2)
+    # p = size(A, 2)
+
+    # pseudo = sqrt(k) * 1.0I(p)
+    # Aplus = vcat(A, pseudo)
+    # bplus = vcat(b, zeros(p, q))
+    
+    # Ag = A' * A + Γ' * Γ
+    # Ag_svd = svd(Ag)
+    # sing_idx = findfirst(Ag_svd.S .< tol)
+
+    # If singular values are nearly singular, truncate at a certain threshold
+    # and fill in the rest with zeros
+    # if sing_idx !== nothing
+    #     @warn "Rank difficient, rank = $(sing_idx), tol = $(Ag_svd.S[sing_idx]).\n"
+    #     foo = [1 ./ Ag_svd.S[1:sing_idx-1]; zeros(length(Ag_svd.S[sing_idx:end]))]
+    #     bar = Ag_svd.Vt' * Diagonal(foo) * Ag_svd.U'
+    #     return bar * (A' * b)
+    # else
+    #     return Ag \ (A' * b)
+    # end
+
+    return (A' * A + Γ' * Γ) \ (A' * b)
+end
+
+
+function tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Options)
+    n = dims[:n]; p = dims[:p]; s = dims[:s]; v = dims[:v]; w = dims[:w]
+    λ = options.λ
+    si = 0  # start index
+    if n != 0
+        Γ[1:n] .= λ.lin
+        si += n 
+    end
+
+    if p != 0
+        Γ[si+1:si+p] .= λ.ctrl
+        si += p
+    end
+
+    if options.optim.which_quad_term == "F"
+        if s != 0
+            Γ[si+1:si+s] .= λ.quad
+        end
+        si += s
+    else
+        if v != 0
+            Γ[si+1:si+v] .= λ.quad
+        end
+        si += v
+    end
+
+    if w != 0
+        Γ[si+1:si+w] .= λ.bilin
+    end
+end
+
+
+"""
 Extracting the operators after solving the regression problem
 
 # Arguments
@@ -189,14 +225,20 @@ Extracting the operators after solving the regression problem
 function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     Xhat_t::Union{Matrix,Transpose}, dims::Dict, options::Abstract_Options)
     # Some dimensions to unpack for convenience
-    n = dims[:n]
-    p = dims[:p]
-    q = dims[:q]
-    s = dims[:s]
-    v = dims[:v]
-    w = dims[:w]
+    n = dims[:n]; p = dims[:p]; q = dims[:q]
+    s = dims[:s]; v = dims[:v]; w = dims[:w]
 
-    Ot = tikhonov(Rt, D, options.λ, options.pinv_tol) # compute least squares (pseudo inverse)
+    # Construct the Tikhonov matrix
+    if options.optim.which_quad_term == "F"
+        Γ = spzeros(n+p+s+w)
+    else
+        Γ = spzeros(n+p+v+w)
+    end
+    tikhonovMatrix!(Γ, dims, options)
+    Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
+
+    # Ot = tikhonov(Rt, D, dims, options.λ, options.pinv_tol) # compute least squares (pseudo inverse)
+    Ot = tikhonov(Rt, D, Γ) # compute least squares (pseudo inverse)
 
     # Extract the operators from the operator matrix O
     O = transpose(Ot)
@@ -301,14 +343,8 @@ function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
     Khat = Khat == 0 ? 0 : Matrix(Khat)
 
     op = operators(
-        A=Ahat,
-        B=Bhat,
-        C=Chat,
-        F=Fhat,
-        H=Hhat,
-        N=Nhat,
-        K=Khat,
-        Q=Qhat,
+        A=Ahat, B=Bhat, C=Chat, F=Fhat,
+        H=Hhat, N=Nhat, K=Khat, Q=Qhat,
     )
 
     return op

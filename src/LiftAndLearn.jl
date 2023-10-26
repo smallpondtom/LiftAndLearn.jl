@@ -10,6 +10,7 @@ using Parameters
 using Plots
 using SparseArrays
 using MatrixEquations
+using Random
 using Statistics
 using JuMP
 using Ipopt, SCS

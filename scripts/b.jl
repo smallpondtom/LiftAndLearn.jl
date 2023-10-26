@@ -2,6 +2,7 @@ using FileIO
 using JLD2
 using LinearAlgebra
 using ProgressMeter
+using Random
 
 include("../src/model/KS.jl")
 include("../src/LiftAndLearn.jl")
@@ -77,7 +78,29 @@ options = LnL.EPHEC_options(
 )
 op_ephec =  Array{LnL.operators}(undef, KSE.Pdim)
 
+@views function makechunks(X::AbstractVector{Int64}, n::Integer)
+    c = length(X) ÷ n
+    return [X[1+c*k:(k == n-1 ? end : c*k+c)] for k = 0:n-1]
+end
+
+@views function randomchunks(N::Integer,k::Integer)
+    n,r = divrem(N,k)
+    b = collect(1:n:N+1)
+    for i in eachindex(b)
+        b[i] += i > r ? r : i-1  
+    end
+    p = randperm(N)
+    return [p[r] for r in [b[i]:b[i+1]-1 for i=1:k]]
+end
+
+data_size = size(Xtr[1], 2)
+num_of_batches = 100
+ordered_batch = makechunks(collect(1:data_size), num_of_batches)
+rand_batch = randomchunks(data_size, num_of_batches)
+
+
 for i in eachindex(KSE.μs)
-    op_ephec[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i], options)
+    op_ephec[i] = LnL.inferOp(Xtr[i][:, ordered_batch[1]], zeros(Tdim_ds,1), zeros(Tdim_ds,1),
+        Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i][:, ordered_batch[1]], options)
     @info "Loop $(i) out of $(KSE.Pdim) completed..."
 end
