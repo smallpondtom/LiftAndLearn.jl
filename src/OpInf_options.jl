@@ -90,10 +90,10 @@ Tikhonov regularization parameters.
 - `lin_threshold::Int64`: the index threshold to apply Tikhonov regularization for linear state operator
 """
 @with_kw struct λtik
-    lin::Union{Float64, AbstractArray{Float64}} = 0.0
-    quad::Float64 = 0.0
-    ctrl::Float64 = 0.0
-    bilin::Float64 = 0.0
+    lin::Union{Real, AbstractArray{Real}} = 0.0
+    quad::Real = 0.0
+    ctrl::Real = 0.0
+    bilin::Real = 0.0
 end
 
 
@@ -116,6 +116,7 @@ Least-Squares Operator Inference.
     data::data = data()
     optim::opt_settings = opt_settings()
     λ::λtik = λtik()
+    with_tol::Bool = false  # This options makes it way slower
     pinv_tol::Real = 1e-6
 end
 

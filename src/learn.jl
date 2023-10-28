@@ -149,7 +149,7 @@ Tikhonov regression
 - regression solution
 """
 # function tikhonov(b::AbstractArray, A::AbstractArray, dims::Dict, λ::Union{Real, AbstractVector{Real}}, tol::Real)
-function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix)
+function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real; flag::Bool=false)
     # q = size(b, 2)
     # p = size(A, 2)
 
@@ -157,22 +157,24 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix)
     # Aplus = vcat(A, pseudo)
     # bplus = vcat(b, zeros(p, q))
     
-    # Ag = A' * A + Γ' * Γ
-    # Ag_svd = svd(Ag)
-    # sing_idx = findfirst(Ag_svd.S .< tol)
+    if flag
+        Ag = A' * A + Γ' * Γ
+        Ag_svd = svd(Ag)
+        sing_idx = findfirst(Ag_svd.S .< tol)
 
-    # If singular values are nearly singular, truncate at a certain threshold
-    # and fill in the rest with zeros
-    # if sing_idx !== nothing
-    #     @warn "Rank difficient, rank = $(sing_idx), tol = $(Ag_svd.S[sing_idx]).\n"
-    #     foo = [1 ./ Ag_svd.S[1:sing_idx-1]; zeros(length(Ag_svd.S[sing_idx:end]))]
-    #     bar = Ag_svd.Vt' * Diagonal(foo) * Ag_svd.U'
-    #     return bar * (A' * b)
-    # else
-    #     return Ag \ (A' * b)
-    # end
-
-    return (A' * A + Γ' * Γ) \ (A' * b)
+        # If singular values are nearly singular, truncate at a certain threshold
+        # and fill in the rest with zeros
+        if sing_idx !== nothing
+            @warn "Rank difficient, rank = $(sing_idx), tol = $(Ag_svd.S[sing_idx]).\n"
+            foo = [1 ./ Ag_svd.S[1:sing_idx-1]; zeros(length(Ag_svd.S[sing_idx:end]))]
+            bar = Ag_svd.Vt' * Diagonal(foo) * Ag_svd.U'
+            return bar * (A' * b)
+        else
+            return Ag \ (A' * b)
+        end
+    else
+        return (A' * A + Γ' * Γ) \ (A' * b)
+    end
 end
 
 
@@ -238,7 +240,7 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
     # Ot = tikhonov(Rt, D, dims, options.λ, options.pinv_tol) # compute least squares (pseudo inverse)
-    Ot = tikhonov(Rt, D, Γ) # compute least squares (pseudo inverse)
+    Ot = tikhonov(Rt, D, Γ, options.pinv_tol; flag=options.with_tol) # compute least squares (pseudo inverse)
 
     # Extract the operators from the operator matrix O
     O = transpose(Ot)
