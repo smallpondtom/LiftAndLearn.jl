@@ -39,7 +39,7 @@ KSE_optim = LnL.opt_settings(
     initial_guess=false,
     max_iter=1000,
     reproject=false,
-    SIGE=false,
+    SIGE=true,
     with_bnds=true,
 )
 
@@ -66,6 +66,63 @@ DATA = nothing
 
 GC.gc()
 
+# @info "Compute the EPHEC model"
+
+# options = LnL.EPHEC_options(
+#     system=KSE_system,
+#     vars=KSE_vars,
+#     data=KSE_data,
+#     optim=KSE_optim,
+#     A_bnds=(-1000.0, 1000.0),
+#     ForH_bnds=(-100.0, 100.0),
+# )
+# op_ephec =  Array{LnL.operators}(undef, KSE.Pdim)
+
+# @views function makechunks(X::AbstractVector{Int64}, n::Integer)
+#     c = length(X) ÷ n
+#     return [X[1+c*k:(k == n-1 ? end : c*k+c)] for k = 0:n-1]
+# end
+
+# @views function randomchunks(N::Integer,k::Integer)
+#     n,r = divrem(N,k)
+#     b = collect(1:n:N+1)
+#     for i in eachindex(b)
+#         b[i] += i > r ? r : i-1  
+#     end
+#     p = randperm(N)
+#     return [p[r] for r in [b[i]:b[i+1]-1 for i=1:k]]
+# end
+
+# data_size = size(Xtr[1], 2)
+# num_of_batches = 100
+# ordered_batch = makechunks(collect(1:data_size), num_of_batches)
+# rand_batch = randomchunks(data_size, num_of_batches)
+
+
+# for i in eachindex(KSE.μs)
+#     op_ephec[i] = LnL.inferOp(Xtr[i][:, ordered_batch[2]], zeros(Tdim_ds,1), zeros(Tdim_ds,1),
+#         Vr[i][:, 1:ro[5]], Vr[i][:, 1:ro[5]]' * Rtr[i][:, ordered_batch[1]], options)
+#     op_ephec[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[4]], Vr[i][:, 1:ro[4]]' * Rtr[i], options)
+#     @info "Loop $(i) out of $(KSE.Pdim) completed..."
+# end
+
+# options = LnL.EPP_options(
+#     system=KSE_system,
+#     vars=KSE_vars,
+#     data=KSE_data,
+#     optim=KSE_optim,
+#     α=1e6,
+#     A_bnds=(-1000.0, 1000.0),
+#     ForH_bnds=(-100.0, 100.0),
+# )
+# op_epp =  Array{LnL.operators}(undef, KSE.Pdim)
+
+# for i in eachindex(KSE.μs)
+#     op_epp[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[4]], Vr[i][:, 1:ro[4]]' * Rtr[i], options)
+#     @info "Loop $(i) out of $(KSE.Pdim) completed..."
+# end
+
+
 @info "Compute the EPHEC model"
 
 options = LnL.EPHEC_options(
@@ -76,31 +133,32 @@ options = LnL.EPHEC_options(
     A_bnds=(-1000.0, 1000.0),
     ForH_bnds=(-100.0, 100.0),
 )
-op_ephec =  Array{LnL.operators}(undef, KSE.Pdim)
 
-@views function makechunks(X::AbstractVector{Int64}, n::Integer)
-    c = length(X) ÷ n
-    return [X[1+c*k:(k == n-1 ? end : c*k+c)] for k = 0:n-1]
-end
+orders = vcat([Int(i*10) for i in 1:(ro[end]÷10)], ro[end])
 
-@views function randomchunks(N::Integer,k::Integer)
-    n,r = divrem(N,k)
-    b = collect(1:n:N+1)
-    for i in eachindex(b)
-        b[i] += i > r ? r : i-1  
+op_ephec = Array{LnL.operators}(undef, KSE.Pdim)
+
+for i in 1:length(KSE.μs)
+    if options.optim.SIGE
+        options.optim.initial_guess = false  # turn off initial guess for the first iteration
+        op_tmp = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:,1:orders[1]], Vr[i][:,1:orders[1]]' * Rtr[i], options)  # compute the first operator
+        op_ephec[i, 1] = op_tmp  # store the first operator
+
+        for j in orders[2:end]
+            options.optim.initial_guess = true  # turn on initial guess for the rest of the iterations
+            op_tmp = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:,1:j], Vr[i][:,1:j]' * Rtr[i], options, LnL.operators(A=op_tmp.A, F=op_tmp.F)) # compute the rest of the operators
+            # op_ephec[i, j] = op_tmp # store the rest of the operators
+        end
+        op_ephec[i] = op_tmp
+    else 
+        # Use Ipopt default initial guess
+        options.optim.initial_guess = false 
+        op_ephec[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i], Vr[i]' * Rtr[i], options)
     end
-    p = randperm(N)
-    return [p[r] for r in [b[i]:b[i+1]-1 for i=1:k]]
-end
 
-data_size = size(Xtr[1], 2)
-num_of_batches = 100
-ordered_batch = makechunks(collect(1:data_size), num_of_batches)
-rand_batch = randomchunks(data_size, num_of_batches)
-
-
-for i in eachindex(KSE.μs)
-    op_ephec[i] = LnL.inferOp(Xtr[i][:, ordered_batch[1]], zeros(Tdim_ds,1), zeros(Tdim_ds,1),
-        Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i][:, ordered_batch[1]], options)
     @info "Loop $(i) out of $(KSE.Pdim) completed..."
 end
+
+# Save to data
+# Data["op_ephec"] = op_ephec
+# save(filename, Data)

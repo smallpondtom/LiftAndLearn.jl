@@ -38,7 +38,8 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         # @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
         if options.optim.initial_guess 
             if options.optim.SIGE
-                set_start_value.(Ahat[1:n-1, 1:n-1], IG.A)
+                ni = size(IG.A, 1)
+                set_start_value.(Ahat[1:ni, 1:ni], IG.A)
             else
                 set_start_value.(Ahat, IG.A)
             end
@@ -225,11 +226,18 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         # @expression(model, Ahat_s, 0.5 * (Ahat + Ahat'))
         if options.optim.initial_guess 
             if options.optim.SIGE
-                set_start_value.(Ahat[1:n-1, 1:n-1], IG.A)
+                ni = size(IG.A, 1)
+                set_start_value.(Ahat[1:ni, 1:ni], IG.A)
             else
                 set_start_value.(Ahat, IG.A)
             end
         end
+
+        if options.optim.with_bnds
+            set_lower_bound.(Ahat, options.A_bnds[1])
+            set_upper_bound.(Ahat, options.A_bnds[2])
+        end
+
         tmp = Ahat
     end
 
@@ -262,6 +270,11 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
                 else
                     set_start_value.(Fhat, IG.F)
                 end
+            end
+
+            if options.optim.with_bnds
+                set_lower_bound.(Fhat, options.ForH_bnds[1])
+                set_upper_bound.(Fhat, options.ForH_bnds[2])
             end
 
             tmp = (@isdefined tmp) ? hcat(tmp, Fhat) : Fhat
@@ -424,10 +437,16 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         
         if options.optim.initial_guess 
             if options.optim.SIGE
-                set_start_value.(Ahat[1:n-1, 1:n-1], IG.A)
+                ni = size(IG.A, 1)
+                set_start_value.(Ahat[1:ni, 1:ni], IG.A)
             else
                 set_start_value.(Ahat, IG.A)
             end
+        end
+
+        if options.optim.with_bnds
+            set_lower_bound.(Ahat, options.A_bnds[1])
+            set_upper_bound.(Ahat, options.A_bnds[2])
         end
         
         tmp = Ahat
@@ -462,6 +481,11 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
                 else
                     set_start_value.(Fhat, IG.F)
                 end
+            end
+
+            if options.optim.with_bnds
+                set_lower_bound.(Fhat, options.ForH_bnds[1])
+                set_upper_bound.(Fhat, options.ForH_bnds[2])
             end
 
             tmp = (@isdefined tmp) ? hcat(tmp, Fhat) : Fhat
