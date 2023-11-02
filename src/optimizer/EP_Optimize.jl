@@ -124,7 +124,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
             model,
             c1[i=1:n, j=1:i, k=1:j],
             delta(j,k)*Fhat[i,fidx(n,j,k)] + delta(i,k)*Fhat[j,fidx(n,i,k)] + delta(j,i)*Fhat[k,fidx(n,j,i)] == 0
-           )
+        )
     end
 
     @info "Set objective"
