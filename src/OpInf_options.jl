@@ -76,6 +76,7 @@ Information about the optimization.
     reproject::Bool = false
     SIGE::Bool = false  # Successive Initial Guess Estimation
     with_bnds::Bool = false  # add bounds to the variables
+    linear_solver::String = "ma86"
 end
 
 
