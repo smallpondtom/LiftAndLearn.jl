@@ -17,7 +17,6 @@ using Ipopt, SCS
 using FFTW
 import HSL_jll
 
-
 include("utils.jl")
 include("OpInf_options.jl")
 include("analyze.jl")
@@ -31,17 +30,6 @@ include("optimizer/PP-ZQLFI.jl")
 
 include("learn.jl")
 include("intrusiveROM.jl")
-
-export errBnds, compError, compProjError, compStateError, compOutputError, constraintResidual, symmetryResidual
-export forwardEuler, backwardEuler, semiImplicitEuler
-export intrusiveMR
-
-export operators, extractF
-export lifting
-export inferOp, getDataMat
-
-export NC_Optimize, NC_Optimize_output
-export EPHEC_Optimize, EPSIC_Optimize
 
 end # module LiftAndLearn
 
