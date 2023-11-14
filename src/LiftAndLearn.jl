@@ -7,7 +7,6 @@ module LiftAndLearn
 using LinearAlgebra
 using BlockDiagonals
 using Parameters
-using Plots
 using SparseArrays
 using MatrixEquations
 using Random
