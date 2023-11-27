@@ -23,8 +23,10 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
-    set_attribute(model, "hsllib", HSL_jll.libhsl_path)
-    set_attribute(model, "linear_solver", options.optim.linear_solver)
+    if options.optim.linear_solver != "none"
+        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+        set_attribute(model, "linear_solver", options.optim.linear_solver)
+    end
     set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
     set_string_names_on_creation(model, false)
     if !options.optim.verbose
@@ -214,8 +216,10 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
-    set_attribute(model, "hsllib", HSL_jll.libhsl_path)
-    set_attribute(model, "linear_solver", options.optim.linear_solver)
+    if options.optim.linear_solver != "none"
+        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+        set_attribute(model, "linear_solver", options.optim.linear_solver)
+    end
     set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
     set_string_names_on_creation(model, false)
     if !options.optim.verbose
@@ -427,8 +431,10 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
-    set_attribute(model, "hsllib", HSL_jll.libhsl_path)
-    set_attribute(model, "linear_solver", options.optim.linear_solver)
+    if options.optim.linear_solver != "none"
+        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+        set_attribute(model, "linear_solver", options.optim.linear_solver)
+    end
     set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
     set_string_names_on_creation(model, false)
     if !options.optim.verbose
