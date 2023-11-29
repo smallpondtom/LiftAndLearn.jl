@@ -239,7 +239,6 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     tikhonovMatrix!(Γ, dims, options)
     Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
-    # Ot = tikhonov(Rt, D, dims, options.λ, options.pinv_tol) # compute least squares (pseudo inverse)
     Ot = tikhonov(Rt, D, Γ, options.pinv_tol; flag=options.with_tol) # compute least squares (pseudo inverse)
 
     # Extract the operators from the operator matrix O

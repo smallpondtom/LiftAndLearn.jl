@@ -12,6 +12,13 @@ include("../src/model/Heat1D.jl")
 include("../src/LiftAndLearn.jl")
 const LnL = LiftAndLearn
 
+# 1D Heat equation setup
+heat1d = Heat1D(
+    [0.0, 1.0], [0.0, 1.0], [0.1, 10],
+    2^(-7), 1e-3, 10
+);
+
+savefigure = false
 provide_R = false
 
 # 1D Heat equation setup
@@ -22,11 +29,23 @@ heat1d = Heat1D(
 heat1d.x = heat1d.x[2:end-1]
 
 # Some options for operator inference
-options = LnL.OpInf_options(
-    reproject=false,
-    N=1,
-    Δt=1e-3,
-    deriv_type="BE"
+options = LnL.LS_options(
+    system=LnL.sys_struct(
+        is_lin=true,
+        has_control=true,
+        has_output=true,
+    ),
+    vars=LnL.vars(
+        N=1,
+    ),
+    data=LnL.data(
+        Δt=1e-3,
+        deriv_type="BE"
+    ),
+    optim=LnL.opt_settings(
+        verbose=true,
+    ),
+    pinv_tol=1e-15,
 )
 
 Xfull = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
@@ -41,12 +60,12 @@ A_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 B_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 C_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 
-r = 8  # order of the reduced form
+r = 15  # order of the reduced form
 
-println("[INFO] Generate intrusive and inferred operators")
+@info "Generate intrusive and inferred operators"
 p = Progress(length(heat1d.μs))
 for (idx, μ) in enumerate(heat1d.μs)
-    A, B = generateABmatrix(heat1d.Xdim, μ, heat1d.Δx)
+    A, B = heat1d.generateABmatrix(heat1d.Xdim, μ, heat1d.Δx)
     C = ones(1, heat1d.Xdim) / heat1d.Xdim
 
     op_heat = LnL.operators(A=A, B=B, C=C)
@@ -89,11 +108,8 @@ for (idx, μ) in enumerate(heat1d.μs)
     next!(p)
 end
 
-# Plot surface for visual confirmation
-# plotlyjs()
-# surface(heat1d.t,heat1d.x[2:end-1],Uf[2],size=(1200,800),camera=(60,30),color=:viridis,xlabel="t",ylabel="x")
 
-println("[INFO] Compute errors")
+@info "Compute errors"
 
 # Error analysis 
 intru_state_err = zeros(r, 1)
@@ -136,8 +152,6 @@ proj_err = zeros(r, 1)
     opinf_output_err[i] += OOE / heat1d.Pdim
 end
 
-println("[INFO] Export data")
-
 # Export results to CSV file 
 df = DataFrame(
     :order => 1:r,
@@ -147,37 +161,56 @@ df = DataFrame(
     :inferred_state_err => vec(opinf_state_err),
     :inferred_output_err => vec(opinf_output_err)
 )
-CSV.write("scripts/data/heat1d_data.csv", df)  # Write the data just in case
+# CSV.write("scripts/data/heat1d_data.csv", df)  # Write the data just in case
 
 println("[INFO] Plot results")
 # Plot data
 # Projection error
-plot(1:r, df.projection_err, marker=(:rect), reuse=false)
-plot!(yscale=:log10, majorgrid=true, minorgrid=true, legend=false)
-yticks!([round(10.0^i, digits=-i) for i in -10:0])
-xticks!(1:r)
-xlabel!("dimension n")
-ylabel!("avg projection error")
-savefig("scripts/plots/heat1d_projerr.pdf")
+p1 = plot(1:r, df.projection_err, marker=(:rect))
+plot!(p1, 
+    yscale=:log10, 
+    majorgrid=true, minorgrid=true, 
+    legend=false,
+    yticks=[round(10.0^i, digits=-i) for i in -10:0],
+    xticks=1:r,
+    xlabel="dimension n",
+    ylabel="avg projection error",
+    show=true
+)
+display(p1)
 
 # State error
-plot(1:r, df.intrusive_state_err, marker=(:cross, 10), label="intru", reuse=false)
-plot!(1:r, df.inferred_state_err, marker=(:circle), ls=:dash, label="opinf")
-plot!(yscale=:log10, majorgrid=true, minorgrid=true)
-yticks!([round(10.0^i, digits=-i) for i in -10:0])
-xticks!(1:r)
-xlabel!("dimension n")
-ylabel!("avg error of states")
-savefig("scripts/plots/heat1d_stateerr.pdf")
+p2 = plot(1:r, df.intrusive_state_err, marker=(:cross, 10), label="intru", reuse=false)
+plot!(p2, 1:r, df.inferred_state_err, marker=(:circle), ls=:dash, label="opinf")
+plot!(p2, 
+    yscale=:log10, 
+    majorgrid=true, minorgrid=true,
+    yticks=[round(10.0^i, digits=-i) for i in -10:0],
+    xticks=1:r,
+    xlabel="dimension n",
+    ylabel="avg error of states",
+    show=true
+)
+display(p2)
 
 # Output error
-plot(1:r, df.intrusive_output_err, marker=(:cross, 10), label="intru", reuse=false)
-plot!(1:r, df.inferred_output_err, marker=(:circle), ls=:dash, label="opinf")
-plot!(yscale=:log10, majorgrid=true, minorgrid=true)
-yticks!([round(10.0^i, digits=-i) for i in -15:0])
-xticks!(1:r)
-xlabel!("dimension n")
-ylabel!("avg error of outputs")
-savefig("scripts/plots/heat1d_outputerr.pdf")
+p3 = plot(1:r, df.intrusive_output_err, marker=(:cross, 10), label="intru", reuse=false)
+plot!(p3, 1:r, df.inferred_output_err, marker=(:circle), ls=:dash, label="opinf")
+plot!(p3, 
+    yscale=:log10, 
+    majorgrid=true, minorgrid=true,
+    yticks=[round(10.0^i, digits=-i) for i in -10:0],
+    xticks=1:r,
+    xlabel="dimension n",
+    ylabel="avg error of outputs",
+    show=true
+)
+display(p3)
 
-println("[INFO] Done")
+if savefigure
+    savefig(p1, "scripts/figures/heat1d_proj_err.png")
+    savefig(p2, "scripts/figures/heat1d_state_err.png")
+    savefig(p3, "scripts/figures/heat1d_output_err.png")
+end
+
+@info "Done"
