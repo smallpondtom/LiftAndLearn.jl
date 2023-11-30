@@ -118,6 +118,7 @@ Least-Squares Operator Inference.
     optim::opt_settings = opt_settings()
     λ::λtik = λtik()
     with_tol::Bool = false  # This options makes it way slower
+    with_reg::Bool = false  # tikhonov regularization
     pinv_tol::Real = 1e-6
 end
 

@@ -148,15 +148,7 @@ Tikhonov regression
 # Return
 - regression solution
 """
-# function tikhonov(b::AbstractArray, A::AbstractArray, dims::Dict, λ::Union{Real, AbstractVector{Real}}, tol::Real)
 function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real; flag::Bool=false)
-    # q = size(b, 2)
-    # p = size(A, 2)
-
-    # pseudo = sqrt(k) * 1.0I(p)
-    # Aplus = vcat(A, pseudo)
-    # bplus = vcat(b, zeros(p, q))
-    
     if flag
         Ag = A' * A + Γ' * Γ
         Ag_svd = svd(Ag)
@@ -239,7 +231,12 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     tikhonovMatrix!(Γ, dims, options)
     Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
-    Ot = tikhonov(Rt, D, Γ, options.pinv_tol; flag=options.with_tol) # compute least squares (pseudo inverse)
+    # compute least squares (pseudo inverse)
+    if options.with_reg 
+        Ot = tikhonov(Rt, D, Γ, options.pinv_tol; flag=options.with_tol)
+    else
+        Ot = D \ Rt
+    end
 
     # Extract the operators from the operator matrix O
     O = transpose(Ot)
