@@ -56,8 +56,6 @@ opinf_output_err = zeros(rmax - k, burger.Pdim)
 # Add 5 extra parameters drawn randomly from the uniform distribution of range [0, 1]
 μs = vcat(burger.μs)
 
-Xhold = 0
-
 @info "Compute inferred and intrusive operators and calculate the errors"
 prog = Progress(length(μs))
 for i in 1:length(μs)
@@ -79,11 +77,6 @@ for i in 1:length(μs)
         states = burger.semiImplicitEuler(A, B, F, Urand[:, j], burger.t, burger.IC)
         Xall[j] = states[:, 2:end]
         Xdotall[j] = (states[:, 2:end] - states[:, 1:end-1]) / burger.Δt
-        
-        # Store data to visualize later
-        if i == 1 && j == 1
-            Xhold = states
-        end
     end
     X = reduce(hcat, Xall)
     R = reduce(hcat, Xdotall)
@@ -152,34 +145,38 @@ df = DataFrame(
 
 @info "Plotting results"
 
+## Plotting
 # Projection error
-plot(df.order, df.projection_err, marker=(:rect))
+p = plot(df.order[cutoff], df.projection_err[cutoff], marker=(:rect))
 plot!(yscale=:log10, majorgrid=true, minorgrid=true, legend=false)
 tmp = log10.(df.projection_err)
 yticks!([10.0^i for i in floor(minimum(tmp))-1:ceil(maximum(tmp))+1])
 xticks!(df.order)
 xlabel!("dimension n")
 ylabel!("avg projection error")
-savefig("scripts/plots/burger_projerr.pdf")
+# savefig("scripts/plots/burger_projerr.pdf")
+display(p)
 
 # State errors
-plot(df.order, df.intrusive_state_err, marker=(:cross, 10), label="intru")
-plot!(df.order, df.inferred_state_err, marker=(:circle), ls=:dash, label="opinf")
+p = plot(df.order[cutoff], df.intrusive_state_err[cutoff], marker=(:cross, 10), label="intru")
+plot!(df.order[cutoff], df.inferred_state_err[cutoff], marker=(:circle), ls=:dash, label="opinf")
 plot!(yscale=:log10, majorgrid=true, minorgrid=true)
 tmp = log10.(df.intrusive_state_err)
 yticks!([10.0^i for i in floor(minimum(tmp))-1:ceil(maximum(tmp))+1])
 xticks!(df.order)
 xlabel!("dimension n")
 ylabel!("avg error of states")
-savefig("scripts/plots/burger_stateerr.pdf")
+# savefig("scripts/plots/burger_stateerr.pdf")
+display(p)
 
 # Output errors
-plot(df.order, df.intrusive_output_err, marker=(:cross, 10), label="intru")
-plot!(df.order, df.inferred_output_err, marker=(:circle), ls=:dash, label="opinf")
+p = plot(df.order[cutoff], df.intrusive_output_err[cutoff], marker=(:cross, 10), label="intru")
+plot!(df.order[cutoff], df.inferred_output_err[cutoff], marker=(:circle), ls=:dash, label="opinf")
 plot!(majorgrid=true, minorgrid=true)
 xticks!(df.order)
 xlabel!("dimension n")
 ylabel!("avg error of outputs")
-savefig("scripts/plots/burger_outputerr.pdf")
+# savefig("scripts/plots/burger_outputerr.pdf")
+display(p)
 
 @info "Done"
