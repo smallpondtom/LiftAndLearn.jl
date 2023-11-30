@@ -45,7 +45,6 @@ options = LnL.LS_options(
     optim=LnL.opt_settings(
         verbose=true,
     ),
-    pinv_tol=1e-15,
 )
 
 Xfull = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
@@ -91,10 +90,10 @@ for (idx, μ) in enumerate(heat1d.μs)
 
     # Compute the RHS for the operator inference based on the intrusive operators
     if provide_R
-        idx = 2:heat1d.Tdim
-        Xn = X[:, idx]
-        Un = heat1d.Ubc[idx, :]
-        Yn = Y[:, idx]
+        jj = 2:heat1d.Tdim
+        Xn = X[:, jj]
+        Un = heat1d.Ubc[jj, :]
+        Yn = Y[:, jj]
         Xdot = A_intru[idx] * Vr' * Xn + B_intru[idx] * Un'
         op_infer = LnL.inferOp(Xn, Un, Yn, Vr, Xdot, options)
     else
@@ -178,6 +177,7 @@ plot!(p1,
     show=true
 )
 display(p1)
+readline()
 
 # State error
 p2 = plot(1:r, df.intrusive_state_err, marker=(:cross, 10), label="intru", reuse=false)
@@ -192,6 +192,7 @@ plot!(p2,
     show=true
 )
 display(p2)
+readline()
 
 # Output error
 p3 = plot(1:r, df.intrusive_output_err, marker=(:cross, 10), label="intru", reuse=false)
@@ -206,6 +207,7 @@ plot!(p3,
     show=true
 )
 display(p3)
+readline()
 
 if savefigure
     savefig(p1, "scripts/figures/heat1d_proj_err.png")
