@@ -66,6 +66,7 @@ Information about the optimization.
 - `which_quad_term::String`: choose main quadratic operator (H or F) to use for computation
 - `reproject::Bool`: use reprojection method for derivative data
 - `SIGE::Bool`: use successive initial guess estimation
+- `provide_reduced_orders::Bool`: provide reduced orders for the basis
 """
 @with_kw mutable struct opt_settings
     verbose::Bool = false
@@ -74,6 +75,26 @@ Information about the optimization.
     which_quad_term::String = "F"
     reproject::Bool = false
     SIGE::Bool = false  # Successive Initial Guess Estimation
+    with_bnds::Bool = false  # add bounds to the variables
+    linear_solver::String = "none"
+end
+
+
+"""
+Tikhonov regularization parameters.
+
+# Fields
+- `lin::Float64`: the Tikhonov regularization parameter for linear state operator
+- `quad::Float64`: the Tikhonov regularization parameter for quadratic state operator
+- `ctrl::Float64`: the Tikhonov regularization parameter for control operator
+- `bilin::Float64`: the Tikhonov regularization parameter for bilinear state operator
+- `lin_threshold::Int64`: the index threshold to apply Tikhonov regularization for linear state operator
+"""
+@with_kw struct λtik
+    lin::Union{Real, AbstractArray{Real}} = 0.0
+    quad::Real = 0.0
+    ctrl::Real = 0.0
+    bilin::Real = 0.0
 end
 
 
@@ -86,7 +107,7 @@ Least-Squares Operator Inference.
 - `vars::vars`: the system variables
 - `data::data`: the data
 - `optim::opt_settings`: the optimization settings
-- `λ::Real`: the Tikhonov regularization parameter
+- `λ::λtik`: the Tikhonov regularization parameters
 - `pinv_tol::Real`: the tolerance for the least square pseudo inverse
 """
 @with_kw mutable struct LS_options <: Abstract_Options
@@ -95,7 +116,9 @@ Least-Squares Operator Inference.
     vars::vars = vars()
     data::data = data()
     optim::opt_settings = opt_settings()
-    λ::Real = 0
+    λ::λtik = λtik()
+    with_tol::Bool = false  # This options makes it way slower
+    with_reg::Bool = false  # tikhonov regularization
     pinv_tol::Real = 1e-6
 end
 
@@ -143,6 +166,8 @@ Energy-Preserving Hard Equality Constraint Operator Inference.
     optim::opt_settings = opt_settings()
     λ_lin::Real = 0
     λ_quad::Real = 0
+    A_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
+    ForH_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
 end
 
 
@@ -168,6 +193,8 @@ Energy-Preserving Soft Inequality Constraint Operator Inference.
     λ_lin::Real = 0
     λ_quad::Real = 0
     ϵ::Real = 0.1
+    A_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
+    ForH_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
 end
 
 
@@ -193,4 +220,6 @@ Energy-Preserving Penalty Operator Inference.
     λ_lin::Real = 0
     λ_quad::Real = 0
     α::Float64 = 1.0
+    A_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
+    ForH_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
 end

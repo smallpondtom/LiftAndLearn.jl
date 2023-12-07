@@ -1,8 +1,9 @@
 using LinearAlgebra
 using SparseArrays
 
+abstract type Abstract_Models end
 
-mutable struct Burgers
+mutable struct Burgers <: Abstract_Models
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
@@ -18,6 +19,8 @@ mutable struct Burgers
     BC::String   # boundary condition
 
     generateABFmatrix::Function
+    generateMatrix_NC_periodic::Function
+    generateMatrix_C_periodic::Function
     generateEPmatrix::Function
     semiImplicitEuler::Function
 end
@@ -36,7 +39,8 @@ function Burgers(Omega, T, D, Δx, Δt, Pdim, BC)
 
     Burgers(
         Omega, T, D, Δx, Δt, IC, x, t, μs, Xdim, Tdim, Pdim, BC,
-        generateABFmatrix, generateEPmatrix, semiImplicitEuler
+        generateABFmatrix, generateMatrix_NC_periodic, generateMatrix_C_periodic,
+        generateEPmatrix, semiImplicitEuler
     )
 end
 
@@ -59,7 +63,7 @@ function generateABFmatrix(model::Burgers, μ::Float64)
     Δt = model.Δt
 
     # Create A matrix
-    A = diagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, 1:2] = [-1/Δt, 0]
     A[end, end-1:end] = [0, -1/Δt]
 
@@ -81,6 +85,92 @@ function generateABFmatrix(model::Burgers, μ::Float64)
     return A, B, F
 end
 
+
+"""
+    Generate A, F matrices for the non-energy preserving Burgers' equation. (Non-conservative Periodic boundary condition)
+
+    # Arguments
+    - `model`: Burgers' equation model
+    - `μ`: parameter value
+
+    # Return
+    - `A`: A matrix
+    - `F`: F matrix
+"""
+function generateMatrix_NC_periodic(model::Burgers, μ::Float64)
+    N = model.Xdim
+    Δx = model.Δx
+
+    # Create A matrix
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A[1, end] = μ / Δx^2  # periodic boundary condition
+    A[end, 1] = μ / Δx^2  
+
+    # Create F matrix
+    S = Int(N * (N + 1) / 2)
+    if N >= 3
+        Fval = repeat([1.0, -1.0], outer=N - 2)
+        row_i = repeat(2:(N-1), inner=2)
+        seq = Int.([2 + (N + 1) * (x - 1) - x * (x - 1) / 2 for x in 1:(N-1)])
+        col_i = vcat(seq[1], repeat(seq[2:end-1], inner=2), seq[end])
+        F = sparse(row_i, col_i, Fval, N, S) / 2 / Δx
+
+        F[1, 2] = - 1 / 2 / Δx
+        F[1, N] = 1 / 2 / Δx
+        F[N, N] = - 1 / 2 / Δx
+        F[N, end-1] = 1 / 2 / Δx 
+    else
+        F = zeros(N, S)
+    end
+
+    return A, F
+end
+
+
+"""
+    Generate A, F matrices for the non-energy preserving Burgers' equation. (conservative periodic boundary condition)
+
+    # Arguments
+    - `model`: Burgers' equation model
+    - `μ`: parameter value
+
+    # Return
+    - `A`: A matrix
+    - `F`: F matrix
+"""
+function generateMatrix_C_periodic(model::Burgers, μ::Float64)
+    N = model.Xdim
+    Δx = model.Δx
+
+    # Create A matrix
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A[1, end] = μ / Δx^2  # periodic boundary condition
+    A[end, 1] = μ / Δx^2  
+
+    # Create F matrix
+    S = Int(N * (N + 1) / 2)
+    if N >= 3
+        ii = repeat(2:(N-1), inner=2)
+        m = 2:N-1
+        mm = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) - (N-(m-2)) for m in 2:N-1])  # this is where the x_{i-1}^2 term is
+        mp = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) + (N-(m-1)) for m in 2:N-1])  # this is where the x_{i+1}^2 term is
+        jj = reshape([mp'; mm'],2*N-4);
+        vv = reshape([-ones(1,N-2); ones(1,N-2)],2*N-4)/(4*Δx);
+        F = sparse(ii,jj,vv,N,S)
+
+        # Boundary conditions (Periodic)
+        F[1,N+1] = -1/4/Δx
+        F[1,end] = 1/4/Δx
+        F[N,end-2] = 1/4/Δx
+        F[N,1] = -1/4/Δx
+    else
+        F = zeros(N, S)
+    end
+
+    return A, F
+end
+
+
 """
     Generate A, F matrices for the Burgers' equation. (Energy-preserving form)
 
@@ -97,7 +187,7 @@ function generateEPmatrix(model::Burgers, μ::Float64)
     Δx = model.Δx
 
     # Create A matrix
-    A = diagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, N] = μ / Δx^2  # periodic boundary condition
     A[N, 1] = μ / Δx^2  # periodic boundary condition
 

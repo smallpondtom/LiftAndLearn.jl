@@ -13,10 +13,35 @@ Operator Inference is a scientific machine-learning framework used in data-drive
 ### Lift and Learn (LnL)
 Lift and Learn is a physics-informed method for learning low-dimensional models for large-scale dynamical systems. Lifting refers to the transformation of the original nonlinear system to a linear, quadratic, bilinear, or polynomial system by mapping the original state space to a new space with additional auxiliary variables. After lifting the system to a more approachable form we can learn a reduced model using the OpInf approach. 
 
-### Installation
+### Requirements
+- julia versions 1.8.5 >
+- We use [Ipopt](https://github.com/jump-dev/Ipopt.jl) for the optimization (e.g., EP-OpInf)
+    - This requires additional proprietary linear-solvers including `ma86` and `ma97`. 
+    - You can run the code without it by changing the options. By default Ipopt will use `MUMPS` but we recommend you obtain and download `HSL_jll.jl`. You can find the instructions [here](https://licences.stfc.ac.uk/product/libhsl).
 
+### Installation
+:hammer: Actively working to make it into a package. 
 ```julia-repl
 (@v1.8) pkg> dev 
+```
+
+### Get Started
+For now you can clone the repo
+```
+git clone https://github.com/smallpondtom/LiftAndLearn.jl.git
+cd LiftAndLearn.jl
+```
+Compile natively and activate the package.
+```
+julia
+]
+instantiate
+activate .
+⌫
+```
+Then you can run the Operator Inference 1D heat equation example.
+```
+include("scripts/heat1d_OpInf_example.jl")
 ```
 
 
@@ -33,8 +58,7 @@ Lift and Learn is a physics-informed method for learning low-dimensional models 
     - [x] one-dimensional heat equation
     - [x] burger's equation
     - [x] Fitzhugh-Nagumo equation
-    - [ ] Kuramoto-Sivashinsky equation
-- [ ] Zubov's Domain of Attraction Project
+    - [x] Kuramoto-Sivashinsky equation
 
 
 ### References
