@@ -2,7 +2,6 @@
 File containing general utility structures and functions for Lift & Learn.
 """
 
-
 """
 Structure to store the operators of the system
 

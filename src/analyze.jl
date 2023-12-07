@@ -170,23 +170,39 @@ end
 # end
 
 
-function constraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_quad::String="H")
+function constraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_quad::String="H"; with_mmt=false)
     ϵX = 0
     mmt = 0
-    if which_quad == "H"
-        for i in 1:r, j in 1:r, k in 1:r
-            foo = X[i, r*(k-1)+j] + X[j, r*(k-1)+i] + X[k, r*(i-1)+j]
-            ϵX += abs(foo)
-            mmt += foo
+
+    if with_mmt
+        if which_quad == "H"
+            for i in 1:r, j in 1:r, k in 1:r
+                foo = X[i, r*(k-1)+j] + X[j, r*(k-1)+i] + X[k, r*(i-1)+j]
+                ϵX += abs(foo)
+                mmt += foo
+            end
+        else
+            for i in 1:r, j in 1:r, k in 1:r
+                foo = delta(j,k)*X[i, fidx(r,j,k)] + delta(i,k)*X[j, fidx(r,i,k)] + delta(j,i)*X[k, fidx(r,j,i)]
+                ϵX += abs(foo)
+                mmt += foo
+            end
         end
+        return ϵX, mmt
     else
-        for i in 1:r, j in 1:r, k in 1:r
-            foo = delta(j,k)*X[i, fidx(r,j,k)] + delta(i,k)*X[j, fidx(r,i,k)] + delta(j,i)*X[k, fidx(r,j,i)]
-            ϵX += abs(foo)
-            mmt += foo
+        if which_quad == "H"
+            for i in 1:r, j in 1:r, k in 1:r
+                foo = X[i, r*(k-1)+j] + X[j, r*(k-1)+i] + X[k, r*(i-1)+j]
+                ϵX += abs(foo)
+            end
+        else
+            for i in 1:r, j in 1:r, k in 1:r
+                foo = delta(j,k)*X[i, fidx(r,j,k)] + delta(i,k)*X[j, fidx(r,i,k)] + delta(j,i)*X[k, fidx(r,j,i)]
+                ϵX += abs(foo)
+            end
         end
+        return ϵX
     end
-    return ϵX, mmt
 end
 
 
@@ -203,4 +219,27 @@ function constraintViolation(Data::AbstractArray, X::Union{Matrix, SparseMatrixC
         end
     end
     return viol
+end
+
+
+"""
+Choose reduced order (ro) that preserves an acceptable energy.
+
+# Arguments
+- `Σ`: Singular value vector from the SVD of some Hankel Matrix
+"""
+function choose_ro(Σ::Vector; en_low=-15)
+    # Energy loss from truncation
+    en = 1 .- sqrt.(cumsum(Σ .^ 2)) / norm(Σ)
+
+    # loop through ROM sizes
+    en_vals = map(x -> 10.0^x, -1.0:-1.0:en_low)
+    r_all = Vector{Float64}()
+    for rr = axes(en_vals, 1)
+        # determine # basis functions to retain based on energy lost
+        en_thresh = en_vals[rr]
+        push!(r_all, findfirst(x -> x < en_thresh, en))
+    end
+
+    return Int.(r_all), en
 end
