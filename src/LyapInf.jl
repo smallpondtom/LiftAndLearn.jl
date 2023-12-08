@@ -1,3 +1,29 @@
+abstract type Abstract_Options end
+
+
+""" 
+Options for Lyapunov function inference.
+
+# Fields
+"""
+@with_kw mutable struct LyapInf_options <: Abstract_Options
+    α::Real                     = 1e-4     # Eigenvalue shift parameter for P
+    β::Real                     = 1e-4     # Eigenvalue shift parameter for Q
+    δS::Real                    = 1e-5     # Symmetricity tolerance for P
+    δJ::Real                    = 1e-5     # Objective value tolerance for the optimization
+    # η_p::Real                   = 1        # Weighting parameter for the Ptilde term
+    # η_q::Real                   = 1        # Weighting parameter for the Qtilde term
+    max_iter::Int               = 100      # Maximum number of iterations for the optimization
+    extra_iter::Int             = 3        # Number of extra iterations to run after the optimization has converged
+    optimizer::String           = "ipopt"  # Optimizer to use for the optimization
+    ipopt_linear_solver::String = "none"   # Linear solver for Ipopt
+    verbose::Bool               = false    # Enable verbose output for the optimization
+    optimize_both::Bool         = false    # Optimize both P and Q at the same time
+
+    @assert (optimizer in ["ipopt", "Ipopt", "SCS"]) "Optimizer options are: Ipopt and SCS."
+end
+
+
 # function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
 #     n, m = size(X)
     
@@ -74,56 +100,130 @@
 #     return value.(Q), model
 # end
 
-function optimize_P(X, Ahat, Fhat, Q, Pi, α)
-    n, m = size(X)
-    
-    # Construct some values used in the optimization
-    X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-    X2 = squareMatStates(X)'
-    X = X' # now we want the columns to be the states and rows to be time
-    
-    model = Model(Ipopt.Optimizer)
-    set_silent(model)
-    register(model, :.+, n, .+, autodiff=true)
-    @variable(model, Pc[1:n, 1:n])
-    set_start_value.(Pc, Pi)
-    @NLexpression(model, P, Pc*Pc' .+ α*I)
-    @NLexpression(
-        model, 
-        PDEnorm, 
-        sum((X*Ahat'*P*X' + X2*Fhat'*P*X' - 0.25*X*P*X'*X*Q*X' + 0.5*X*Q*X').^2) 
-    )  
-    @NLconstraint(model, c, X*P*X' .<= 0.99999)
-    @NLobjective(model, Min, PDEnorm)
+function optimize_P(X, A, F, Q, options; Pi=nothing)
+    n, K = size(X)
+    X2t = squareMatStates(X)'
+    Xt = X' # now we want the columns to be the states and rows to be time
+
+    # Set up optimizer
+    if options.optimizer in ["ipopt", "Ipopt"]
+        model = Model(Ipopt.Optimizer)
+    else 
+        model = Model(SCS.Optimizer)
+    end
+
+    # Set up verbose or silent
+    if !options.verbose
+        set_silent(model)
+    end 
+
+    # More setup
+    if options.ipopt_linear_solver != "none"
+        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+        set_attribute(model, "linear_solver", options.ipopt_linear_solver)
+    end
+    set_optimizer_attribute(model, "max_iter", options.max_iter)
+    set_string_names_on_creation(model, false)
+
+    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
+        @variable(model, P[1:n, 1:n], Symmetric)
+        @variable(model, Ld[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+        L = LinearAlgebra.LowerTriangular(Ld)
+        if !isnothing(Pi)
+            set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
+        end
+        @variable(model, Z[1:K, 1:K])
+        @constraint(
+            model, 
+            Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
+        )
+        @objective(model, Min, sum(Z.^2))
+
+        # Add constraints for positive definiteness:
+        # Cholesky decomposition constraint: A = L * L'
+        for i in 1:n
+            for j in 1:n
+                @constraint(model, P[i, j] == sum(L[i, k] * L[j, k] for k in 1:min(i, j)))
+            end
+        end
+    else   # SCS is okay with large objective
+        @variable(model, P[1:n, 1:n], PSD)
+        if !isnothing(Pi)
+            set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
+        end
+        @expression(
+            model, 
+            inside_norm, 
+            sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
+        )  
+        @objective(model, Min, inside_norm)
+
+        # Add a constraint to make A positive definite
+        for i in 1:n
+            @constraint(model, P[i, i] >= options.α)
+        end
+    end
+    @constraint(model, c, Xt*P*Xt' .<= 0.99999)
     JuMP.optimize!(model)
-    Pc_sol = value.(Pc)
-    return Pc_sol * Pc_sol', Pc_sol, model
+    P_sol = value.(P)
+    return P_sol, model
 end
 
 
-function optimize_Q(X, Ahat, Fhat, P, Qi, α)
-    n, m = size(X)
+function optimize_Q(X, A, F, P, Qi, options)
+    n, K = size(X)
+    X2t = squareMatStates(X)'
+    Xt = X' # now we want the columns to be the states and rows to be time
     
-    # Construct some values used in the optimization
-    X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-    X2 = squareMatStates(X)'
-    X = X' # now we want the columns to be the states and rows to be time
-    
-    model = Model(Ipopt.Optimizer)
-    register(model, :.+, n, .+, autodiff=true)
-    set_silent(model)
-    @variable(model, Qc[1:n, 1:n])
-    set_start_value.(Qc, Qi)
-    @NLexpression(model, Q, Qc*Qc' .+ α*I)
-    @NLexpression(
-        model, 
-        PDEnorm, 
-        sum((X*Ahat'*P*X' + X2*Fhat'*P*X' - 0.25*X*P*X'*X*Q*X' + 0.5*X*Q*X').^2)  
-    )  
-    @NLobjective(model, Min, PDEnorm)
+    # Set up optimizer
+    if options.optimizer in ["ipopt", "Ipopt"]
+        model = Model(Ipopt.Optimizer)
+    else 
+        model = Model(SCS.Optimizer)
+    end
+
+    # Set up verbose or silent
+    if !options.verbose
+        set_silent(model)
+    end
+
+    # More setup
+    if options.ipopt_linear_solver != "none"
+        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+        set_attribute(model, "linear_solver", options.ipopt_linear_solver)
+    end
+    set_optimizer_attribute(model, "max_iter", options.max_iter)
+    set_string_names_on_creation(model, false)
+
+    @variable(model, Q[1:n, 1:n], Symmetric)
+    set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
+        @variable(model, Z[1:K, 1:K])
+        @constraint(
+            model, 
+            c_norm, 
+            Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'
+        )
+        @objective(model, Min, sum(Z.^2))
+
+        # Add constraints for positive definiteness:
+        # Ensures that each leading principal minor has a determinant greater than a small positive value
+        for i = 1:n
+            @constraint(model, det(Q[1:i, 1:i]) >= options.α)
+        end
+    else   # SCS is okay with large objective
+        @expression(
+            model, 
+            inside_norm, 
+            sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
+        )  
+        @objective(model, Min, inside_norm)
+        @constraint(model, Q .- options.β*I in PSDCone())
+    end
+    @constraint(model, c, Xt*P*Xt' .<= 0.99999)
     JuMP.optimize!(model)
-    Qc_sol = value.(Qc)
-    return Qc_sol * Qc_sol', Qc_sol, model
+    Q_sol = value.(Q)
+    return Q_sol, model
 end
 
 
@@ -155,128 +255,140 @@ function zubov_error(X, A, F, P, Q)
 end
 
 
-function pdp(A, n, γ_lb; γ_ub=1)
-    not_pd = true
-    γ_lb_copy = deepcopy(γ_lb)
-    while not_pd
-        model = Model(SCS.Optimizer)
-        set_silent(model)
-        @variable(model, D[1:n, 1:n], PSD)
-        @variable(model, γ_lb <= γ <= γ_ub)
-        @expression(model, d, diag(D))
-        @objective(model, Min, sum(d) + γ)
-        @constraint(model, (A + D) in PSDCone())
-        @constraint(model, (A + D .+ γ*I) .>= γ_lb_copy)
-        JuMP.optimize!(model)
-        Dopt = value.(D)
-        γopt = value(γ)
+# function pdp(A, n, γ_lb; γ_ub=1)
+#     not_pd = true
+#     γ_lb_copy = deepcopy(γ_lb)
+#     while not_pd
+#         model = Model(SCS.Optimizer)
+#         set_silent(model)
+#         @variable(model, D[1:n, 1:n], PSD)
+#         @variable(model, γ_lb <= γ <= γ_ub)
+#         @expression(model, d, diag(D))
+#         @objective(model, Min, sum(d) + γ)
+#         @constraint(model, (A + D) in PSDCone())
+#         @constraint(model, (A + D .+ γ*I) .>= γ_lb_copy)
+#         JuMP.optimize!(model)
+#         Dopt = value.(D)
+#         γopt = value(γ)
 
-        Apd = A + Dopt + γopt * I
-        not_pd = !isposdef(Apd)
-        γ_lb *= 10
-        if γ_lb > γ_ub
-            return Apd, false
-        end
+#         Apd = A + Dopt + γopt * I
+#         not_pd = !isposdef(Apd)
+#         γ_lb *= 10
+#         if γ_lb > γ_ub
+#             return Apd, false
+#         end
 
-        if !not_pd
-            return Apd, true
-        end
-    end
-end
+#         if !not_pd
+#             return Apd, true
+#         end
+#     end
+# end
 
 
 function PR_Zubov_LFInf(
-    Xr,                         # Reduced order state trajectory data
+    X,                          # state trajectory data
     A,                          # Linear system matrix 
     F,                          # Quadratic system matrix
     Pi,                         # Initial P matrix for the optimization
-    Qi;                         # Initial Q matrix for the optimization
-    γ_lb=1e-8,                  # Control parameter for the Zubov method
-    α=0.0,                      # Eigenvalue shift parameter for P
-    β=0.0,                      # Eigenvalue shift parameter for Q
-    N=size(A,1),                # Size of the system
-    Ptilde=1.0I(N),             # Initial target P matrix for the optimization
-    Qtilde=1.0I(N),             # Initial target Q matrix for the optimization
-    δS=1e-5,                    # Symmetricity tolerance for P
-    δJ=1e-5,                    # Objective value tolerance for the optimization
-    max_iter=100,               # Maximum number of iterations for the optimization
-    η=1,                        # Weighting parameter for the Ptilde term
-    extra_iter=3                # Number of extra iterations to run after the optimization has converged
+    Qi,                         # Initial Q matrix for the optimization
+    options::LyapInf_options;   # Options for the optimization
 )
     # Convergence metrics
     Jzubov_lm1 = 0  # Jzubov(l-1)
-    Zerrbest = 1e+8
+    Zerrbest = Inf
     check = 0    # run a few extra iterations to make sure the error is decreasing
 
     # Initialize Q
+    N = size(Qi,1)
     Q = 1.0I(N)
+    P = deepcopy(Pi)
 
-    for l in 1:max_iter
-        # Optimize for the P matrix
-        P, Pc, model_P = optimize_P(Xr, A, F, Q, Pi, α)
-        λ_P, _ = eigen(P) 
-        λ_P_real = real.(λ_P) 
-        Pi = Pc 
+    if options.optimize_both
+        for l in 1:options.max_iter
+            # Optimize for the Q matrix
+            Q, _ = optimize_Q(X, A, F, P, Qi, options)
+            λ_Q = eigen(Q).values
+            λ_Q_real = real.(λ_Q)
+            Qi = Q
 
-        # Optimize for the Q matrix
-        Q, Qc, model_Q = optimize_Q(Xr, A, F, P, Qi, β)
-        λ_Q, _ = eigen(Q)
-        λ_Q_real = real.(λ_Q)
-        Qi = Qc
+            # Optimize for the P matrix
+            P, model_P = optimize_P(X, A, F, Q, options; Pi)
+            λ_P = eigen(P).values
+            λ_P_real = real.(λ_P) 
+            Pi = P 
 
-        Jzubov = objective_value(model_Q) 
-        ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
-        Jzubov_lm1 = Jzubov 
+            Jzubov = objective_value(model_P) 
+            ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
+            Jzubov_lm1 = Jzubov 
 
-        # Compute some metrics to check the convergence
-        diff_P = norm(P - P', 2)
-        diff_Q = norm(Q - Q', 2)
-        Zerr = zubov_error(Xr, A, F, P, Q)
+            # Compute some metrics to check the convergence
+            diff_P = norm(P - P', 2)
+            diff_Q = norm(Q - Q', 2)
+            Zerr = zubov_error(X, A, F, P, Q)
 
-        # Save the best one
-        if all(λ_P_real .> 0) && all(λ_Q_real .> 0) && (Zerr < Zerrbest)
-            Pbest = P
-            Qbest = Q
-            Zerrbest = Zerr
-            ∇Jzubovbest = ∇Jzubov
+            # Save the best one
+            if all(λ_P_real .> 0) && all(λ_Q_real .> 0) && (Zerr < Zerrbest)
+                Pbest = P
+                Qbest = Q
+                Zerrbest = Zerr
+                ∇Jzubovbest = ∇Jzubov
+            end
+
+            # Logging
+            @info """[Zubov-LFI Iteration $l]
+            Zubov Equation Error:                $(Zerr)
+            Gradient of Objective value:         $(∇Jzubov)
+            ||P - P'||_F:                        $(diff_P)
+            ||Q - Q'||_F:                        $(diff_Q)
+            eigenvalues of P:                    $(λ_P)
+            # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
+            eigenvalues of Q:                    $(λ_Q)
+            # of Real(λq) <= 0:                  $(count(i->(i <= 0), λ_Q_real))
+            dimension:                           $(N)
+            α:                                   $(options.α)
+            β:                                   $(options.β)
+            """
+
+            # Check if the resulting P satisfies the tolerance
+            if diff_P < options.δS && diff_Q < options.δS && all(λ_P_real .> 0) && all(λ_Q_real .> 0) && ∇Jzubov < options.δJ
+                check += 1
+                if check == options.extra_iter
+                    return P, Q, Zerr, ∇Jzubov
+                end
+            else
+                check = 0  # reset if not converging continuously
+            end    
+            
+            # If the optimization did not end before the maximum iteration assign what we have best for now
+            if l == options.max_iter
+                if (@isdefined Pbest)
+                    return Pbest, Qbest, Zerrbest, ∇Jzubovbest
+                else
+                    return P, Q, Zerr, ∇Jzubov
+                end
+            end
         end
+    else
+        # Optimize for the P matrix
+        P, model_P = optimize_P(X, A, F, Q, options)
+        λ_P = eigen(P).values
+        λ_P_real = real.(λ_P) 
+
+        Jzubov = objective_value(model_P) 
+        diff_P = norm(P - P', 2)
+        Zerr = zubov_error(X, A, F, P, Q)
 
         # Logging
-        @info """[Zubov-LFI Iteration $l]
+        @info """[Zubov-LyapuInf]
         Zubov Equation Error:                $(Zerr)
         Gradient of Objective value:         $(∇Jzubov)
         ||P - P'||_F:                        $(diff_P)
-        ||Q - Q'||_F:                        $(diff_Q)
         eigenvalues of P:                    $(λ_P)
-        eigenvalues of Ps:                   $(λ_Ps_copy)
-        eigenvalues of Q:                    $(λ_Q)
-        eigenvalues of Qs:                   $(λ_Qs_copy)
         # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
-        # of Real(λq) <= 0:                  $(count(i->(i <= 0), λ_Q_real))
         dimension:                           $(N)
-        η:                                   $(η)
-        α:                                   $(α)
-        β:                                   $(β)
+        α:                                   $(options.α)
         """
-
-        # Check if the resulting P satisfies the tolerance
-        if diff_P < δS && diff_Q < δS && all(λ_P_real .> 0) && all(λ_Q_real .> 0) && ∇Jzubov < δJ
-            check += 1
-            if check == extra_iter
-                return P, Q, Zerr, ∇Jzubov
-            end
-        else
-            check = 0  # reset if not converging continuously
-        end    
-        
-        # If the optimization did not end before the maximum iteration assign what we have best for now
-        if l == max_iter
-            if (@isdefined Pbest)
-                return Pbest, Qbest, Zerrbest, ∇Jzubovbest
-            else
-                return P, Q, Zerr, ∇Jzubov
-            end
-        end
+        return P, Q, Zerr, ∇Jzubov
     end
 end
 
