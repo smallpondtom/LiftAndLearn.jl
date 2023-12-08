@@ -25,10 +25,12 @@ include("lift.jl")
 # Include the optimizers
 include("optimizer/NC_Optimize.jl")
 include("optimizer/EP_Optimize.jl")
-include("optimizer/PP-ZQLFI.jl")
 
 include("learn.jl")
 include("intrusiveROM.jl")
+
+# Inferring the Lyapunov function
+include("LyapInf.jl")
 
 end # module LiftAndLearn
 
