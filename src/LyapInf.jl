@@ -13,7 +13,7 @@ Options for Lyapunov function inference.
     δJ::Real                    = 1e-5     # Objective value tolerance for the optimization
     # η_p::Real                   = 1        # Weighting parameter for the Ptilde term
     # η_q::Real                   = 1        # Weighting parameter for the Qtilde term
-    max_iter::Int               = 100      # Maximum number of iterations for the optimization
+    max_iter::Int               = 10000    # Maximum number of iterations for the optimization
     extra_iter::Int             = 3        # Number of extra iterations to run after the optimization has converged
     optimizer::String           = "ipopt"  # Optimizer to use for the optimization
     ipopt_linear_solver::String = "none"   # Linear solver for Ipopt
@@ -108,21 +108,20 @@ function optimize_P(X, A, F, Q, options; Pi=nothing)
     # Set up optimizer
     if options.optimizer in ["ipopt", "Ipopt"]
         model = Model(Ipopt.Optimizer)
+        set_optimizer_attribute(model, "max_iter", options.max_iter)
+        if options.ipopt_linear_solver != "none"
+            set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+            set_attribute(model, "linear_solver", options.ipopt_linear_solver)
+        end
     else 
         model = Model(SCS.Optimizer)
+        set_optimizer_attribute(model, "max_iters", options.max_iter)
     end
 
     # Set up verbose or silent
     if !options.verbose
         set_silent(model)
     end 
-
-    # More setup
-    if options.ipopt_linear_solver != "none"
-        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
-        set_attribute(model, "linear_solver", options.ipopt_linear_solver)
-    end
-    set_optimizer_attribute(model, "max_iter", options.max_iter)
     set_string_names_on_creation(model, false)
 
     if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
@@ -132,6 +131,17 @@ function optimize_P(X, A, F, Q, options; Pi=nothing)
         if !isnothing(Pi)
             set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
         end
+
+        # INFO: Directly make P into a cholesky factorization
+        #         This takes very long to solve
+        # @variable(model, Ld[1:n, 1:n], Symmetric)
+        # @constraint(model, [i=1:n], Ld[i, i] >= 0)
+        # L = LinearAlgebra.LowerTriangular(Ld)
+        # @expression(model, P, L * L')
+        # if !isnothing(Pi)
+        #     set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
+        # end
+
         @variable(model, Z[1:K, 1:K])
         @constraint(
             model, 
@@ -295,7 +305,7 @@ function PR_Zubov_LFInf(
 )
     # Convergence metrics
     Jzubov_lm1 = 0  # Jzubov(l-1)
-    Zerrbest = Inf
+    # Zerrbest = Inf
     check = 0    # run a few extra iterations to make sure the error is decreasing
 
     # Initialize Q
@@ -324,19 +334,20 @@ function PR_Zubov_LFInf(
             # Compute some metrics to check the convergence
             diff_P = norm(P - P', 2)
             diff_Q = norm(Q - Q', 2)
-            Zerr = zubov_error(X, A, F, P, Q)
+            # Zerr = zubov_error(X, A, F, P, Q)
 
             # Save the best one
-            if all(λ_P_real .> 0) && all(λ_Q_real .> 0) && (Zerr < Zerrbest)
+            if all(λ_P_real .> 0) && all(λ_Q_real .> 0) # && (Zerr < Zerrbest)
                 Pbest = P
                 Qbest = Q
-                Zerrbest = Zerr
+                # Zerrbest = Zerr
                 ∇Jzubovbest = ∇Jzubov
             end
 
+            # Zubov Equation Error:                $(Zerr)
             # Logging
             @info """[Zubov-LFI Iteration $l]
-            Zubov Equation Error:                $(Zerr)
+            Objective value:                     $(Jzubov)
             Gradient of Objective value:         $(∇Jzubov)
             ||P - P'||_F:                        $(diff_P)
             ||Q - Q'||_F:                        $(diff_Q)
@@ -353,7 +364,8 @@ function PR_Zubov_LFInf(
             if diff_P < options.δS && diff_Q < options.δS && all(λ_P_real .> 0) && all(λ_Q_real .> 0) && ∇Jzubov < options.δJ
                 check += 1
                 if check == options.extra_iter
-                    return P, Q, Zerr, ∇Jzubov
+                    # return P, Q, Zerr, ∇Jzubov
+                    return P, Q, ∇Jzubov
                 end
             else
                 check = 0  # reset if not converging continuously
@@ -362,9 +374,10 @@ function PR_Zubov_LFInf(
             # If the optimization did not end before the maximum iteration assign what we have best for now
             if l == options.max_iter
                 if (@isdefined Pbest)
-                    return Pbest, Qbest, Zerrbest, ∇Jzubovbest
+                    # return Pbest, Qbest, Zerrbest, ∇Jzubovbest
+                    return Pbest, Qbest, ∇Jzubovbest
                 else
-                    return P, Q, Zerr, ∇Jzubov
+                    return P, Q, ∇Jzubov
                 end
             end
         end
@@ -376,19 +389,17 @@ function PR_Zubov_LFInf(
 
         Jzubov = objective_value(model_P) 
         diff_P = norm(P - P', 2)
-        Zerr = zubov_error(X, A, F, P, Q)
 
         # Logging
         @info """[Zubov-LyapuInf]
-        Zubov Equation Error:                $(Zerr)
-        Gradient of Objective value:         $(∇Jzubov)
+        Objective value:                     $(Jzubov)
         ||P - P'||_F:                        $(diff_P)
         eigenvalues of P:                    $(λ_P)
         # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
         dimension:                           $(N)
         α:                                   $(options.α)
         """
-        return P, Q, Zerr, ∇Jzubov
+        return P, Q, Jzubov
     end
 end
 
