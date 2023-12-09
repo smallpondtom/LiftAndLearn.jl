@@ -146,7 +146,7 @@ Zerr_res = Dict(
 ## Options for LyapInf
 lyapinf_options = LnL.LyapInf_options(
     extra_iter=3,
-    optimizer="SCS",
+    optimizer="Ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
     optimize_both=false,
@@ -157,7 +157,7 @@ lyapinf_options = LnL.LyapInf_options(
 ## Infer the Lyapunov function for the intrusive model
 @info "Infer the Lyapunov function for the intrusive model"
 # for r in rmin:rmax
-r = 10
+r = 4
 i = r - rmin + 1  # index
 
 A = op_int.A[1:r,1:r]
