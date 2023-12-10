@@ -2,6 +2,8 @@
 
 [![Powered by ACE Lab](https://img.shields.io/badge/powered%20by-ACE%20Lab-pink)](
 https://sites.google.com/view/elizabeth-qian/research/ace-group)
+[![CI](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml)
+[![codecov](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl/graph/badge.svg?token=4MJJ4716UA)](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl)
 
 ---
 
