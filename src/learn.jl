@@ -280,11 +280,13 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
             Nhat = zeros(p,n,n)
             tmp = O[:, n+p+sv+1:n+p+sv+w]
             for i in 1:p
-                Nhat[i,:,:] .= tmp[:, Int(n*(i-1)+1):Int(n*i)]
+                # Nhat[i,:,:] .= tmp[:, Int(n*(i-1)+1):Int(n*i)]
+                Nhat[:,:,i] .= tmp[:, Int(n*(i-1)+1):Int(n*i)]
             end
         end
     else
-        Nhat = (p == 0) || (p == 1) ? 0 : zeros(p,n,n)
+        # Nhat = (p == 0) || (p == 1) ? 0 : zeros(p,n,n)
+        Nhat = (p == 0) || (p == 1) ? 0 : zeros(n,n,p)
     end
 
     # Constant term

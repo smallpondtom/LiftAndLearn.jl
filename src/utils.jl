@@ -23,7 +23,8 @@ Base.@kwdef mutable struct operators
     H::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
     Q::Union{AbstractArray,Real} = 0
     K::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Int64} = 0
-    N::Union{SparseMatrixCSC{Float64,Int64},Array{Float64},Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0
+    # N::Union{SparseMatrixCSC{Float64,Int64},Array{Float64},Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0
+    N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0
     f::Function = x -> x
 end
 
