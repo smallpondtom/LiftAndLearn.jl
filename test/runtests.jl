@@ -12,7 +12,7 @@ defaultname(file) = uppercasefirst(replace(splitext(basename(file))[1], '_' => '
 
 @testset "LiftAndLearn" begin
 
-    
+    testfile("intrusive/pod.jl")
 
     # include("timeevolution/orbitdiagram.jl")
 
