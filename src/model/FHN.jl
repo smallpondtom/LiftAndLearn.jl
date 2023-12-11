@@ -1,12 +1,16 @@
+module FHN
+
 using LinearAlgebra
 using SparseArrays
+
+export fhn
 
 abstract type Abstract_Models end
 
 """
 Struct for Fitzhugh-Nagumo PDE settings
 """
-mutable struct FHN <: Abstract_Models
+mutable struct fhn <: Abstract_Models
     Ω::Vector{Float64}  # spatial domain 
     T::Vector{Float64}  # temporal domain
     αD::Vector{Float64}  # alpha parameter domain
@@ -26,7 +30,7 @@ mutable struct FHN <: Abstract_Models
 end
 
 
-function FHN(Ω, T, αD, βD, Δx, Δt)
+function fhn(Ω, T, αD, βD, Δx, Δt)
     x = (Ω[1]:Δx:Ω[2]-Δx)  # do not include final boundary conditions
     t = T[1]:Δt:T[2]
     Xdim = length(x)
@@ -35,7 +39,7 @@ function FHN(Ω, T, αD, βD, Δx, Δt)
     ICx = zeros(Xdim*2, 1)
     ICw = zeros(Xdim*3, 1)
 
-    FHN(Ω, T, αD, βD, Δx, Δt, Ubc, ICx, ICw, x, t, Xdim, Tdim, FOM, generateFHNmatrices)
+    fhn(Ω, T, αD, βD, Δx, Δt, Ubc, ICx, ICw, x, t, Xdim, Tdim, FOM, generateFHNmatrices)
 end
 
 
@@ -254,4 +258,6 @@ function generateFHNmatrices(k, l)
     # H = sparse(symH)
 
     return A, B, C, H, N, K
+end
+
 end

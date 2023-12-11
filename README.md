@@ -23,28 +23,26 @@ Lift and Learn is a physics-informed method for learning low-dimensional models 
 
 ### Installation
 ```julia-repl
-(@v1.8) pkg> add LiftAndLearn
+(@v1.9) pkg> add LiftAndLearn
 ```
 
 ### Get Started
-For now you can clone the repo
-```
-git clone https://github.com/smallpondtom/LiftAndLearn.jl.git
-cd LiftAndLearn.jl
-```
-Compile natively and activate the package.
-```
-julia
-]
-instantiate
-activate .
+Try out the 1D heat equation example 
+$$
+\frac{\partial u}{\partial t} = \mu\frac{\partial^2 u}{\partial x^2}
+$$
+in the Julia REPL.
+```julia-repl
+> julia
+julia> ;
+shell> cd scripts 
 ⌫
+julia> ]
+(@v1.9) pkg> activate .
+(@v1.9) pkg> instantiate
+⌫
+julia> include("heat1d_OpInf_example.jl")
 ```
-Then you can run the Operator Inference 1D heat equation example.
-```
-include("scripts/heat1d_OpInf_example.jl")
-```
-
 
 ### TODO
 
