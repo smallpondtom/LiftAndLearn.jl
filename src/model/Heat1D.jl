@@ -1,9 +1,12 @@
+module Heat1D
+
 using LinearAlgebra
-using SparseArrays
+
+export heat1d
 
 abstract type Abstract_Models end
 
-mutable struct Heat1D <: Abstract_Models
+mutable struct heat1d <: Abstract_Models
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
@@ -22,7 +25,7 @@ mutable struct Heat1D <: Abstract_Models
 end
 
 
-function Heat1D(Omega, T, D, Δx, Δt, Pdim)
+function heat1d(Omega, T, D, Δx, Δt, Pdim)
     x = (Omega[1]:Δx:Omega[2])[2:end-1]
     t = T[1]:Δt:T[2]
     μs = range(D[1], D[2], Pdim)
@@ -31,7 +34,7 @@ function Heat1D(Omega, T, D, Δx, Δt, Pdim)
     Ubc = ones(Tdim,1)
     IC = zeros(Xdim,1)
 
-    Heat1D(Omega, T, D, Δx, Δt, Ubc, IC, x, t, μs, Xdim, Tdim, Pdim, generateABmatrix)
+    heat1d(Omega, T, D, Δx, Δt, Ubc, IC, x, t, μs, Xdim, Tdim, Pdim, generateABmatrix)
 end
 
 
@@ -39,4 +42,6 @@ function generateABmatrix(N, μ, Δx)
     A = diagm(0 => (-2)*ones(N), 1 => ones(N-1), -1 => ones(N-1)) * μ / Δx^2
     B = [1; zeros(N-2,1); 1] * μ / Δx^2   #! Fixed this to generalize input u
     return A, B
+end
+
 end

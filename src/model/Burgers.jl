@@ -1,9 +1,13 @@
+module Burgers
+
 using LinearAlgebra
 using SparseArrays
 
+export burgers
+
 abstract type Abstract_Models end
 
-mutable struct Burgers <: Abstract_Models
+mutable struct burgers <: Abstract_Models
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
@@ -25,7 +29,7 @@ mutable struct Burgers <: Abstract_Models
     semiImplicitEuler::Function
 end
 
-function Burgers(Omega, T, D, Δx, Δt, Pdim, BC)
+function burgers(Omega, T, D, Δx, Δt, Pdim, BC)
     if BC == "dirichlet"
         x = collect(Omega[1]:Δx:Omega[2])  # include boundary conditions
     elseif BC == "periodic"
@@ -37,7 +41,7 @@ function Burgers(Omega, T, D, Δx, Δt, Pdim, BC)
     Tdim = length(t)
     IC = zeros(Xdim, 1)
 
-    Burgers(
+    burgers(
         Omega, T, D, Δx, Δt, IC, x, t, μs, Xdim, Tdim, Pdim, BC,
         generateABFmatrix, generateMatrix_NC_periodic, generateMatrix_C_periodic,
         generateEPmatrix, semiImplicitEuler
@@ -57,7 +61,7 @@ end
     - `B`: B matrix
     - `F`: F matrix
 """
-function generateABFmatrix(model::Burgers, μ::Float64)
+function generateABFmatrix(model::burgers, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
     Δt = model.Δt
@@ -97,7 +101,7 @@ end
     - `A`: A matrix
     - `F`: F matrix
 """
-function generateMatrix_NC_periodic(model::Burgers, μ::Float64)
+function generateMatrix_NC_periodic(model::burgers, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
 
@@ -138,7 +142,7 @@ end
     - `A`: A matrix
     - `F`: F matrix
 """
-function generateMatrix_C_periodic(model::Burgers, μ::Float64)
+function generateMatrix_C_periodic(model::burgers, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
 
@@ -182,7 +186,7 @@ end
     - `A`: A matrix
     - `F`: F matrix
 """
-function generateEPmatrix(model::Burgers, μ::Float64)
+function generateEPmatrix(model::burgers, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
 
@@ -284,4 +288,6 @@ function semiImplicitEuler(A, F, tdata, IC)
         state[:, j] = (1.0I(Xdim) - Δt * A) \ (state[:, j-1] + F * state2 * Δt)
     end
     return state
+end
+
 end

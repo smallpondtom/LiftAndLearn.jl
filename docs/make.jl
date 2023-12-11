@@ -1,6 +1,6 @@
 using Documenter
 
-makedocs(sitename="My Documentation")
+push!(LOAD_PATH,"../src/")
 
 makedocs(
     sitename = "MyPackage Documentation",
@@ -12,6 +12,7 @@ makedocs(
 )
 
 # deploydocs(
-#     repo = "github.com/username/MyPackage.jl.git",  # Replace with your repository
+#     repo = "github.com/smallpondtom/LiftAndLearn.jl.git",  # Replace with your repository
+#     devbranch = "main"
 #     # Add other deployment options as needed
 # )

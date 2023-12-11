@@ -1,11 +1,14 @@
-using DSP
+module KS
+
 using FFTW
 using LinearAlgebra
 using SparseArrays
 
+export ks
+
 abstract type Abstract_Models end
 
-mutable struct KS <: Abstract_Models
+mutable struct ks <: Abstract_Models
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
@@ -33,7 +36,7 @@ mutable struct KS <: Abstract_Models
     integrate_SG::Function  # integrator for second method of Fourier Transform without FFT
 end
 
-function KS(Omega, T, D, nx, Δt, Pdim, type)
+function ks(Omega, T, D, nx, Δt, Pdim, type)
     Δx = (Omega[2] - Omega[1]) / nx
     x = collect(Omega[1]:Δx:Omega[2]-Δx)  # assuming a periodic boundary condition
     t = collect(T[1]:Δt:T[2])
@@ -47,7 +50,7 @@ function KS(Omega, T, D, nx, Δt, Pdim, type)
     @assert nx == Xdim "nx must be equal to Xdim"
     @assert (type == "c" || type == "nc" || type == "ep") "type must be either c, nc, or ep"
 
-    KS(
+    ks(
         Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim, type,
         model_PS, model_PS_ew, model_SG, model_FD, integrate_FD, 
         integrate_PS, integrate_PS_ew, integrate_SG
@@ -66,7 +69,7 @@ end
     - `A`: A matrix
     - `F`: F matrix
 """
-function model_FD(model::KS, μ::Float64)
+function model_FD(model::ks, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
 
@@ -166,7 +169,7 @@ end
     - `A`: A matrix
     - `F`: F matrix  (take out 1.0im)
 """
-function model_PS(model::KS, μ::Float64)
+function model_PS(model::ks, μ::Float64)
     L = model.Omega[2]
 
     # Create A matrix
@@ -193,7 +196,7 @@ end
     - `A`: A matrix
     - `F`: F matrix
 """
-function model_PS_ew(model::KS, μ::Float64)
+function model_PS_ew(model::ks, μ::Float64)
     L = model.Omega[2]
 
     # Create A matrix
@@ -204,7 +207,7 @@ function model_PS_ew(model::KS, μ::Float64)
 end
 
 
-function model_SG(model::KS, μ::Float64)
+function model_SG(model::ks, μ::Float64)
     N = model.Xdim
     L = model.Omega[2]
 
@@ -477,4 +480,6 @@ function integrate_SG(A, F, tdata, IC)
         uhat2_lm1 = uhat2
     end
     return u, uhat
+end
+
 end

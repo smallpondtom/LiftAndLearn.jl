@@ -1,6 +1,3 @@
-abstract type Abstract_Options end
-
-
 """ 
 Structure of the given system.
 
@@ -77,6 +74,7 @@ Information about the optimization.
     SIGE::Bool = false  # Successive Initial Guess Estimation
     with_bnds::Bool = false  # add bounds to the variables
     linear_solver::String = "none"
+    HSL_lib_path::String = "none"
 end
 
 
