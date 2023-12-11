@@ -22,9 +22,8 @@ Lift and Learn is a physics-informed method for learning low-dimensional models 
     - You can run the code without it by changing the options. By default Ipopt will use `MUMPS` but we recommend you obtain and download `HSL_jll.jl`. You can find the instructions [here](https://licences.stfc.ac.uk/product/libhsl).
 
 ### Installation
-:hammer: Actively working to make it into a package. 
 ```julia-repl
-(@v1.8) pkg> dev 
+(@v1.8) pkg> add LiftAndLearn
 ```
 
 ### Get Started
