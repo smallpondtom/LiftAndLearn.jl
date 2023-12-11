@@ -28,9 +28,7 @@ Lift and Learn is a physics-informed method for learning low-dimensional models 
 
 ### Get Started
 Try out the 1D heat equation example 
-$$
-\frac{\partial u}{\partial t} = \mu\frac{\partial^2 u}{\partial x^2}
-$$
+$$\frac{\partial u}{\partial t} = \mu\frac{\partial^2 u}{\partial x^2}$$
 in the Julia REPL.
 ```julia-repl
 > julia
