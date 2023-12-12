@@ -1,4 +1,4 @@
-export Abstract_Options, sys_struct, vars, data, opt_settings
+export sys_struct, vars, data, opt_settings
 export λtik, LS_options, NC_options, EPHEC_options, EPSIC_options, EPP_options
 
 """ 
@@ -116,7 +116,7 @@ end
 
 """
     LS_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ::λtik, pinv_tol::Real)
+        optim::opt_settings, λ::λtik, pinv_tol::Real) <: Abstract_Options
 
 Standard Operator Inference.
 
@@ -146,7 +146,7 @@ end
 
 """
     NC_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ_lin::Real, λ_quad::Real)
+        optim::opt_settings, λ_lin::Real, λ_quad::Real) <: Abstract_Options
 
 Non-Constrained Operator Inference.
 
@@ -172,7 +172,7 @@ end
 
 """
     EPHEC_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ_lin::Real, λ_quad::Real)
+        optim::opt_settings, λ_lin::Real, λ_quad::Real) <: Abstract_Options
 
 Energy-Preserving Hard Equality Constraint Operator Inference.
 
@@ -202,7 +202,7 @@ end
 
 """
     EPSIC_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ_lin::Real, λ_quad::Real, ϵ::Real)
+        optim::opt_settings, λ_lin::Real, λ_quad::Real, ϵ::Real) <: Abstract_Options
 
 Energy-Preserving Soft Inequality Constraint Operator Inference.
 
@@ -234,7 +234,7 @@ end
 
 """
     EPP_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ_lin::Real, λ_quad::Real, α::Float64)
+        optim::opt_settings, λ_lin::Real, λ_quad::Real, α::Float64) <: Abstract_Options
 
 Energy-Preserving Penalty Operator Inference.
 

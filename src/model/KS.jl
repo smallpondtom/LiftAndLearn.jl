@@ -1,3 +1,6 @@
+"""
+    Kuramoto-Sivashinsky equation PDE model
+"""
 module KS
 
 using FFTW
@@ -6,8 +9,49 @@ using SparseArrays
 
 export ks
 
+"""
+    Abstract_Models
+
+Abstract type for the models.
+"""
 abstract type Abstract_Models end
 
+
+"""
+    ks(Omega, T, D, nx, Δt, Pdim, type) <: Abstract_Models
+
+Kuramoto-Sivashinsky equation PDE model
+    
+    ```math
+    \\frac{\\partial u}{\\partial t} = -\\mu\\frac{\\partial^4 u}{\\partial x^4} - \\frac{\\partial^2 u}{\\partial x^2} - u\\frac{\\partial u}{\\partial x}
+    ```
+where `u` is the state variable and `\\mu` is the viscosity coefficient.
+
+## Fields
+- `Omega::Vector{Float64}`: spatial domain
+- `T::Vector{Float64}`: temporal domain
+- `D::Vector{Float64}`: parameter domain
+- `nx::Float64`: number of spatial grid points
+- `Δx::Float64`: spatial grid size
+- `Δt::Float64`: temporal step size
+- `IC::VecOrMat{Float64}`: initial condition
+- `x::Vector{Float64}`: spatial grid points
+- `t::Vector{Float64}`: temporal points
+- `k::Vector{Float64}`: Fourier modes
+- `μs::Union{Vector{Float64},Float64}`: parameter vector
+- `Xdim::Int64`: spatial dimension
+- `Tdim::Int64`: temporal dimension
+- `Pdim::Int64`: parameter dimension
+- `type::String`: model type
+- `model_PS::Function`: model using Pseudo-Spectral Method/Fast Fourier Transform
+- `model_PS_ew::Function`: model using Pseudo-Spectral Method/Fast Fourier Transform (element-wise)
+- `model_SG::Function`: model using Spectral-Galerkin Method
+- `model_FD::Function`: model using Finite Difference
+- `integrate_FD::Function`: integrator using Crank-Nicholson Adams-Bashforth method
+- `integrate_PS::Function`: integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
+- `integrate_PS_ew::Function`: integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
+- `integrate_SG::Function`: integrator for second method of Fourier Transform without FFT
+"""
 mutable struct ks <: Abstract_Models
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
@@ -36,6 +80,23 @@ mutable struct ks <: Abstract_Models
     integrate_SG::Function  # integrator for second method of Fourier Transform without FFT
 end
 
+
+"""
+    ks(Omega, T, D, nx, Δt, Pdim, type) → ks
+
+Kuramoto-Sivashinsky equation PDE model
+
+## Arguments
+- `Omega::Vector{Float64}`: spatial domain
+- `T::Vector{Float64}`: temporal domain
+- `D::Vector{Float64}`: parameter domain
+- `nx::Float64`: number of spatial grid points
+- `Δt::Float64`: temporal step size
+- `Pdim::Int64`: parameter dimension
+
+## Returns
+- `ks`: Kuramoto-Sivashinsky equation PDE model
+"""
 function ks(Omega, T, D, nx, Δt, Pdim, type)
     Δx = (Omega[2] - Omega[1]) / nx
     x = collect(Omega[1]:Δx:Omega[2]-Δx)  # assuming a periodic boundary condition
@@ -59,15 +120,17 @@ end
 
 
 """
-    Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Finite Difference method.
+    model_FD(model, μ) → A, F
 
-    # Arguments
-    - `model`: Kuramoto-Sivashinsky equation model
-    - `μ`: parameter value
+Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Finite Difference method.
 
-    # Return
-    - `A`: A matrix
-    - `F`: F matrix
+## Arguments
+- `model`: Kuramoto-Sivashinsky equation model
+- `μ`: parameter value
+
+## Returns
+- `A`: A matrix
+- `F`: F matrix
 """
 function model_FD(model::ks, μ::Float64)
     N = model.Xdim
@@ -159,15 +222,17 @@ end
 
 
 """
-    Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Pseudo-Spectral/Fast Fourier Transform method.
+    model_PS(model, μ) → A, F
 
-    # Arguments
-    - `model`: Kuramoto-Sivashinsky equation model
-    - `μ`: parameter value
+Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Pseudo-Spectral/Fast Fourier Transform method.
 
-    # Return
-    - `A`: A matrix
-    - `F`: F matrix  (take out 1.0im)
+## Arguments
+- `model`: Kuramoto-Sivashinsky equation model
+- `μ`: parameter value
+
+## Returns
+- `A`: A matrix
+- `F`: F matrix  (take out 1.0im)
 """
 function model_PS(model::ks, μ::Float64)
     L = model.Omega[2]
@@ -186,15 +251,17 @@ end
 
 
 """
-    Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Fast Fourier Transform method (element-wise).
+    model_PS_ew(model, μ) → A, F
 
-    # Arguments
-    - `model`: Kuramoto-Sivashinsky equation model
-    - `μ`: parameter value
+Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Fast Fourier Transform method (element-wise).
 
-    # Return
-    - `A`: A matrix
-    - `F`: F matrix
+## Arguments
+- `model`: Kuramoto-Sivashinsky equation model
+- `μ`: parameter value
+
+## Returns
+- `A`: A matrix
+- `F`: F matrix
 """
 function model_PS_ew(model::ks, μ::Float64)
     L = model.Omega[2]
@@ -207,6 +274,19 @@ function model_PS_ew(model::ks, μ::Float64)
 end
 
 
+"""
+    model_SG(model, μ) → A, F
+
+Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Spectral-Galerkin method.
+
+## Arguments
+- `model`: Kuramoto-Sivashinsky equation model
+- `μ`: parameter value
+
+## Returns
+- `A`: A matrix
+- `F`: F matrix
+"""
 function model_SG(model::ks, μ::Float64)
     N = model.Xdim
     L = model.Omega[2]
@@ -267,12 +347,14 @@ end
 
 
 """
+    vech(A::AbstractMatrix{T}) where {T} → v
+
 Half-vectorization operation
 
-# Arguments
+## Arguments
 - `A`: matrix to half-vectorize
 
-# Return
+## Returns
 - `v`: half-vectorized form
 """
 function vech(A::AbstractMatrix{T}) where {T}
@@ -287,18 +369,20 @@ end
 
 
 """
-    Integrator using Crank-Nicholson Adams-Bashforth method for (FD)
+    integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing) → u
 
-    # Arguments
-    - `A`: A matrix
-    - `F`: F matrix
-    - `tdata`: temporal points
-    - `IC`: initial condition
-    - `const_stepsize`: whether to use a constant time step size
-    - `u2_lm1`: u2 at j-2
+Integrator using Crank-Nicholson Adams-Bashforth method for (FD)
 
-    # Return
-    - `state`: state matrix
+## Arguments
+- `A`: A matrix
+- `F`: F matrix
+- `tdata`: temporal points
+- `IC`: initial condition
+- `const_stepsize`: whether to use a constant time step size
+- `u2_lm1`: u2 at j-2
+
+## Returns
+- `u`: state matrix
 """
 function integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)
     Xdim = length(IC)
@@ -338,16 +422,19 @@ end
 
 
 """
-    Integrator using Crank-Nicholson Adams-Bashforth method for (FFT)
+    integrate_PS(A, F, tdata, IC) → u, uhat
 
-    # Arguments
-    - `A`: A matrix
-    - `F`: F matrix
-    - `tdata`: temporal points
-    - `IC`: initial condition
+Integrator using Crank-Nicholson Adams-Bashforth method for (FFT)
 
-    # Return
-    - `state`: state matrix
+## Arguments
+- `A`: A matrix
+- `F`: F matrix
+- `tdata`: temporal points
+- `IC`: initial condition
+
+## Returns
+- `u`: state matrix
+- `uhat`: state matrix in the Fourier space
 """
 function integrate_PS(A, F, tdata, IC)
     Xdim = length(IC)
@@ -387,16 +474,19 @@ end
 
 
 """
-    Integrator using Crank-Nicholson Adams-Bashforth method for (FFT) (element-wise)
+    integrate_PS_ew(A, F, tdata, IC) → u, uhat
 
-    # Arguments
-    - `A`: A matrix
-    - `F`: F matrix
-    - `tdata`: temporal points
-    - `IC`: initial condition
+Integrator using Crank-Nicholson Adams-Bashforth method for (FFT) (element-wise)
 
-    # Return
-    - `state`: state matrix
+## Arguments
+- `A`: A matrix
+- `F`: F matrix
+- `tdata`: temporal points
+- `IC`: initial condition
+
+## Returns
+- `u`: state matrix
+- `uhat`: state matrix in the Fourier space
 """
 function integrate_PS_ew(A, F, tdata, IC)
     Xdim = length(IC)
@@ -435,16 +525,19 @@ end
 
 
 """
-    Integrator for model produced with Spectral-Galerkin method.
+    integrate_SG(A, F, tdata, IC) → u, uhat
 
-    # Arguments
-    - `A`: A matrix
-    - `F`: F matrix
-    - `tdata`: temporal points
-    - `IC`: initial condition
+Integrator for model produced with Spectral-Galerkin method.
 
-    # Return
-    - `state`: state matrix
+## Arguments
+- `A`: A matrix
+- `F`: F matrix
+- `tdata`: temporal points
+- `IC`: initial condition
+
+## Returns
+- `u`: state matrix
+- `uhat`: state matrix in the Fourier space
 """
 function integrate_SG(A, F, tdata, IC)
     Xdim = length(IC)

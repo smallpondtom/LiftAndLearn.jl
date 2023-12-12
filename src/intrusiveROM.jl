@@ -1,10 +1,10 @@
-"""
-Intrusive model reduction.
-"""
+export intrusiveMR
 
 
 """
-Perform intrusive model reduction
+    intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, options::Abstract_Options) → op_new::operators
+
+Perform intrusive model reduction using Proper Orthogonal Decomposition (POD)
 
 # Arguments
 - `op`: operators of the target system (A, B, C, F/H, N, K)

@@ -264,7 +264,10 @@ end
 """
     F2Hs(F) → Hs
 
-Convert the quadratic `F` operator into the symmetric `H` operator
+Convert the quadratic `F` operator into the symmetric `H` operator.
+
+This guarantees that the `H` operator is symmetric. The difference from F2H is that
+we use the elimination matrix `L` and the symmetric commutation matrix `N` to multiply the `F` matrix.
 
 ## Arguments
 - `F`: F matrix
@@ -470,14 +473,14 @@ end
 
 
 """
-    invec(r::VecOrMat, m::Int, n::Int) → r
+    invec(r::VecOrMat, m::Int, n::Int) → r::VecOrMat
 
 Inverse vectorization.
 
 ## Arguments
-- `r`: the input vector
-- `m`: the row dimension
-- `n`: the column dimension
+- `r::VecOrMat`: the input vector
+- `m::Int`: the row dimension
+- `n::Int`: the column dimension
 
 ## Returns
 - the inverse vectorized matrix
@@ -491,10 +494,15 @@ end
 """
     Q2H(Q::Union{Array,VecOrMat}) → H
 
-Convert the quadratic `Q` operator into the `H` operator
+Convert the quadratic `Q` operator into the `H` operator. The `Q` matrix is 
+a 3-dim tensor with dimensions `(n x n x n)`. Thus,
+    
+    ```math
+    \\mathbf{Q} = \\begin{bmatrix} \\mathbf{Q}_1 \\\\ \\mathbf{Q}_2 \\\\ \\vdots \\\\ \\mathbf{Q}_n \\end{bmatrix}
+    ```
 
 ## Arguments 
-- `Q`: Quadratic matrix in the 3-dim tensor form
+- `Q::Union{Array,VecOrMat}`: Quadratic matrix in the 3-dim tensor form with dimensions `(n x n x n)`
 
 ## Returns
 - the `H` quadratic matrix
@@ -520,7 +528,7 @@ end
 Convert the quadratic `H` operator into the `Q` operator
 
 ## Arguments 
-- `H`: Quadratic matrix of dimensions `(n x n^2)`
+- `H::Union{Array,VecOrMat,SparseMatrixCSC}`: Quadratic matrix of dimensions `(n x n^2)`
 
 ## Returns
 - the `Q` quadratic matrix of 3-dim tensor

@@ -1,34 +1,9 @@
-"""
-File containing functions that analyze the results for operator inference and
-LnL.
-"""
-
+export sys_struct, vars, data, compProjError, compStateError, compOutputError, compError
+export EPConstraintResidual, EPConstraintViolation
 
 """
-Plotting the error bounds for the test results with median, 1st quartile, and 
-3rd quartile.
+    compProjErrorj(Xf, Vr) → PE
 
-# Arguments
-- `p`: plot figure
-- `X`: reference data
-- `Y`: testing data
-- `name`: plot label
-"""
-# function errBnds(p, X, Y, name="Intrusive")
-#     X = vec(X)'
-#     Ym = median(Y, dims=1)
-#     n = length(X)
-#     q1 = quantile.(eachcol(Y), fill(0.25, n))
-#     q3 = quantile.(eachcol(Y), fill(0.75, n))
-#     ϵ⁻ = Ym' .- q1
-#     ϵ⁺ = q3 .- Ym'
-#     plot!(p, X', Ym', ribbon=(ϵ⁻', ϵ⁺'), fillalpha=0.25, lc=:blue, fillcolor=:green, label=name)
-#     scatter!(p, X, Ym, ms=10, yerror=(ϵ⁻, ϵ⁺), legend=false, mc=:blue, shape=:star5)
-#     return nothing
-# end
-
-
-"""
 Compute the projection error
 
 # Arguments
@@ -47,6 +22,8 @@ end
 
 
 """
+    compStateError(Xf, X, Vr) → SE
+
 Compute the state error
 
 # Arguments
@@ -66,6 +43,8 @@ end
 
 
 """
+    compOutputError(Yf, Y) → OE
+
 Compute output error
 
 # Arguments
@@ -84,6 +63,8 @@ end
 
 
 """
+    compError(Xf, Yf, X, Y, Vr) → PE, SE, OE
+
 Compute all projection, state, and output errors
 
 # Arguments
@@ -119,58 +100,25 @@ function compError(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
 end
 
 
-# function constraintResidual(Qall::Matrix, Hall::Matrix,
-#     rmin::Real, rmax::Real, m::Real)
-#     ϵQ = zeros(rmax - (rmin - 1), m)
-#     ϵH = zeros(rmax - (rmin - 1), m)
-#     for r in rmin:rmax
-#         for p in 1:m
-#             Q = Qall[r-(rmin-1), p]
-#             H = Hall[r-(rmin-1), p]
-#             ϵQ_tmp = 0
-#             ϵH_tmp = 0
-#             for i in 1:r, j in 1:r, k in 1:r
-#                 ϵQ_tmp += Q[i][j, k] + Q[j][i, k] + Q[k][j, i]
-#                 ϵH_tmp += H[i, r*(j-1)+k] + H[j, r*(i-1)+k] + H[k, r*(j-1)+i]
-#             end
-#             ϵQ[r-(rmin-1), p] = ϵQ_tmp / (r^3)
-#             ϵH[r-(rmin-1), p] = ϵH_tmp / (r^3)
-#         end
-#     end
-#     return ϵQ, ϵH
-# end
+"""
+    EPConstraintResidual(X, r, which_quad="H", with_mmt=false) → ϵX, mmt
 
+Compute the constraint residual which is the residual of the energy-preserving constraint 
+```math
+\\sum \\left| \\hat{h}_{ijk} + \\hat{h}_{jik} + \\hat{h}_{kji} \\right| \\quad 1 \\leq i,j,k \\leq r
+```
 
-# function constraintResidual(Q::Array{Matrix{Float64}}, H::Union{Matrix, SparseMatrixCSC}, r::Real)
-#     ϵQ = 0
-#     ϵH = 0
-#     for i in 1:r, j in 1:r, k in 1:r
-#         ϵQ += Q[i][j, k] + Q[j][i, k] + Q[k][j, i]
-#         ϵH += H[i, r*(j-1)+k] + H[j, r*(i-1)+k] + H[k, r*(j-1)+i]
-#     end
-#     ϵQ /= r^3
-#     ϵH /= r^3
-#     return ϵQ, ϵH
-# end
+## Arguments
+- `X::Union{Matrix,SparseMatrixCSC}`: the matrix to compute the constraint residual
+- `r::Real`: the dimension of the system
+- `which_quad::String`: the type of the quadratic operator (H or F)
+- `with_mmt::Bool`: whether to compute the moment of the constraint residual
 
-
-# function constraintResidual(Hall::Matrix, rmin::Real, rmax::Real, m::Real)
-#     ϵH = zeros(rmax - (rmin - 1), m)
-#     for r in rmin:rmax
-#         for p in 1:m
-#             H = Hall[r-(rmin-1), p]
-#             ϵH_tmp = 0
-#             for i in 1:r, j in 1:i, k in 1:j
-#                 ϵH_tmp += H[i, r*(j-1)+k] + H[j, r*(i-1)+k] + H[k, r*(j-1)+i]
-#             end
-#             ϵH[r-(rmin-1), p] = ϵH_tmp
-#         end
-#     end
-#     return ϵH
-# end
-
-
-function constraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_quad::String="H"; with_mmt=false)
+## Returns
+- `ϵX`: the constraint residual
+- `mmt`: the moment which is the sum of the constraint residual without absolute value
+"""
+function EPConstraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_quad::String="H"; with_mmt=false)
     ϵX = 0
     mmt = 0
 
@@ -206,7 +154,23 @@ function constraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_qu
 end
 
 
-function constraintViolation(Data::AbstractArray, X::Union{Matrix, SparseMatrixCSC}, which_quad::String="H")
+"""
+    EPConstraintViolation(Data, X, which_quad="H") → viol
+
+Compute the constraint violation which is the violation of the energy-preserving constraint
+```math
+\\sum \\langle \\mathbf{x}, \\mathbf{H}(\\mathbf{x}\\otimes\\mathbf{x})\\rangle \\quad \\forall \\mathbf{x} \\in \\mathcal{D}
+```
+
+## Arguments
+- `Data::AbstractArray`: the data
+- `X::Union{Matrix,SparseMatrixCSC}`: the matrix to compute the constraint violation
+- `which_quad::String`: the type of the quadratic operator (H or F)
+
+## Returns
+- `viol`: the constraint violation
+"""
+function EPConstraintViolation(Data::AbstractArray, X::Union{Matrix, SparseMatrixCSC}, which_quad::String="H")
     _, m = size(Data)
     viol = zeros(m,1)
     if which_quad == "H"
