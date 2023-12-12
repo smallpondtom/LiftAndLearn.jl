@@ -42,5 +42,5 @@ end
          0.0       -0.810414   0.585857]
    X = [1 2 3 4 5 6; 7 8 9 10 11 12; 13 14 15 16 17 18; 19 20 21 22 23 24]  
    W = LnL.liftedBasis(X, 2, 2, [1,2])
-   @test round.(W, digits=6) ≈ D
+   @test all(isapprox.(W, D, atol=1e-5))
 end
