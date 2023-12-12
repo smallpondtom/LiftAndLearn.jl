@@ -1,16 +1,17 @@
-"""
-Lifting function file.
-"""
+export lifting, liftedBasis
 
 """
+    lifting(N, Nl, lift_funcs) → lifting
+
 Lifting map structure.
 
-# Fields
+## Fields
 - `N`: number of variables of the original nonlinear dynamics
 - `Nl`: number of variables of the lifted system
 - `lift_funcs`: array of lifting transformation functions 
 - `map`: function to map the data to the new mapped states including original states
 - `mapNL`: function to map the data to only the additional lifted states 
+
 """
 struct lifting
     N::Int64
@@ -53,20 +54,27 @@ end
 
 
 """
-Create the block-diagonal POD basis for the new lifted system.
+    liftedBasis(W, Nl, gp, ro) → Vr
 
-# Arguments
+Create the block-diagonal POD basis for the new lifted system data
+
+## Arguments
 - `w`: lifted data matrix
 - `Nl`: number of variables of the lifted state dynamics
+- `gp`: number of grid points for each variable
 - `ro`: vector of the reduced orders for each basis
 
-# Return
+## Return
 - `Vr`: block diagonal POD basis
+
 """
-function liftedBasis(W::Matrix, Nl::Real, ro::Vector)
+function liftedBasis(W::Matrix, Nl::Real, gp::Integer, ro::Vector)
+    @assert size(W, 1) == Nl*gp "Number of rows of W must be equal to Nl*gp"
+    @assert all(ro .<= gp) "Reduced order must be less than or equal to the number of grid points"
+
     V = Vector{Matrix{Float64}}()
     for i in 1:Nl
-        w = svd(W)
+        w = svd(W[(i-1)*gp+1:i*gp, :])
         push!(V, w.U[:, 1:ro[i]])
     end
     Vr = BlockDiagonal(V)

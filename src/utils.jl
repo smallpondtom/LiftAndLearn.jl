@@ -1,11 +1,15 @@
-"""
-File containing general utility structures and functions for Lift & Learn.
-"""
+export operators, dupmat, elimat, commat, nommat, vech
+export F2H, H2F, F2Hs, squareMatStates, kronMatStates, extractF 
+export insert2F, insert2randF, extractH, insert2H, insert2bilin
+export invec, Q2H, H2Q
 
 """
-Structure to store the operators of the system
+    operators(A, B, C, F, H, Q, K, N, f)
 
-# Fields
+Organize the operators of the system in a structure. The operators currently 
+supported are up to second order.
+
+## Fields
 - `A`: linear state operator
 - `B`: linear input operator
 - `C`: linear output operator
@@ -23,20 +27,54 @@ Base.@kwdef mutable struct operators
     H::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
     Q::Union{AbstractArray,Real} = 0
     K::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Int64} = 0
-    # N::Union{SparseMatrixCSC{Float64,Int64},Array{Float64},Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0
     N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0
     f::Function = x -> x
 end
 
 
 """
-Create duplication matrix
+    dupmat(n) → D
 
-# Arguments
-- `n`: dimension of the target matrix
+Create duplication matrix `D` of dimension `n` [^magnus1980].
 
-# Return
+## Arguments
+- `n`: dimension of the duplication matrix
+
+## Returns
 - `D`: duplication matrix
+
+## Examples
+```julia-repl
+julia> A = [1 2; 3 4]
+2×2 Matrix{Int64}:
+ 1  3
+ 3  4
+
+julia> D = LnL.dupmat(2)
+4×3 SparseArrays.SparseMatrixCSC{Float64, Int64} with 4 stored entries:
+ 1.0   ⋅    ⋅ 
+  ⋅   1.0   ⋅
+  ⋅   1.0   ⋅
+  ⋅    ⋅   1.0
+
+julia> D * LnL.vech(A)
+4-element Vector{Float64}:
+ 1.0
+ 3.0
+ 3.0
+ 4.0
+
+julia> a = vec(A)
+4-element Vector{Int64}:
+ 1
+ 3
+ 3
+ 4
+```
+
+## References
+[^magnus1980] J. R. Magnus and H. Neudecker, “The Elimination Matrix: Some Lemmas and Applications,” 
+SIAM. J. on Algebraic and Discrete Methods, vol. 1, no. 4, pp. 422–449, Dec. 1980, doi: 10.1137/0601049.
 """
 function dupmat(n)
     m = n * (n + 1) / 2
@@ -59,12 +97,14 @@ end
 
 
 """
-Create the elimination matrix
+    elimat(m) → L
 
-#  Arguments
+Create elimination matrix `L` of dimension `m` [^magnus1980].
+
+##  Arguments
 - `m`: dimension of the target matrix
 
-# Return
+## Return
 - `L`: elimination matrix
 """
 function elimat(m)
@@ -83,7 +123,16 @@ end
 
 
 """
-Commutation matrix
+    commat(m, n) → K
+
+Create commutation matrix `K` of dimension `m x n` [^magnus1980].
+
+## Arguments
+- `m::Integer`: row dimension of the commutation matrix
+- `n::Integer`: column dimension of the commutation matrix
+
+## Returns
+- `K`: commutation matrix
 """
 function commat(m::Integer, n::Integer)
     mn = Int(m * n)
@@ -93,26 +142,76 @@ function commat(m::Integer, n::Integer)
     K = K[v, :]
     return K
 end
+
+
+"""
+    commat(m::Integer) → K
+
+Dispatch for the commutation matrix of dimensions (m, m)
+
+## Arguments
+- `m::Integer`: row and column dimension of the commutation matrix
+
+## Returns
+- `K`: commutation matrix
+"""
 commat(m::Integer) = commat(m, m)  # dispatch
 
 
 """
-Symmetric commutation matrix.
+    nommat(m, n) → N
+
+Create symmetric commutation matrix `N` of dimension `m x n` [^magnus1980].
+
+## Arguments
+- `m::Integer`: row dimension of the commutation matrix
+- `n::Integer`: column dimension of the commutation matrix
+
+## Returns
+- `N`: symmetric commutation matrix
 """
 function nommat(m::Integer, n::Integer)
     mn = Int(m * n)
     return 0.5 * (sparse(1.0I, mn, mn) + commat(m, n))
 end
+
+"""
+    nommat(m::Integer) → N
+
+Dispatch for the symmetric commutation matrix of dimensions (m, m)
+
+## Arguments
+- `m::Integer`: row and column dimension of the commutation matrix
+
+## Returns
+- `N`: symmetric commutation matrix
+"""
 nommat(m::Integer) = nommat(m, m)  # dispatch
 
 
 """
-Half-vectorization operation
+    vech(A) → v
 
-# Arguments
+Half-vectorization operation. For example half-vectorzation of
+```math
+A = \\begin{bmatrix}
+    a_{11} & a_{12}  \\\\
+    a_{21} & a_{22}
+\\end{bmatrix}
+```
+becomes
+```math
+v = \\begin{bmatrix}
+    a_{11} \\\\
+    a_{21} \\\\
+    a_{22}
+\\end{bmatrix}
+```
+
+## Arguments
 - `A`: matrix to half-vectorize
 
-# Return
+## Returns
 - `v`: half-vectorized form
 """
 function vech(A::AbstractMatrix{T}) where {T}
@@ -127,12 +226,14 @@ end
 
 
 """
-Convert the quadratic F operator into the H operator
+    F2H(F) → H
 
-# Arguments
+Convert the quadratic `F` operator into the `H` operator
+
+## Arguments
 - `F`: F matrix
 
-# Return
+## Returns
 - `H`: H matrix
 """
 function F2H(F)
@@ -143,12 +244,14 @@ end
 
 
 """
-Convert the quadratic H operator into the F operator
+    H2F(H) → F
 
-# Arguments
+Convert the quadratic `H` operator into the `F` operator
+
+## Arguments
 - `H`: H matrix
 
-# Return
+## Returns
 - `F`: F matrix
 """
 function H2F(H)
@@ -159,11 +262,14 @@ end
 
 
 """
-Convert the quadratic F operator into the symmetric H operator
-# Arguments
+    F2Hs(F) → Hs
+
+Convert the quadratic `F` operator into the symmetric `H` operator
+
+## Arguments
 - `F`: F matrix
 
-# Return
+## Returns
 - `Hs`: symmetric H matrix
 """
 function F2Hs(F)
@@ -175,14 +281,16 @@ end
 
 
 """
-Generate the x^(2) squared state values (corresponding to the F matrix) for a 
-matrix form data
+    squareMatStates(Xmat) → Xsq
 
-# Arguments
-- `Xmat`: state matrix
+Generate the `x^[2]` squared state values (corresponding to the `F` matrix) for a 
+snapshot data matrix
 
-# Return
-- squared state matrix 
+## Arguments
+- `Xmat`: state snapshot matrix
+
+## Returns
+- squared state snapshot matrix 
 """
 function squareMatStates(Xmat)
     function vech_col(X)
@@ -194,14 +302,16 @@ end
 
 
 """
-Generate the kronecker product state values (corresponding to the H matrix) for 
+    kronMatStates(Xmat) → Xkron
+
+Generate the kronecker product state values (corresponding to the `H` matrix) for 
 a matrix form state data
 
-# Arguments 
-- `Xmat`: state matrix
+## Arguments 
+- `Xmat`: state snapshot matrix
 
-# Return
-- kronecker product state
+## Returns
+- kronecker product state snapshot matrix
 """
 function kronMatStates(Xmat)
     function vec_col(X)
@@ -213,14 +323,16 @@ end
 
 
 """
-Extracting the F matrix for POD basis of dimensions (N, r)
+    extractF(F, r) → F
 
-# Arguments
+Extracting the `F` matrix for POD basis of dimensions `(N, r)`
+
+## Arguments
 - `F`: F matrix
 - `r`: reduced order
 
-# Return
-- extracted F matrix
+## Returns
+- extracted `F` matrix
 """
 function extractF(F, r)
     N = size(F, 1)
@@ -238,14 +350,16 @@ end
 
 
 """
-Inserting values into the F matrix for higher dimensions
+    insert2F(Fi, N) → F
 
-# Arguments
+Inserting values into the `F` matrix for higher dimensions
+
+## Arguments
 - `Fi`: F matrix to insert
 - `N`: the larger order
 
-# Return
-- inserted F matrix
+## Returns
+- inserted `F` matrix
 """
 function insert2F(Fi, N)
     F = spzeros(N, Int(N * (N + 1) / 2))
@@ -259,6 +373,18 @@ function insert2F(Fi, N)
 end
 
 
+"""
+    insert2randF(Fi, N) → F
+
+Inserting values into the `F` matrix for higher dimensions
+
+## Arguments
+- `Fi`: F matrix to insert
+- `N`: the larger order
+
+## Returns
+- inserted `F` matrix
+"""
 function insert2randF(Fi, N)
     F = sprandn(N, Int(N * (N + 1) / 2), 0.8)
     Ni = size(Fi, 1)
@@ -272,14 +398,16 @@ end
 
 
 """
-Extracting the H matrix for POD basis of dimensions (N, r)
+    extractH(H, r) → H
 
-# Arguments
+Extracting the `H` matrix for POD basis of dimensions `(N, r)`
+
+## Arguments
 - `H`: H matrix
 - `r`: reduced order
 
-# Return
-- extracted H matrix
+## Returns
+- extracted `H` matrix
 """
 function extractH(H, r)
     N = size(H, 1)
@@ -296,14 +424,16 @@ end
 
 
 """
-Inserting values into the H matrix for higher dimensions
+    insert2H(Hi, N) → H
 
-# Arguments
+Inserting values into the `H` matrix for higher dimensions
+
+## Arguments
 - `Hi`: H matrix to insert
 - `N`: the larger order
 
-# Return
-- inserted H matrix
+## Returns
+- inserted `H` matrix
 """
 function insert2H(Hi, N)
     H = spzeros(N, Int(N^2))
@@ -317,13 +447,15 @@ end
 
 
 """
-Inserting the values into the bilinear matrix (N) for higher dimensions
+    insert2bilin(X, N, p) → BL
 
-# Arguments
+Inserting the values into the bilinear matrix (`N`) for higher dimensions
+
+## Arguments
 - `X`: bilinear matrix to insert
 - `N`: the larger order
 
-# Return
+## Returns
 - Inserted bilinear matrix
 """
 function insert2bilin(X, N, p)
@@ -338,13 +470,16 @@ end
 
 
 """
+    invec(r::VecOrMat, m::Int, n::Int) → r
+
 Inverse vectorization.
-# Arguments
+
+## Arguments
 - `r`: the input vector
 - `m`: the row dimension
 - `n`: the column dimension
 
-# Return
+## Returns
 - the inverse vectorized matrix
 """
 function invec(r::VecOrMat, m::Int, n::Int)::VecOrMat
@@ -354,13 +489,15 @@ end
 
 
 """
-Convert the quadratic Q matrix to the H matrix.
+    Q2H(Q::Union{Array,VecOrMat}) → H
 
-# Arguments 
+Convert the quadratic `Q` operator into the `H` operator
+
+## Arguments 
 - `Q`: Quadratic matrix in the 3-dim tensor form
 
-# Return
-- the H quadratic matrix
+## Returns
+- the `H` quadratic matrix
 """
 function Q2H(Q::Union{Array,VecOrMat})
     # The Q matrix should be a 3-dim tensor with dim n
@@ -378,13 +515,15 @@ end
 
 
 """
-Convert the quadratic H matrix to the Q matrix.
+    H2Q(H::Union{Array,VecOrMat,SparseMatrixCSC}) → Q
 
-# Arguments 
-- `H`: Quadratic matrix of dimensions (n x n^2)
+Convert the quadratic `H` operator into the `Q` operator
 
-# Return
-- the Q quadratic matrix of 3-dim tensor
+## Arguments 
+- `H`: Quadratic matrix of dimensions `(n x n^2)`
+
+## Returns
+- the `Q` quadratic matrix of 3-dim tensor
 """
 function H2Q(H::Union{Array,VecOrMat,SparseMatrixCSC})
     # The Q matrix should be a 3-dim tensor with dim n
@@ -402,15 +541,17 @@ end
 
 
 """
-Auxiliary function for the F matrix indexing.
+    fidx(n, j, k) → Int
 
-# Arguments 
+Auxiliary function for the `F` matrix indexing.
+
+## Arguments 
 - `n`: row dimension of the F matrix
 - `j`: row index 
 - `k`: col index
 
-# Return
-- index corresponding to the F matrix
+## Returns
+- index corresponding to the `F` matrix
 """
 function fidx(n,j,k)
     if j >= k
@@ -422,13 +563,15 @@ end
 
 
 """
-Another auxiliary function for the F matrix
+    delta(v, w) → Float64
 
-# Arguments
+Another auxiliary function for the `F` matrix
+
+## Arguments
 - `v`: first index
 - `w`: second index
 
-# Return
+## Returns
 - coefficient of 1.0 or 0.5
 """
 function delta(v,w)
