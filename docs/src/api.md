@@ -7,7 +7,7 @@
     ```
 
     # API
-    This page is a dump of all the docstrings found in the code. 
+    All APIs of LiftAndLearn listed in a unstructured manner.
 
     ```@autodocs
     Modules = [LiftAndLearn]
