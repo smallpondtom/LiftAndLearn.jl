@@ -11,27 +11,27 @@ lifting
 !!! tip
     For a simple pendulum we have 
     ```math
-    \\begin{bmatrix}
-    \dot{x}_1 \\\\
+    \begin{bmatrix}
+    \dot{x}_1 \\
     \dot{x}_2 
-    \\end{bmatrix} = \\begin{bmatrix}
-    x_2 \\\\
-    -\\frac{g}{l} \\sin(x_1)
-    \\end{bmatrix}
+    \end{bmatrix} = \begin{bmatrix}
+    x_2 \\
+    -\frac{g}{l} \sin(x_1)
+    \end{bmatrix}
     ```
     The lifted system becomes 
     ```math
-    \\begin{bmatrix}
-    \dot{x}_1 \\\\
-    \dot{x}_2 \\\\
-    \dot{x}_3 \\\\
+    \begin{bmatrix}
+    \dot{x}_1 \\
+    \dot{x}_2 \\
+    \dot{x}_3 \\
     \dot{x}_4
-    \\end{bmatrix} = \\begin{bmatrix}
-    x_2 \\\\
-    -\\frac{g}{l} x_3 \\\\
-    x_2 x_4 \\\\
+    \end{bmatrix} = \begin{bmatrix}
+    x_2 \\
+    -\frac{g}{l} x_3 \\
+    x_2 x_4 \\
     -x_2 x_3
-    \\end{bmatrix}
+    \end{bmatrix}
     ```
     when `x3 = sin(x1)` and `x4 = cos(x1)`. Which if coded, would look like this:
     ```julia

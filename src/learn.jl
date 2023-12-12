@@ -1,16 +1,15 @@
-"""
-Learning function file.
-"""
-
+export inferOp, choose_ro
 
 """
+    dtApprox(X::VecOrMat, options::Abstract_Options) → dXdt::Matrix, idx::Vector{Int}
+
 Approximating the derivative values of the data with different integration schemes
 
-# Arguments
-- `X`: data matrix
-- `options`: operator inference options
+## Arguments
+- `X::VecOrMat`: data matrix
+- `options::Abstract_Options`: operator inference options
 
-# Return
+## Returns
 - `dXdt`: derivative data
 - `idx`: index for the specific integration scheme (important for later use)
 """
@@ -35,14 +34,17 @@ end
 
 
 """
+    choose_ro(Σ::Vector, en_low::Real) → r_all::Vector{Int}, en::Vector
+
 Choose reduced order (ro) that preserves an acceptable energy.
 
-# Arguments
-- `Σ`: Singular value vector from the SVD of some Hankel Matrix
+## Arguments
+- `Σ::Vector`: Singular value vector from the SVD of some Hankel Matrix
 - `en_low`: minimum size for energy preservation
 
-# Returns
-- vector of all reduced orders.
+## Returns
+- `r_all`: vector of reduced orders
+- `en`: vector of energy values
 """
 function choose_ro(Σ::Vector; en_low=-15)
     # Energy loss from truncation
@@ -62,16 +64,18 @@ end
 
 
 """
+    getDataMat(Xhat::Matrix, Xhat_t::Union{Matrix,Transpose}, U::Matrix, dims::Dict, options::Abstract_Options) → D::Matrix
+
 Get the data matrix for the regression problem
 
-# Arguments
-- `Xhat`: projected data matrix (not transposed)
-- `Xhat_t`: projected data matrix (transpoesd)
-- `U`: input data matrix
-- `dims`: dictionary including important dimensions
-- `options`: options for the operator inference set by the user
+## Arguments
+- `Xhat::Matrix`: projected data matrix
+- `Xhat_t::Union{Matrix,Transpose}`: projected data matrix (transposed)
+- `U::Matrix`: input data matrix
+- `dims::Dict`: dictionary including important dimensions
+- `options::Abstract_Options`: options for the operator inference set by the user
 
-# Return
+## Returns
 - `D`: data matrix for the regression problem
 """
 function getDataMat(Xhat::Matrix, Xhat_t::Union{Matrix,Transpose}, U::Matrix,
@@ -138,14 +142,18 @@ end
 
 
 """
+    tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real; flag::Bool=false) → Matrix
+
 Tikhonov regression
 
-# Arguments
-- `b`: Ax = b right-hand side 
-- `A`: Ax = b left-hand side matrix
-- `λ`: ridge regression parameter
+## Arguments
+- `b::AbstractArray`: right hand side of the regression problem
+- `A::AbstractArray`: left hand side of the regression problem
+- `Γ::AbstractMatrix`: Tikhonov matrix
+- `tol::Real`: tolerance for the singular values
+- `flag::Bool`: flag for the tolerance
 
-# Return
+## Returns
 - regression solution
 """
 function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real; flag::Bool=false)
@@ -170,6 +178,19 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::R
 end
 
 
+"""
+    tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Options) → Γ::AbstractArray
+
+Construct the Tikhonov matrix
+
+## Arguments
+- `Γ::AbstractArray`: Tikhonov matrix (pass by reference)
+- `dims::Dict`: dictionary including important dimensions
+- `options::Abstract_Options`: options for the operator inference set by the user
+
+## Returns
+- `Γ`: Tikhonov matrix (pass by reference)
+"""
 function tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Options)
     n = dims[:n]; p = dims[:p]; s = dims[:s]; v = dims[:v]; w = dims[:w]
     λ = options.λ
@@ -203,18 +224,21 @@ end
 
 
 """
-Extracting the operators after solving the regression problem
+    LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix, Xhat_t::Union{Matrix,Transpose}, 
+    dims::Dict, options::Abstract_Options) → Ahat::Matrix, Bhat::Matrix, Chat::Matrix, Fhat::Matrix, Hhat::Matrix, Nhat::Matrix, Khat::Matrix
 
-# Arguments
-- `D`: data matrix 
-- `Rt`: derivative data which is the left-hand-side of the regression problem (transposed)
-- `Y`: output data matrix
-- `Xhat_t`: projected data matrix (transposed)
-- `dims`: dictionary including important dimensions
-- `options`: options for the operator inference set by the user
+Solve the standard Operator Inference with/without regularization
 
-# Return
-- All operators A, B, C, F, H, N, K
+## Arguments
+- `D::Matrix`: data matrix
+- `Rt::Union{Matrix,Transpose}`: derivative data matrix (transposed)
+- `Y::Matrix`: output data matrix
+- `Xhat_t::Union{Matrix,Transpose}`: projected data matrix (transposed)
+- `dims::Dict`: dictionary including important dimensions
+- `options::Abstract_Options`: options for the operator inference set by the user
+
+## Returns
+- All learned operators A, B, C, F, H, N, K
 """
 function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     Xhat_t::Union{Matrix,Transpose}, dims::Dict, options::Abstract_Options)
@@ -297,18 +321,22 @@ end
 
 
 """
+    run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray, 
+    Xhat_t::AbstractArray, dims::Dict, options::Abstract_Options, IG::operators=operators()) → op::operators
+
 Run the optimizer of choice.
 
-# Arguments
-- `D`: data matrix 
-- `Rt`: derivative data which is the left-hand-side of the regression problem (transposed)
-- `Y`: output data matrix
-- `Xhat_t`: projected data matrix (transposed)
-- `dims`: dictionary including important dimensions
-- `options`: options for the operator inference set by the user
+## Arguments
+- `D::AbstractArray`: data matrix
+- `Rt::AbstractArray`: derivative data matrix (transposed)
+- `Y::AbstractArray`: output data matrix
+- `Xhat_t::AbstractArray`: projected data matrix (transposed)
+- `dims::Dict`: dictionary including important dimensions
+- `options::Abstract_Options`: options for the operator inference set by the user
+- `IG::operators`: initial guesses for optimization
 
-# Return
-- All operators A, B, C, F, H, N, K
+## Returns
+- `op::operators`: All learned operators 
 """
 function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
     Xhat_t::AbstractArray, dims::Dict, options::Abstract_Options,
@@ -352,19 +380,22 @@ end
 
 
 """
-Infer the operators using the previously defined functions 
+    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, R::Matrix, 
+                options::Abstract_Options, IG::operators=operators()) → op::operators
 
-# Arguments
-- `X`: state data matrix
-- `U`: input data matrix
-- `Y`: output data matix
-- `Vn`: POD basis
-- `R`: derivative state data (given in this function)
-- `options`: options for the operator inference defined by the user
-- `IG`: initial guesses for optimization
+Infer the operators with derivative data given
 
-# Return
-- inferred operators
+## Arguments
+- `X::Matrix`: state data matrix
+- `U::Matrix`: input data matrix
+- `Y::VecOrMat`: output data matix
+- `Vn::Matrix`: POD basis
+- `R::Matrix`: derivative data matrix
+- `options::Abstract_Options`: options for the operator inference defined by the user
+- `IG::operators`: initial guesses for optimization
+
+## Returns
+- `op::operators`: inferred operators
 """
 function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, R::Matrix,
     options::Abstract_Options, IG::operators=operators())::operators
@@ -389,18 +420,21 @@ end
 
 
 """
-Infer the operators using the previously defined functions (dispatch)
+    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, options::Abstract_Options, 
+                IG::operators=operators()) → op::operators
 
-# Arguments
-- `X`: state data matrix
-- `U`: input data matrix
-- `Y`: output data matix
-- `Vn`: POD basis
-- `options`: options for the operator inference defined by the user
-- `IG`: initial guesses for optimization
+Infer the operators without derivative data (dispatch)
 
-# Return
-- inferred operators
+## Arguments
+- `X::Matrix`: state data matrix
+- `U::Matrix`: input data matrix
+- `Y::VecOrMat`: output data matix
+- `Vn::Matrix`: POD basis
+- `options::Abstract_Options`: options for the operator inference defined by the user
+- `IG::operators`: initial guesses for optimization
+
+## Returns
+- `op::operators`: inferred operators
 """
 function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
     options::Abstract_Options, IG::operators=operators())::operators
@@ -433,19 +467,22 @@ end
 
 
 """
-Infer the operators with reprojection (dispatch)
+    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, lm::lifting, 
+                options::Abstract_Options, IG::operators=operators()) → op::operators
 
-# Arguments
-- `X`: state data matrix
-- `U`: input data matrix
-- `Y`: output data matix
-- `Vn`: POD basis
-- `full_op`: full order model operators
-- `options`: options for the operator inference defined by the user
-- `IG`: initial guesses for optimization
+Infer the operators with reprojection method (dispatch)
 
-# Return
-- inferred operators
+## Arguments
+- `X::Matrix`: state data matrix
+- `U::Matrix`: input data matrix
+- `Y::VecOrMat`: output data matix
+- `Vn::Matrix`: POD basis
+- `full_op::operators`: full order model operators
+- `options::Abstract_Options`: options for the operator inference defined by the user
+- `IG::operators`: initial guesses for optimization
+
+## Returns
+- `op::operators`: inferred operators
 """
 function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
     full_op::operators, options::Abstract_Options, IG::operators=operators())::operators
@@ -471,20 +508,79 @@ function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
 end
 
 
-# NOTE: Reprojection allows to reduce error from the missing terms of the basis
 """
+    inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal}, 
+                lm::lifting, full_op::operators, options::Abstract_Options, 
+                IG::operators=operators()) → op::operators
+
+Infer the operators for Lift And Learn for reprojected data (dispatch)
+
+## Arguments
+- `W::Matrix`: state data matrix
+- `U::Matrix`: input data matrix
+- `Y::VecOrMat`: output data matix
+- `Vn::Union{Matrix,BlockDiagonal}`: POD basis
+- `lm::lifting`: struct of the lift map
+- `full_op::operators`: full order model operators
+- `options::Abstract_Options`: options for the operator inference defined by the user
+- `IG::operators`: initial guesses for optimization
+
+## Returns
+- `op::operators`: inferred operators
+"""
+function inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
+    lm::lifting, full_op::operators, options::Abstract_Options, IG::operators=operators())::operators
+
+    # Project
+    What = Vn' * W
+    What_t = W' * Vn
+
+    # Important dimensions
+    n, m = size(What)
+    p = options.system.has_control ? size(U, 2) : 0
+    q = options.system.has_output ? size(Y, 1) : 0
+    s = options.system.is_quad ? Int(n * (n + 1) / 2) : 0
+    v = options.system.is_quad ? Int(n * n) : 0
+    w = options.system.is_bilin ? Int(n * p) : 0
+    dims = Dict(:n => n, :m => m, :p => p, :q => q, :s => s, :v => v, :w => w)  # create a dict
+
+    # Generate R matrix from finite difference if not provided as a function argument
+    if options.optim.reproject == true
+        Rt = reproject(What, Vn, U, dims, lm, full_op, options)
+    else
+        Wdot, idx = dtApprox(W, options)
+        W = W[:, idx]  # fix the index of states
+        U = U[idx, :]  # fix the index of inputs
+        Y = Y[:, idx]  # fix the index of outputs
+        R = Vn'Wdot
+        Rt = transpose(R)
+        What = Vn' * W
+        What_t = W' * Vn
+    end
+
+    D = getDataMat(What, What_t, U, dims, options)
+    op = run_optimizer(D, Rt, Y, What_t, dims, options, IG)
+
+    return op
+end
+
+
+"""
+    reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat, dims::Dict, 
+                op::operators, options::Abstract_Options) → Rhat::Matrix
+
 Reprojecting the data to minimize the error affected by the missing orders of the POD basis
 
-# Arguments
-- `Xhat`: state data matrix projected onto the basis
-- `V`: POD basis
-- `U`: input data matrix
-- `dims`: dictionary including important dimensions
-- `op`: full order model operators
-- `options`: options of the operator inference defined by the user
+## Arguments
+- `Xhat::Matrix`: state data matrix projected onto the basis
+- `V::Union{VecOrMat,BlockDiagonal}`: POD basis
+- `U::VecOrMat`: input data matrix
+- `dims::Dict`: dictionary including important dimensions
+- `op::operators`: full order model operators
+- `options::Abstract_Options`: options for the operator inference defined by the user
 
-# Return
-- `Rhat`: R matrix (transposed) for the regression problem
+## Return
+- `Rhat::Matrix`: R matrix (transposed) for the regression problem
 """
 function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
     dims::Dict, op::operators, options::Abstract_Options)::Matrix
@@ -526,21 +622,23 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
 end
 
 
-# NOTE: Reprojection allows to reduce error from the missing terms of the basis
 """
-Reprojecting the data to minimize the error affected by the missing orders of the POD basis
+    reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat, dims::Dict, 
+                lm::lifting, op::operators, options::Abstract_Options) → Rhat::Matrix
 
-# Arguments
-- `Xhat`: state data matrix projected onto the basis
-- `V`: POD basis
-- `U`: input data matrix
-- `dims`: dictionary including important dimensions
-- `lm`: structure of the lift map
-- `op`: full order model operators
-- `options`: options of the operator inference defined by the user
+Reprojecting the lifted data
 
-# Return
-- `Rhat`: R matrix (transposed) for the regression problem
+## Arguments
+- `Xhat::Matrix`: state data matrix projected onto the basis
+- `V::Union{VecOrMat,BlockDiagonal}`: POD basis
+- `U::VecOrMat`: input data matrix
+- `dims::Dict`: dictionary including important dimensions
+- `lm::lifting`: struct of the lift map
+- `op::operators`: full order model operators
+- `options::Abstract_Options`: options for the operator inference defined by the user
+
+## Returns
+- `Rhat::Matrix`: R matrix (transposed) for the regression problem
 """
 function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
     dims::Dict, lm::lifting, op::operators, options::Abstract_Options)::Matrix
@@ -584,60 +682,4 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
     return Rt
 end
 
-
-"""
-Infer the operators using the previously defined functions (dispatch function: 
-this one includes the reprojection operation better results)
-
-# Arguments
-- `W`: lifted state data matrix
-- `U`: input data matrix
-- `Y`: output data matrix
-- `Vn`: POD basis
-- `lm`: struct of the lift map
-- `full_op`: full order model operators
-- `options`: options of the operator inference defined by the user
-- `IG`: initial guesses for optimization
-
-# Return
-- inferred operators
-"""
-function inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
-    lm::lifting, full_op::operators, options::Abstract_Options, IG::operators=operators())::operators
-
-    # Project
-    What = Vn' * W
-    What_t = W' * Vn
-
-    # Important dimensions
-    n, m = size(What)
-    p = options.system.has_control ? size(U, 2) : 0
-    q = options.system.has_output ? size(Y, 1) : 0
-    s = options.system.is_quad ? Int(n * (n + 1) / 2) : 0
-    v = options.system.is_quad ? Int(n * n) : 0
-    w = options.system.is_bilin ? Int(n * p) : 0
-    dims = Dict(:n => n, :m => m, :p => p, :q => q, :s => s, :v => v, :w => w)  # create a dict
-
-    # Generate R matrix from finite difference if not provided as a function argument
-    if options.optim.reproject == true
-        Rt = reproject(What, Vn, U, dims, lm, full_op, options)
-    else
-        Wdot, idx = dtApprox(W, options)
-        W = W[:, idx]  # fix the index of states
-        U = U[idx, :]  # fix the index of inputs
-        Y = Y[:, idx]  # fix the index of outputs
-        R = Vn'Wdot
-        Rt = transpose(R)
-        What = Vn' * W
-        What_t = W' * Vn
-    end
-
-    D = getDataMat(What, What_t, U, dims, options)
-    op = run_optimizer(D, Rt, Y, What_t, dims, options, IG)
-
-    return op
-end
-
-
 # TODO: Create another inferOp function with no full model operators provided.
-

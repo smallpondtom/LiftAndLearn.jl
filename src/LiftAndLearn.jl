@@ -1,5 +1,5 @@
 """
-LiftAndLearn package main module
+    LiftAndLearn package main module
 """
 
 module LiftAndLearn
@@ -14,7 +14,17 @@ using JuMP
 using Ipopt, SCS
 using FFTW
 
+"""
+    Abstract_Options
+
+Abstract type for the options.
+"""
 abstract type Abstract_Options end
+"""
+    Abstract_Model
+
+Abstract type for the model.
+"""
 abstract type Abstract_Model end
 
 include("utils.jl")
@@ -26,7 +36,7 @@ include("lift.jl")
 # Include the optimizers
 include("optimizer/NC_Optimize.jl")
 include("optimizer/EP_Optimize.jl")
-include("optimizer/PP-ZQLFI.jl")
+# include("optimizer/PP-ZQLFI.jl")  # still under development
 
 include("learn.jl")
 include("intrusiveROM.jl")

@@ -1,16 +1,20 @@
+export EPHEC_Optimize, EPSIC_Optimize, EPP_Optimize
+
 """
+    EPHEC_options(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
+                    options::Abstract_Options, IG::operators) → operators
+
 Energy preserved (Hard Equality Constraint) operator inference optimization (EPHEC)
 
-# Arguments
+## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
 - `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
-# Returns
+## Returns
 - Inferred operators
-
 """
 function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     dims::Dict, options::Abstract_Options, IG::operators)
@@ -192,16 +196,19 @@ end
 
 
 """
+    EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
+                    options::Abstract_Options, IG::operators) → operators
+
 Energy preserved (Soft Inequality Constraint) operator inference optimization (EPSIC)
 
-# Arguments
+## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
 - `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
-# Returns
+## Returns
 - Inferred operators
 
 """
@@ -407,16 +414,19 @@ end
 
 
 """
+    EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
+                    options::Abstract_Options, IG::operators) → operators
+
 Energy preserving penalty operator inference optimization (EPP)
 
-# Arguments
+## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
 - `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
-# Returns
+## Returns
 - Inferred operators
 
 """
