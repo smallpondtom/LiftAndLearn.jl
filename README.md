@@ -44,7 +44,7 @@ julia> include("heat1d_OpInf_example.jl")
 
 ### TODO
 
-- [ ] Generalize the Learn & Lift Julia package for public use and for my personal research
+- [ ] Generalize the Learn & Lift Julia package 
     - [ ] Make an operation where the user gives all the settings and training data then the code outputs the inferred operators
     - [ ] Make an operation where the user inputs the inferred operators and the testing data then the error analysis is automatically completed.
 - [ ] Expand opinf
