@@ -33,7 +33,7 @@ makedocs(
     modules = [LiftAndLearn],
     clean = true, doctest = false, linkcheck = false,
     format = Documenter.HTML(
-        assets=String["assets/citations.css"]
+        assets=String["assets/citations.css"],
     ),
     pages = PAGES,
     plugins=[bib],

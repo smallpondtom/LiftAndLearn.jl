@@ -1,5 +1,5 @@
 # Viscous Burgers' Equation
 
 ```@docs
-Burgers
+LiftAndLearn.Burgers
 ```

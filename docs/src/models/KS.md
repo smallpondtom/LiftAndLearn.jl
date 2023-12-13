@@ -1,5 +1,5 @@
 # Kuramoto-Sivashinsky Equation
 
 ```@docs
-KS
+LiftAndLearn.KS
 ```

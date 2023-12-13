@@ -1,5 +1,5 @@
 # Fitzhugh-Nagumo Equation
 
 ```@docs
-FHN
+LiftAndLearn.FHN
 ```
