@@ -1,7 +1,7 @@
 export lifting, liftedBasis
 
 """
-    lifting(N, Nl, lift_funcs) → lifting
+$(TYPEDEF)
 
 Lifting map structure.
 

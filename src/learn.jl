@@ -1,7 +1,7 @@
 export inferOp, choose_ro
 
 """
-    dtApprox(X::VecOrMat, options::Abstract_Options) → dXdt::Matrix, idx::Vector{Int}
+    dtApprox(X::VecOrMat, options::Abstract_Options) → dXdt, idx
 
 Approximating the derivative values of the data with different integration schemes
 
@@ -34,7 +34,7 @@ end
 
 
 """
-    choose_ro(Σ::Vector, en_low::Real) → r_all::Vector{Int}, en::Vector
+    choose_ro(Σ::Vector; en_low=-15) → r_all, en
 
 Choose reduced order (ro) that preserves an acceptable energy.
 
@@ -64,7 +64,8 @@ end
 
 
 """
-    getDataMat(Xhat::Matrix, Xhat_t::Union{Matrix,Transpose}, U::Matrix, dims::Dict, options::Abstract_Options) → D::Matrix
+    getDataMat(Xhat::Matrix, Xhat_t::Union{Matrix,Transpose}, U::Matrix,
+        dims::Dict, options::Abstract_Options) → D
 
 Get the data matrix for the regression problem
 
@@ -142,7 +143,8 @@ end
 
 
 """
-    tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real; flag::Bool=false) → Matrix
+    tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real;
+        flag::Bool=false) → x
 
 Tikhonov regression
 
@@ -179,7 +181,7 @@ end
 
 
 """
-    tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Options) → Γ::AbstractArray
+    tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Options)
 
 Construct the Tikhonov matrix
 
@@ -225,7 +227,7 @@ end
 
 """
     LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix, Xhat_t::Union{Matrix,Transpose}, 
-    dims::Dict, options::Abstract_Options) → Ahat::Matrix, Bhat::Matrix, Chat::Matrix, Fhat::Matrix, Hhat::Matrix, Nhat::Matrix, Khat::Matrix
+        dims::Dict, options::Abstract_Options) → Ahat, Bhat, Chat, Fhat, Hhat, Nhat, Khat
 
 Solve the standard Operator Inference with/without regularization
 
@@ -321,8 +323,9 @@ end
 
 
 """
-    run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray, 
-    Xhat_t::AbstractArray, dims::Dict, options::Abstract_Options, IG::operators=operators()) → op::operators
+    run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
+        Xhat_t::AbstractArray, dims::Dict, options::Abstract_Options,
+        IG::operators=operators()) → op::operators
 
 Run the optimizer of choice.
 
@@ -380,8 +383,8 @@ end
 
 
 """
-    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, R::Matrix, 
-                options::Abstract_Options, IG::operators=operators()) → op::operators
+    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, R::Matrix,
+        options::Abstract_Options, IG::operators=operators()) → op::operators
 
 Infer the operators with derivative data given
 
@@ -420,8 +423,8 @@ end
 
 
 """
-    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, options::Abstract_Options, 
-                IG::operators=operators()) → op::operators
+    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
+        options::Abstract_Options, IG::operators=operators()) → op::operators
 
 Infer the operators without derivative data (dispatch)
 
@@ -467,8 +470,8 @@ end
 
 
 """
-    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, lm::lifting, 
-                options::Abstract_Options, IG::operators=operators()) → op::operators
+    inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
+        full_op::operators, options::Abstract_Options, IG::operators=operators()) → op::operators
 
 Infer the operators with reprojection method (dispatch)
 
@@ -509,9 +512,9 @@ end
 
 
 """
-    inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal}, 
-                lm::lifting, full_op::operators, options::Abstract_Options, 
-                IG::operators=operators()) → op::operators
+    inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
+        lm::lifting, full_op::operators, options::Abstract_Options, 
+        IG::operators=operators()) → op::operators
 
 Infer the operators for Lift And Learn for reprojected data (dispatch)
 
@@ -566,8 +569,8 @@ end
 
 
 """
-    reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat, dims::Dict, 
-                op::operators, options::Abstract_Options) → Rhat::Matrix
+    inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
+        lm::lifting, options::Abstract_Options, IG::operators=operators()) → op::operators
 
 Reprojecting the data to minimize the error affected by the missing orders of the POD basis
 
@@ -623,8 +626,8 @@ end
 
 
 """
-    reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat, dims::Dict, 
-                lm::lifting, op::operators, options::Abstract_Options) → Rhat::Matrix
+    inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
+        lm::lifting, options::Abstract_Options, IG::operators=operators()) → op::operators
 
 Reprojecting the lifted data
 

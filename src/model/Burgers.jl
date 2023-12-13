@@ -3,6 +3,7 @@
 """
 module Burgers
 
+using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
@@ -17,13 +18,13 @@ abstract type Abstract_Models end
 
 
 """
-    burgers(Omega, T, D, Δx, Δt, Pdim, BC) <: Abstract_Models
+$(TYPEDEF)
 
 Viscous Burgers' equation model
 
-    ```math
-    \\frac{\\partial u}{\\partial t} = \\mu\\frac{\\partial^2 u}{\\partial x^2} - u\\frac{\\partial u}{\\partial x}
-    ```
+```math
+\\frac{\\partial u}{\\partial t} = \\mu\\frac{\\partial^2 u}{\\partial x^2} - u\\frac{\\partial u}{\\partial x}
+```
 
 ## Fields
 - `Omega::Vector{Float64}`: spatial domain
@@ -67,6 +68,12 @@ mutable struct burgers <: Abstract_Models
     semiImplicitEuler::Function
 end
 
+
+"""
+    burgers(Omega, T, D, Δx, Δt, Pdim, BC) → burgers
+
+Constructor for the Burgers' equation model.
+"""
 function burgers(Omega, T, D, Δx, Δt, Pdim, BC)
     if BC == "dirichlet"
         x = collect(Omega[1]:Δx:Omega[2])  # include boundary conditions
@@ -88,7 +95,7 @@ end
 
 
 """
-    generateABFmatrix(model::burgers, μ::Float64) → A, B, F
+    generateABFmatrix(model, μ) → A, B, F
 
 Generate A, B, F matrices for the Burgers' equation.
 
@@ -131,7 +138,7 @@ end
 
 
 """
-    generateMatrix_NC_periodic(model::burgers, μ::Float64) → A, F
+    generateMatrix_NC_periodic(model, μ) → A, F
 
 Generate A, F matrices for the non-energy preserving Burgers' equation. (Non-conservative Periodic boundary condition)
 
@@ -174,7 +181,7 @@ end
 
 
 """
-    generateMatrix_C_periodic(model::burgers, μ::Float64) → A, F
+    generateMatrix_C_periodic(model, μ) → A, F
 
 Generate A, F matrices for the non-energy preserving Burgers' equation. (conservative periodic boundary condition)
 
@@ -220,7 +227,7 @@ end
 
 
 """
-    generateEPmatrix(model::burgers, μ::Float64) → A, F
+    generateEPmatrix(model, μ) → A, F
 
 Generate A, F matrices for the Burgers' equation. (Energy-preserving form)
 
@@ -273,7 +280,7 @@ end
 
 
 """
-    vech(A::AbstractMatrix{T}) where {T}
+    vech(A) → v
 
 Half-vectorization operation
 

@@ -2,7 +2,7 @@ export intrusiveMR
 
 
 """
-    intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, options::Abstract_Options) → op_new::operators
+$(SIGNATURES)
 
 Perform intrusive model reduction using Proper Orthogonal Decomposition (POD)
 

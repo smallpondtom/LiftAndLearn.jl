@@ -2,9 +2,7 @@ export sys_struct, vars, data, opt_settings
 export λtik, LS_options, NC_options, EPHEC_options, EPSIC_options, EPP_options
 
 """ 
-    sys_struct(is_lin::Bool, has_control::Bool, 
-        has_output::Bool, is_quad::Bool, is_bilin::Bool, 
-        has_const::Bool, has_funcOp::Bool, is_lifted::Bool)
+$(TYPEDEF)
 
 Structure of the given system.
 
@@ -33,7 +31,7 @@ end
 
 
 """
-    vars(N::Int64, N_lift::Int64)
+$(TYPEDEF)
 
 Information about the system variables.
 
@@ -48,7 +46,7 @@ end
 
 
 """
-    data(Δt::Float64, DS::Int64, deriv_type::String)
+$(TYPEDEF)
 
 Information about the data.
 
@@ -65,9 +63,7 @@ end
 
 
 """
-    opt_settings(verbose::Bool, initial_guess::Bool, max_iter::Int64, 
-        which_quad_term::String, reproject::Bool, SIGE::Bool, 
-        provide_reduced_orders::Bool)
+$(TYPEDEF)
 
 Information about the optimization.
 
@@ -96,7 +92,7 @@ end
 
 
 """
-    λtik(lin::Union{Real, AbstractArray{Real}}, quad::Real, ctrl::Real, bilin::Real)
+$(TYPEDEF)
 
 Tikhonov regularization parameters.
 
@@ -115,8 +111,7 @@ end
 
 
 """
-    LS_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ::λtik, pinv_tol::Real) <: Abstract_Options
+$(TYPEDEF)
 
 Standard Operator Inference.
 
@@ -145,8 +140,7 @@ end
 
 
 """
-    NC_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ_lin::Real, λ_quad::Real) <: Abstract_Options
+$(TYPEDEF)
 
 Non-Constrained Operator Inference.
 
@@ -171,8 +165,7 @@ end
 
 
 """
-    EPHEC_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ_lin::Real, λ_quad::Real) <: Abstract_Options
+$(TYPEDEF)
 
 Energy-Preserving Hard Equality Constraint Operator Inference.
 
@@ -201,8 +194,7 @@ end
 
 
 """
-    EPSIC_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ_lin::Real, λ_quad::Real, ϵ::Real) <: Abstract_Options
+$(TYPEDEF)
 
 Energy-Preserving Soft Inequality Constraint Operator Inference.
 
@@ -233,8 +225,7 @@ end
 
 
 """
-    EPP_options(method::String, system::sys_struct, vars::vars, data::data, 
-        optim::opt_settings, λ_lin::Real, λ_quad::Real, α::Float64) <: Abstract_Options
+$(TYPEDEF)
 
 Energy-Preserving Penalty Operator Inference.
 

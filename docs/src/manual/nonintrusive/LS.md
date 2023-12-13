@@ -59,10 +59,10 @@ This allows us to formulate the following minimization for finding the reduced o
 
 ```math
     \textbf{Standard OpInf}: \qquad 
-    \min_{\hat{\mathbf{A}}\in\mathbb R^{r\times r},~\hat{\mathbf{H}}\in\mathbb R^{r\times r^2}} \sum_{i=1}^K \left\| \dot{\hat{\mathbf x}}_i - \hat{\mathbf{A}}\hat{\mathbf{x}}_i - \hat{\mathbf H}(\hat{\mathbf x}_i \otimes \hat{\mathbf x}_i) \right \|^2_2 = \min_{\mathbf{O}\in\mathbb R^{r\times(r+r^2)}} \|\mathbf{D}\mathbf{O}^\top - \dot{\hat{\mathbf X}}\|_F^2,
+    \min_{\mathbf{\hat{A}}\in\mathbb R^{r\times r},~\hat{\mathbf{H}}\in\mathbb R^{r\times r^2}} \sum_{i=1}^K \left\| \dot{\hat{\mathbf x}}_i - \mathbf{\hat{A}}\hat{\mathbf{x}}_i - \hat{\mathbf H}(\hat{\mathbf x}_i \otimes \hat{\mathbf x}_i) \right \|^2_2 = \min_{\mathbf{O}\in\mathbb R^{r\times(r+r^2)}} \|\mathbf{D}\mathbf{O}^\top - \dot{\hat{\mathbf X}}\|_F^2,
 ```
 
-where ``\mathbf D = [\hat{\mathbf X}^\top, ~\hat{\mathbf X}_\otimes^\top] \in \mathbb R^{K\times(r+r^2)}`` and ``\mathbf O = [\hat{\mathbf A}, ~\hat{\mathbf H}] \in \mathbb R^{r\times(r+r^2)}``.
+where ``\mathbf D = [\hat{\mathbf X}^\top, ~\hat{\mathbf X}_\otimes^\top] \in \mathbb R^{K\times(r+r^2)}`` and ``\mathbf O = [\mathbf{\hat A}, ~\hat{\mathbf H}] \in \mathbb R^{r\times(r+r^2)}``.
 
 
 ## Implementation
@@ -78,4 +78,14 @@ But all of those operations are taken care of automatically. For full details pl
 
 ```@docs
 inferOp
+```
+
+
+### Optimization Implementation
+
+There is a function that solves the least squares problem using `Ipopt` as well.
+
+```@docs
+NC_Optimize
+NC_Optimize_output
 ```

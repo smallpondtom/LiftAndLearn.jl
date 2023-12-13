@@ -4,7 +4,7 @@ export insert2F, insert2randF, extractH, insert2H, insert2bilin
 export invec, Q2H, H2Q
 
 """
-    operators(A, B, C, F, H, Q, K, N, f)
+$(TYPEDEF)
 
 Organize the operators of the system in a structure. The operators currently 
 supported are up to second order.
@@ -33,7 +33,7 @@ end
 
 
 """
-    dupmat(n) → D
+    dupmat(n::Integer) → D
 
 Create duplication matrix `D` of dimension `n` [^magnus1980].
 
@@ -97,7 +97,7 @@ end
 
 
 """
-    elimat(m) → L
+    elimat(m::Integer) → L
 
 Create elimination matrix `L` of dimension `m` [^magnus1980].
 
@@ -123,7 +123,7 @@ end
 
 
 """
-    commat(m, n) → K
+    commat(m::Integer, n::Integer) → K
 
 Create commutation matrix `K` of dimension `m x n` [^magnus1980].
 
@@ -159,7 +159,7 @@ commat(m::Integer) = commat(m, m)  # dispatch
 
 
 """
-    nommat(m, n) → N
+    nommat(m::Integer, n::Integer) → N
 
 Create symmetric commutation matrix `N` of dimension `m x n` [^magnus1980].
 
@@ -190,7 +190,7 @@ nommat(m::Integer) = nommat(m, m)  # dispatch
 
 
 """
-    vech(A) → v
+    vech(A::AbstractMatrix{T}) → v
 
 Half-vectorization operation. For example half-vectorzation of
 ```math
@@ -226,7 +226,7 @@ end
 
 
 """
-    F2H(F) → H
+    F2H(F::Union{SparseMatrixCSC,VecOrMat}) → H
 
 Convert the quadratic `F` operator into the `H` operator
 
@@ -244,7 +244,7 @@ end
 
 
 """
-    H2F(H) → F
+    H2F(H::Union{SparseMatrixCSC,VecOrMat}) → F
 
 Convert the quadratic `H` operator into the `F` operator
 
@@ -262,7 +262,7 @@ end
 
 
 """
-    F2Hs(F) → Hs
+    F2Hs(F::Union{SparseMatrixCSC,VecOrMat}) → Hs
 
 Convert the quadratic `F` operator into the symmetric `H` operator.
 
@@ -284,7 +284,7 @@ end
 
 
 """
-    squareMatStates(Xmat) → Xsq
+    squareMatStates(Xmat::Union{SparseMatrixCSC,VecOrMat}) → Xsq
 
 Generate the `x^[2]` squared state values (corresponding to the `F` matrix) for a 
 snapshot data matrix
@@ -305,7 +305,7 @@ end
 
 
 """
-    kronMatStates(Xmat) → Xkron
+    kronMatStates(Xmat::Union{SparseMatrixCSC,VecOrMat}) → Xkron
 
 Generate the kronecker product state values (corresponding to the `H` matrix) for 
 a matrix form state data
@@ -326,7 +326,7 @@ end
 
 
 """
-    extractF(F, r) → F
+    extractF(F::Union{SparseMatrixCSC,VecOrMat}, r::Int) → F
 
 Extracting the `F` matrix for POD basis of dimensions `(N, r)`
 
@@ -353,7 +353,7 @@ end
 
 
 """
-    insert2F(Fi, N) → F
+    insertF(Fi::Union{SparseMatrixCSC,VecOrMat}, N::Int) → F
 
 Inserting values into the `F` matrix for higher dimensions
 
@@ -377,7 +377,7 @@ end
 
 
 """
-    insert2randF(Fi, N) → F
+    insert2randF(Fi::Union{SparseMatrixCSC,VecOrMat}, N::Int) → F
 
 Inserting values into the `F` matrix for higher dimensions
 
@@ -401,7 +401,7 @@ end
 
 
 """
-    extractH(H, r) → H
+    extractH(H::Union{SparseMatrixCSC,VecOrMat}, r::Int) → H
 
 Extracting the `H` matrix for POD basis of dimensions `(N, r)`
 
@@ -427,7 +427,7 @@ end
 
 
 """
-    insert2H(Hi, N) → H
+    insertH(Hi::Union{SparseMatrixCSC,VecOrMat}, N::Int) → H
 
 Inserting values into the `H` matrix for higher dimensions
 
@@ -450,7 +450,7 @@ end
 
 
 """
-    insert2bilin(X, N, p) → BL
+    insert2bilin(X::Union{SparseMatrixCSC,VecOrMat}, N::Int, p::Int) → BL
 
 Inserting the values into the bilinear matrix (`N`) for higher dimensions
 
@@ -473,7 +473,7 @@ end
 
 
 """
-    invec(r::VecOrMat, m::Int, n::Int) → r::VecOrMat
+    invec(r::VecOrMat, m::Int, n::Int) → r
 
 Inverse vectorization.
 
@@ -497,9 +497,15 @@ end
 Convert the quadratic `Q` operator into the `H` operator. The `Q` matrix is 
 a 3-dim tensor with dimensions `(n x n x n)`. Thus,
     
-    ```math
-    \\mathbf{Q} = \\begin{bmatrix} \\mathbf{Q}_1 \\\\ \\mathbf{Q}_2 \\\\ \\vdots \\\\ \\mathbf{Q}_n \\end{bmatrix}
-    ```
+```math
+\\mathbf{Q} = \\begin{bmatrix} 
+    \\mathbf{Q}_1 \\\\ 
+    \\mathbf{Q}_2 \\\\ 
+    \\vdots \\\\ 
+    \\mathbf{Q}_n 
+\\end{bmatrix}
+\\quad \\text{where }~~ \\mathbf{Q}_i \\in \\mathbb{R}^{n \\times n}
+```
 
 ## Arguments 
 - `Q::Union{Array,VecOrMat}`: Quadratic matrix in the 3-dim tensor form with dimensions `(n x n x n)`
@@ -549,7 +555,7 @@ end
 
 
 """
-    fidx(n, j, k) → Int
+    fidx(n::Int, j::Int, k::Int) → Int
 
 Auxiliary function for the `F` matrix indexing.
 
@@ -571,7 +577,7 @@ end
 
 
 """
-    delta(v, w) → Float64
+    delta(v::Int, w::Int) → Float64
 
 Another auxiliary function for the `F` matrix
 

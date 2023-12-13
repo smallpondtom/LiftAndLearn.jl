@@ -2,10 +2,10 @@ using Documenter
 using LiftAndLearn
 using DocumenterCitations
 
+ENV["JULIA_DEBUG"] = "Documenter"
+
 PAGES = [
     "Home" => "index.md",
-    "API Reference" => "api.md",
-    "Paper Reference" => "paper.md",
     "Manual" => [
         "Utilities" => "manual/Utilities.md",
         "Options" => "manual/Options.md",
@@ -23,26 +23,29 @@ PAGES = [
         "FHN" => "models/FHN.md",
         "KS" => "models/KS.md",
     ],
+    "API Reference" => "api.md",
+    "Paper Reference" => "paper.md",
 ]
 
 bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"))
 
 makedocs(
     sitename = "LiftAndLearn.jl",
-    authors = "Tomoki Koike",
-    modules = [LiftAndLearn],
     clean = true, doctest = false, linkcheck = false,
     format = Documenter.HTML(
+        prettyurls = get(ENV, "CI", nothing) == "true",
+        edit_link = "https://github.com/smallpondtom/LiftAndLearn.jl",
         assets=String["assets/citations.css"],
     ),
+    modules = [
+        LiftAndLearn,
+    ],
     pages = PAGES,
     plugins=[bib],
 )
 
 deploydocs(
     repo = "github.com/smallpondtom/LiftAndLearn.jl.git",
-    target = "build",
-    push_preview = true,
-    # devbranch = "main"
+    devbranch = "main",
     # Add other deployment options as needed
 )

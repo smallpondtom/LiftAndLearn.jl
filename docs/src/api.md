@@ -1,15 +1,15 @@
-    ```@meta
-    CurrentModule = LiftAndLearn 
-    ```
+```@meta
+CurrentModule = LiftAndLearn 
+```
 
-    ```@contents
-    Pages = ["api.md"]
-    ```
+```@contents
+Pages = ["api.md"]
+```
 
-    # API
-    All APIs of LiftAndLearn listed in a unstructured manner.
+# API
+All APIs of LiftAndLearn listed in a unstructured manner.
 
-    ```@autodocs
-    Modules = [LiftAndLearn]
-    Order = [:module, :type, :function, :macro]
-    ```
+```@autodocs
+Modules = [LiftAndLearn]
+Order = [:module, :function, :macro]
+```
