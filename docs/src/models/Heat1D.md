@@ -1,5 +1,5 @@
 # 1D Heat Equation
 
 ```@docs
-Heat1D
+LiftAndLearn.Heat1D
 ```
