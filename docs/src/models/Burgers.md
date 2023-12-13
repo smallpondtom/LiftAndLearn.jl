@@ -1,5 +1,5 @@
 # Viscous Burgers' Equation
 
-```@docs
-LiftAndLearn.Burgers
+```@autodocs
+Modules = [LiftAndLearn.Burgers]
 ```

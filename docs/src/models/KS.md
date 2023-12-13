@@ -1,5 +1,5 @@
 # Kuramoto-Sivashinsky Equation
 
-```@docs
-LiftAndLearn.KS
+```@autodocs
+Modules = [LiftAndLearn.KS]
 ```

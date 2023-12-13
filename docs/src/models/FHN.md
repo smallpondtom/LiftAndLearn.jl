@@ -1,5 +1,5 @@
 # Fitzhugh-Nagumo Equation
 
-```@docs
-LiftAndLearn.FHN
+```@autodocs
+Modules = [LiftAndLearn.FHN]
 ```

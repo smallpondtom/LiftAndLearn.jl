@@ -1,8 +1,8 @@
 export EPHEC_Optimize, EPSIC_Optimize, EPP_Optimize
 
 """
-    EPHEC_options(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-                    options::Abstract_Options, IG::operators) → operators
+    EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
+        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserved (Hard Equality Constraint) operator inference optimization (EPHEC)
 
@@ -197,7 +197,7 @@ end
 
 """
     EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-                    options::Abstract_Options, IG::operators) → operators
+        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserved (Soft Inequality Constraint) operator inference optimization (EPSIC)
 
@@ -415,7 +415,7 @@ end
 
 """
     EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-                    options::Abstract_Options, IG::operators) → operators
+        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserving penalty operator inference optimization (EPP)
 

@@ -1,7 +1,7 @@
 export forwardEuler, backwardEuler, crankNicolson, semiImplicitEuler
 
 """
-    forwardEuler(A::Matrix, B::Matrix, U::Matrix, tdata::VecOrMat, IC::VecOrMat) → states::Matrix
+$(SIGNATURES)
 
 Forward euler scheme integration.
 
@@ -29,7 +29,7 @@ end
 
 
 """
-    forwardEuler(f::Function, g::Function, tdata::VecOrMat, IC::VecOrMat) → states::Matrix
+$(SIGNATURES)
 
 Forward euler scheme [dispatch for f(x,u) and u = g(u,t)]
 
@@ -56,7 +56,7 @@ end
 
 
 """
-    forwardEuler(f::Function, U::Matrix, tdata::VecOrMat, IC::VecOrMat) → states::Matrix
+$(SIGNATURES)
 
 Forward euler scheme [dispatch for f(x,u) and u-input as U-matrix]
 
@@ -83,7 +83,7 @@ end
 
 
 """
-    backwardEuler(A::Matrix, B::Matrix, U::Matrix, tdata::VecOrMat, IC::VecOrMat) → states::Matrix
+$(SIGNATURES)
 
 Backward Euler scheme integration.
 
@@ -111,7 +111,7 @@ end
 
 
 """
-    crankNicolson(A::Matrix, B::Matrix, U::Matrix, tdata::VecOrMat, IC::VecOrMat) → states::Matrix
+$(SIGNATURES)
 
 Crank-Nicolson scheme
 
@@ -140,7 +140,7 @@ end
 
 
 """
-    semiImplicitEuler(A::Matrix, B::Matrix, U::Matrix, tdata::VecOrMat, IC::VecOrMat) → states::Matrix
+$(SIGNATURES)
 
 Semi-Implicit Euler scheme
 
@@ -171,7 +171,7 @@ end
 
 
 """
-    semiImplicitEuler(A::Matrix, B::Matrix, F_or_H::Matrix, U::Matrix, tdata::VecOrMat, IC::VecOrMat) → states::Matrix
+$(SIGNATURES)
 
 Semi-Implicit Euler scheme (dispatch)
 

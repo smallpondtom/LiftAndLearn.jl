@@ -3,6 +3,7 @@
 """
 module KS
 
+using DocStringExtensions
 using FFTW
 using LinearAlgebra
 using SparseArrays
@@ -18,14 +19,15 @@ abstract type Abstract_Models end
 
 
 """
-    ks(Omega, T, D, nx, Δt, Pdim, type) <: Abstract_Models
+$(TYPEDEF)
 
 Kuramoto-Sivashinsky equation PDE model
     
-    ```math
-    \\frac{\\partial u}{\\partial t} = -\\mu\\frac{\\partial^4 u}{\\partial x^4} - \\frac{\\partial^2 u}{\\partial x^2} - u\\frac{\\partial u}{\\partial x}
-    ```
-where `u` is the state variable and `\\mu` is the viscosity coefficient.
+```math
+\\frac{\\partial u}{\\partial t} = -\\mu\\frac{\\partial^4 u}{\\partial x^4} - \\frac{\\partial^2 u}{\\partial x^2} - u\\frac{\\partial u}{\\partial x}
+```
+
+where ``u`` is the state variable and ``\\mu`` is the viscosity coefficient.
 
 ## Fields
 - `Omega::Vector{Float64}`: spatial domain
@@ -84,7 +86,7 @@ end
 """
     ks(Omega, T, D, nx, Δt, Pdim, type) → ks
 
-Kuramoto-Sivashinsky equation PDE model
+Kuramoto-Sivashinsky equation PDE model constructor
 
 ## Arguments
 - `Omega::Vector{Float64}`: spatial domain
@@ -347,7 +349,7 @@ end
 
 
 """
-    vech(A::AbstractMatrix{T}) where {T} → v
+    vech(A) → v
 
 Half-vectorization operation
 

@@ -3,6 +3,7 @@
 """
 module Heat1D
 
+using DocStringExtensions
 using LinearAlgebra
 
 export heat1d
@@ -17,7 +18,7 @@ abstract type Abstract_Models end
 
 
 """
-    heat1d(Omega, T, D, Δx, Δt, Pdim) <: Abstract_Models
+$(TYPEDEF)
 
 1 Dimensional Heat Equation Model
 
@@ -61,7 +62,7 @@ end
 
 
 """
-    heat1d(Omega, T, D, Δx, Δt, Ubc, IC, x, t, μs, Xdim, Tdim, Pdim, generateABmatrix) → heat1d
+$(SIGNATURES)
 
 1 Dimensional Heat Equation Model
 
@@ -90,7 +91,7 @@ end
 
 
 """
-    generateABmatrix(N, μ, Δx)
+$(SIGNATURES)
 
 Generate A and B matrices for the 1D heat equation.
 

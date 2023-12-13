@@ -1,8 +1,8 @@
 export NC_Optimize, NC_Optimize_output
 
 """
-    NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, 
-        dims::Dict, options::Abstract_Options, IG::operators)
+    NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, dims::Dict, 
+        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Optimization version of Standard Operator Inference (NC)
 
@@ -141,8 +141,7 @@ end
 
 
 """
-    NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose}, 
-        dims::Dict, options::Abstract_Options)
+    NC_Optimize_output(Y::Matrix, Xt_hat::Union{Matrix, Transpose}, dims::Dict, options::Abstract_Options) → C
 
 Output optimization for the standard operator inference (for operator `C`)
 

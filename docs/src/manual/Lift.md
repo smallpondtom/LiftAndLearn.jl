@@ -33,7 +33,7 @@ lifting
     -x_2 x_3
     \end{bmatrix}
     ```
-    when `x3 = sin(x1)` and `x4 = cos(x1)`. Which if coded, would look like this:
+    when ``x_3 = \sin(x_1)`` and ``x_4 = \cos(x_1)``. Which if coded, would look like this:
     ```julia
     lifter = LnL.lifting(2, 4, [x -> sin.(x[1]), x -> cos.(x[1])])
     ```

@@ -15,9 +15,9 @@ In POD, we begin by collecting snapshots of state trajectory time series data by
 More generally, the state snapshot matrix can contain state data from multiple simulations, e.g., from different initial conditions or using different parameters.
 Let ``\mathbf{X} = \mathbf{V\Sigma W}^\top`` denote the singular value decomposition of the state snapshot. To reduce the dimension of the large-scale model, we denote by ``\mathbf{V}_r\in \mathbb R^{n\times r}`` the first ``r \ll n`` columns of ``\mathbf V``; this is called the *POD basis*. Then, we approximate the state ``\mathbf{x}`` in the subspace spanned by the POD basis, ``\mathbf x \approx \mathbf V_r \hat{\mathbf x}`` where ``\hat{\mathbf x}\in\mathbb{R}^r`` is called the _reduced state_. If we substitute this approximation into a linear-quadratic system and enforce the Galerkin orthogonality condition that the approximation residual be orthogonal to the span of ``\mathbf V_r``, we arrive at a POD-Galerkin reduced model of the form
 ```math
-    \dot{\hat{\mathbf x}}(t) = \hat{\mathbf A}\hat{\mathbf x}(t) + \hat{\mathbf{H}}(\hat{\mathbf{x}}(t) \otimes \hat{\mathbf{x}}(t)),
+    \dot{\hat{\mathbf x}}(t) = \mathbf{\hat A}\hat{\mathbf x}(t) + \hat{\mathbf{H}}(\hat{\mathbf{x}}(t) \otimes \hat{\mathbf{x}}(t)),
 ```
-where the reduced operators are ``\hat{\mathbf{A}} = \mathbf{V}^\top_r \mathbf{AV}_r \in \mathbb{R}^{r\times r}`` and  ``\hat{\mathbf{H}} = \mathbf{V}^\top_r \mathbf{H}(\mathbf{V}_r \otimes \mathbf{V}_r) \in \mathbb R^{r\times r^2}``.
+where the reduced operators are ``\mathbf{\hat{A}} = \mathbf{V}^\top_r \mathbf{AV}_r \in \mathbb{R}^{r\times r}`` and  ``\hat{\mathbf{H}} = \mathbf{V}^\top_r \mathbf{H}(\mathbf{V}_r \otimes \mathbf{V}_r) \in \mathbb R^{r\times r^2}``.
 
 
 ## Implementation

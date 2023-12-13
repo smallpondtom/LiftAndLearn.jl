@@ -3,6 +3,7 @@
 """
 module FHN
 
+using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
@@ -18,21 +19,23 @@ abstract type Abstract_Models end
 
 
 """
-    fhn(Ω, T, αD, βD, Δx, Δt) <: Abstract_Models
+$(TYPEDEF)
 
 Fitzhugh-Nagumo PDE model
     
-    ```math
-    \\begin{aligned}
-    \\frac{\\partial u}{\\partial t} &=  \\epsilon^2\\frac{\\partial^2 u}{\\partial x^2} + u(u-0.1)(1-u) - v + g \\\\
-    \\frac{\\partial v}{\\partial t} &= hu + \\gamma v + g
-    ```
-where `u` and `v` are the state variables, `g` is the control input, and `h`, `\\gamma`, and `\\epsilon` are the parameters.
+```math
+\\begin{aligned}
+\\frac{\\partial u}{\\partial t} &=  \\epsilon^2\\frac{\\partial^2 u}{\\partial x^2} + u(u-0.1)(1-u) - v + g \\\\
+\\frac{\\partial v}{\\partial t} &= hu + \\gamma v + g
+\\end{aligned}
+```
+
+where ``u`` and ``v`` are the state variables, ``g`` is the control input, and ``h``, ``\\gamma``, and ``\\epsilon`` are the parameters.
 Specifically, for this problem we assume the control input to begin
-    ```math
-    g(t) = \\alpha t^3 \\exp(-\\beta t)
-    ```
-where `\\alpha` and `\\beta` are the parameters that are going to be varied for training.
+```math
+g(t) = \\alpha t^3 \\exp(-\\beta t)
+```
+where ``\\alpha`` and ``\\beta`` are the parameters that are going to be varied for training.
 
 ## Fields
 - `Ω::Vector{Float64}`: spatial domain
@@ -73,7 +76,7 @@ end
 
 
 """
-    fhn(Ω, T, αD, βD, Δx, Δt, Ubc, ICx, ICw, x, t, Xdim, Tdim, FOM, generateFHNmatrices) → fhn
+    fhn(Ω, T, αD, βD, Δx, Δt) → fhn
 
 Fitzhugh-Nagumo PDE model
 

@@ -13,6 +13,7 @@ using Random
 using JuMP
 using Ipopt, SCS
 using FFTW
+using DocStringExtensions
 
 """
     Abstract_Options

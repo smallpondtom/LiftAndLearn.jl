@@ -61,7 +61,7 @@ The source code is distributed under [MIT License](https://github.com/smallpondt
 
 ## Key References
 
-1. Peherstorfer, B. and Willcox, K. 
+(1) Peherstorfer, B. and Willcox, K. 
 [Data-driven operator inference for non-intrusive projection-based model reduction.](https://www.sciencedirect.com/science/article/pii/S0045782516301104)
 Computer Methods in Applied Mechanics and Engineering, 306:196-215, 2016. ([Download](https://cims.nyu.edu/~pehersto/preprints/Non-intrusive-model-reduction-Peherstorfer-Willcox.pdf))
 ```
@@ -75,7 +75,7 @@ Computer Methods in Applied Mechanics and Engineering, 306:196-215, 2016. ([Down
 }
 ```
 
-2. Qian, E., Kramer, B., Marques, A., and Willcox, K. 
+(2) Qian, E., Kramer, B., Marques, A., and Willcox, K. 
 [Transform & Learn: A data-driven approach to nonlinear model reduction](https://arc.aiaa.org/doi/10.2514/6.2019-3707).
 In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www.dropbox.com/s/5znea6z1vntby3d/QKMW_aviation19.pdf?dl=0))
 ```
@@ -89,7 +89,7 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
 }
 ```
 
-3. Qian, E., Kramer, B., Peherstorfer, B., and Willcox, K. [Lift & Learn: Physics-informed machine learning for large-scale nonlinear dynamical systems](https://www.sciencedirect.com/science/article/pii/S0167278919307651), Physica D: Nonlinear Phenomena, 2020.
+(3) Qian, E., Kramer, B., Peherstorfer, B., and Willcox, K. [Lift & Learn: Physics-informed machine learning for large-scale nonlinear dynamical systems](https://www.sciencedirect.com/science/article/pii/S0167278919307651), Physica D: Nonlinear Phenomena, 2020.
 ```
 @article{qian2020lift,
     title={Lift \& {L}earn: {P}hysics-informed machine learning for large-scale nonlinear dynamical systems},
@@ -102,7 +102,7 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
 }
 ```
 
-4. Qian, E., Farcas, I.-G., and Willcox, K. [Reduced operator inference for nonlinear partial differential equations](https://epubs.siam.org/doi/10.1137/21M1393972), SIAM Journal of Scientific Computing, 2022.
+(4) Qian, E., Farcas, I.-G., and Willcox, K. [Reduced operator inference for nonlinear partial differential equations](https://epubs.siam.org/doi/10.1137/21M1393972), SIAM Journal of Scientific Computing, 2022.
 ```
 @article{doi:10.1137/21M1393972,
     author = {Qian, Elizabeth and Farca\c{s}, Ionu\c{t}-Gabriel and Willcox, Karen},

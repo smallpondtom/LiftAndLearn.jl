@@ -2,7 +2,7 @@ export sys_struct, vars, data, compProjError, compStateError, compOutputError, c
 export EPConstraintResidual, EPConstraintViolation
 
 """
-    compProjErrorj(Xf, Vr) → PE
+    compProjError(Xf, Vr) → PE
 
 Compute the projection error
 
@@ -63,7 +63,7 @@ end
 
 
 """
-    compError(Xf, Yf, X, Y, Vr) → PE, SE, OE
+    compError(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr) → PE, ISE, IOE, OSE, OOE
 
 Compute all projection, state, and output errors
 
@@ -99,9 +99,10 @@ function compError(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
     return PE, ISE, IOE, OSE, OOE
 end
 
+#
 
 """
-    EPConstraintResidual(X, r, which_quad="H", with_mmt=false) → ϵX, mmt
+    EPConstraintResidual(X, r, which_quad="H"; with_mmt=false) → ϵX, mmt
 
 Compute the constraint residual which is the residual of the energy-preserving constraint 
 ```math

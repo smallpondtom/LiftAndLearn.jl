@@ -15,7 +15,7 @@ Many of the utility functions revolve around the properties of the following con
 
 The utility functions are based on the following key references 
 
-1. Brewer, J. W.
+(1) Brewer, J. W.
 [Kronecker Products and Matrix Calculus in System Theory](http://ieeexplore.ieee.org/document/1084534/)
 IEEE Transactions on Circuits and Systems, 25(9) 772-781, 1978.
 ```
@@ -35,7 +35,7 @@ IEEE Transactions on Circuits and Systems, 25(9) 772-781, 1978.
 }
 ```
 
-2. Magnus, J. R. and Neudecker, H.
+(2) Magnus, J. R. and Neudecker, H.
 [The Elimination Matrix: Some Lemmas and Applications](https://epubs.siam.org/doi/10.1137/0601049).
 SIAM Journal on Algebraic Discrete Methods, 1(4) 422-449, 1980-12.
 ```
@@ -54,6 +54,8 @@ SIAM Journal on Algebraic Discrete Methods, 1(4) 422-449, 1980-12.
   pages = {422–449}
 }
 ```
+
+## Utility APIs
 
 ```@docs
 vech
