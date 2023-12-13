@@ -34,7 +34,7 @@ makedocs(
     clean = true, doctest = false, linkcheck = false,
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
-        # edit_link = "https://github.com/smallpondtom/LiftAndLearn.jl",
+        edit_link = "https://github.com/smallpondtom/LiftAndLearn.jl",
         assets=String["assets/citations.css"],
     ),
     modules = [
@@ -46,6 +46,7 @@ makedocs(
 
 deploydocs(
     repo = "github.com/smallpondtom/LiftAndLearn.jl.git",
-    # devbranch = "main",
+    branch = "gh-pages",
+    devbranch = "main",
     # Add other deployment options as needed
 )
