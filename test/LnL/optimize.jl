@@ -1,11 +1,12 @@
 using LiftAndLearn
+using Statistics
 using Test
 
 const LnL = LiftAndLearn
 
 @testset "Burgers standard NC-OpInf" begin
     # First order Burger's equation setup
-    burger = Burgers(
+    burger = LnL.burgers(
         [0.0, 1.0], [0.0, 1.0], [0.1, 1.0],
         2^(-7), 1e-4, 2, "dirichlet"
     )
@@ -32,15 +33,6 @@ const LnL = LiftAndLearn
             verbose=false,
             initial_guess=false,
         ),
-        with_tol=true,
-        with_reg=true,
-        pinv_tol=1e-6,
-        λ=λtik(
-            lin=1.0,
-            quad=1e-3,
-            ctrl=1e-2,
-            bilin=0.0
-        )
     )
 
     Utest = ones(burger.Tdim - 1, 1);  # Reference input/boundary condition for OpInf testing 
@@ -51,7 +43,6 @@ const LnL = LiftAndLearn
     # Downsampling rate
     DS = options.data.DS
 
-    println("[INFO] Compute inferred and intrusive operators and calculate the errors")
     for i in 1:length(burger.μs)
         μ = burger.μs[i]
 
@@ -180,8 +171,7 @@ end
     Vr = Vector{Matrix{Float64}}(undef, KSE.Pdim)  # POD basis
     Σr = Vector{Vector{Float64}}(undef, KSE.Pdim)  # singular values 
 
-    @info "Generate the FOM system matrices and training data."
-    @showprogress for i in eachindex(KSE.μs)
+    for i in eachindex(KSE.μs)
         μ = KSE.μs[i]
 
         # Generate the FOM system matrices (ONLY DEPENDS ON μ)
@@ -198,27 +188,15 @@ end
 
             states = KSE.integrate_FD(A, F, KSE.t, u0(a,b))
             if prune_data
-                Xtr_all[i,j] = states[:, prune_idx-1:end]
-
                 tmp = states[:, prune_idx:end]
                 Xall[j] = tmp[:, 1:DS:end]  # downsample data
                 tmp = (states[:, prune_idx:end] - states[:, prune_idx-1:end-1]) / KSE.Δt
                 Xdotall[j] = tmp[:, 1:DS:end]  # downsample data
-
-                if i == 1
-                    IC_train[j] = states[:, prune_idx-1]
-                end
             else
-                Xtr_all[i,j] = states
-
                 tmp = states[:, 2:end]
                 Xall[j] = tmp[:, 1:DS:end]  # downsample data
                 tmp = (states[:, 2:end] - states[:, 1:end-1]) / KSE.Δt
                 Xdotall[j] = tmp[:, 1:DS:end]  # downsample data
-
-                if i == 1
-                    IC_train[j] = u0(a, b)
-                end
             end
         end
         # Combine all initial condition data to form on big training data matrix

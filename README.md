@@ -12,7 +12,7 @@ https://sites.google.com/view/elizabeth-qian/research/ace-group)
 LiftAndLearn.jl is an implementation of the Lift and Learn as well as the operator inference algorithm proposed in the papers listed in [References](#references). 
 
 ### Operator Inference (OpInf)
-Operator Inference is a scientific machine-learning framework used in data-driven modeling of dynamical systems that aims to learn the governing equations or operators from observed data without explicit knowledge of the underlying physics or dynamics (but with some information such as the structure, e.g., linear, quadratic, bilinear, etc.). To know more about OpInf, please refer to these resources by [Willcox Research Group](https://kiwi.oden.utexas.edu/research/operator-inference) and [ACE Lab](https://github.com/elizqian/operator-inference/tree/master).
+Operator Inference is a scientific machine-learning framework used in data-driven modeling of dynamical systems that aims to learn the governing equations or operators from observed data without explicit knowledge of the underlying physics or dynamics (but with some information such as the structure, e.g., linear, quadratic, bilinear, etc.). To know more about OpInf, please refer to these resources by  [ACE Lab](https://github.com/elizqian/operator-inference/tree/master) and [Willcox Research Group](https://kiwi.oden.utexas.edu/research/operator-inference).
 
 ### Lift and Learn (LnL)
 Lift and Learn is a physics-informed method for learning low-dimensional models for large-scale dynamical systems. Lifting refers to the transformation of the original nonlinear system to a linear, quadratic, bilinear, or polynomial system by mapping the original state space to a new space with additional auxiliary variables. After lifting the system to a more approachable form we can learn a reduced model using the OpInf approach. 
@@ -22,6 +22,7 @@ Lift and Learn is a physics-informed method for learning low-dimensional models 
 - We use [Ipopt](https://github.com/jump-dev/Ipopt.jl) for the optimization (e.g., EP-OpInf)
     - This requires additional proprietary linear-solvers including `ma86` and `ma97`. 
     - You can run the code without it by changing the options. By default Ipopt will use `MUMPS` but we recommend you obtain and download `HSL_jll.jl`. You can find the instructions [here](https://licences.stfc.ac.uk/product/libhsl).
+- As this package is designed for model reduction of large-scale models, we recommend using a high-memory machine to run the examples, ideally with more than 32GB of RAM.
 
 ### Installation
 ```julia-repl
