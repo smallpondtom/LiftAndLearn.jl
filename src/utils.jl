@@ -478,14 +478,14 @@ end
 Inverse vectorization.
 
 ## Arguments
-- `r::VecOrMat`: the input vector
+- `r::AbstractArray`: the input vector
 - `m::Int`: the row dimension
 - `n::Int`: the column dimension
 
 ## Returns
 - the inverse vectorized matrix
 """
-function invec(r::VecOrMat, m::Int, n::Int)::VecOrMat
+function invec(r::AbstractArray, m::Int, n::Int)::VecOrMat
     tmp = vec(1.0I(n))'
     return kron(tmp, 1.0I(m)) * kron(1.0I(n), r)
 end
@@ -508,12 +508,12 @@ a 3-dim tensor with dimensions `(n x n x n)`. Thus,
 ```
 
 ## Arguments 
-- `Q::Union{Array,VecOrMat}`: Quadratic matrix in the 3-dim tensor form with dimensions `(n x n x n)`
+- `Q::AbstractArray`: Quadratic matrix in the 3-dim tensor form with dimensions `(n x n x n)`
 
 ## Returns
 - the `H` quadratic matrix
 """
-function Q2H(Q::Union{Array,VecOrMat})
+function Q2H(Q::AbstractArray)
     # The Q matrix should be a 3-dim tensor with dim n
     n = size(Q, 1)
 
@@ -534,12 +534,12 @@ end
 Convert the quadratic `H` operator into the `Q` operator
 
 ## Arguments 
-- `H::Union{Array,VecOrMat,SparseMatrixCSC}`: Quadratic matrix of dimensions `(n x n^2)`
+- `H::AbstractArray`: Quadratic matrix of dimensions `(n x n^2)`
 
 ## Returns
 - the `Q` quadratic matrix of 3-dim tensor
 """
-function H2Q(H::Union{Array,VecOrMat,SparseMatrixCSC})
+function H2Q(H::AbstractArray)
     # The Q matrix should be a 3-dim tensor with dim n
     n = size(H, 1)
 

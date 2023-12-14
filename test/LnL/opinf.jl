@@ -206,6 +206,15 @@ end
         optim=LnL.opt_settings(
             verbose=true,
         ),
+        with_tol=true,
+        with_reg=true,
+        pinv_tol=1e-6,
+        λ=λtik(
+            lin=1.0,
+            quad=1e-3,
+            ctrl=1e-2,
+            bilin=0.0
+        )
     )
     Utest = ones(burger.Tdim - 1, 1);  # Reference input/boundary condition for OpInf testing 
 

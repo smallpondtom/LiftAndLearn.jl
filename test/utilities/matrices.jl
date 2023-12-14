@@ -43,26 +43,18 @@ end
 end
 
 
-@testset "Quadratic matrix conversion" begin
-    A = rand(3,6)
-    ct = 0
-    for i in A
-        A[ct+=1] = i >= 0.5 ? 1 : 0
-    end
-    H = [
-        0.0  1.0  0.0  0.0  1.0  0.0  0.0  0.0  1.0
-        0.0  0.0  1.0  0.0  1.0  0.0  0.0  0.0  1.0
-        1.0  0.0  0.0  0.0  1.0  1.0  0.0  0.0  0.0
-    ]
-    Hs = [
-        0.0  0.5  0.0  0.5  1.0  0.0  0.0  0.0  1.0
-        0.0  0.0  0.5  0.0  1.0  0.0  0.5  0.0  1.0
-        1.0  0.0  0.0  0.0  1.0  0.5  0.0  0.5  0.0
-    ]
-    @test all(H .== LnL.F2H(A))
-    @test all(Hs .== LnL.F2Hs(A))
-    @test all(A .== LnL.H2F(H))
+@testset "Quadratic matrix conversion" begin    # Settings for the KS equation
+    KSE = LnL.ks(
+        [0.0, 22.0], [0.0, 100.0], [1.0, 1.0],
+        32, 0.01, 1, "ep"
+    )
+    _, F = KSE.model_SG(KSE, KSE.μs[1])
+    n = size(F, 1)
 
+    @test all(F .== LnL.H2F(LnL.F2H(F)))
+    @test all(F .== LnL.H2F(LnL.F2Hs(F)))
+
+    H = LnL.F2H(F)
     Q = LnL.H2Q(H)
     Hnew = Matrix(LnL.Q2H(Q))
     @test all(H .== Hnew)

@@ -1,7 +1,12 @@
 # Lift And Learn
 
-Lift and Learn is a model reduction that allows us to deal with nonlinear PDEs which are not particularly in the form of a Polynomial system. This is made possible using the _lifting_ method which introduces an auxiliary variable into the system and lifts the system into a polynomial form. This is similar to Koopman theory. However, lifting is a direct transformation, whereas Koopman theory is an approximation.
+## Overview
+The Lift and Learn method offers a transformative approach to model reduction in nonlinear dynamical systems, especially those not conforming to polynomial structures. 
 
-After lifting the system, the Operator Inference scheme can be applied easily to discovery the reduced operators from data.
+## Lifting Process
+This method introduces an auxiliary variable, effectively 'lifting' the system into a polynomial framework. This direct transformation contrasts with Koopman theory's approximation approach, streamlining the representation of complex dynamics.
+
+## Operator Inference
+After lifting, the system is compatible with the Operator Inference scheme, facilitating the discovery of simplified models through data-driven techniques. This phase is instrumental in deriving interpretable and efficient reduced-order models from intricate dynamical systems.
 
 For further details on lifting, please see [lifting](../Lift.md).
