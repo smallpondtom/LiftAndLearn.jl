@@ -21,4 +21,7 @@ defaultname(file) = uppercasefirst(replace(splitext(basename(file))[1], '_' => '
     testfile("LnL/opinf.jl")
     testfile("LnL/lnl.jl")
     testfile("LnL/optimize.jl")
+
+    testfile("models/burgers.jl")
+    testfile("models/kse.jl")
 end

@@ -225,9 +225,45 @@ end
         ForH_bnds=(-100.0, 100.0),
     )
     op_ephec =  Array{LnL.operators}(undef, KSE.Pdim)
-
     for i in eachindex(KSE.μs)
         op_ephec[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i], options)
     end
+    @test true # dummy test to make sure the testset runs
+
+    options = LnL.EPSIC_options(
+        system=KSE_system,
+        vars=KSE_vars,
+        data=KSE_data,
+        optim=KSE_optim,
+        ϵ=1e-3,
+        A_bnds=(-1000.0, 1000.0),
+        ForH_bnds=(-100.0, 100.0),
+    )
+    op_epsic = Array{LnL.operators}(undef, KSE.Pdim)
+    for i in eachindex(KSE.μs)
+        op_epsic[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i], options)
+    end
+    @test true # dummy test to make sure the testset runs
+
+    options = LnL.EPP_options(
+        system=KSE_system,
+        vars=KSE_vars,
+        data=KSE_data,
+        optim=KSE_optim,
+        α=1e6,
+        A_bnds=(-1000.0, 1000.0),
+        ForH_bnds=(-100.0, 100.0),
+    )
+    op_epp =  Array{LnL.operators}(undef, KSE.Pdim)
+    for i in eachindex(KSE.μs)
+        op_epp[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i], options)
+    end
+    Fextract = LnL.extractF(op_epp[1].F, ro[2])
+    _ =  LnL.EPConstraintResidual(Fextract, ro[2], "F"; with_mmt=false)
+    _, _ =  LnL.EPConstraintResidual(Fextract, ro[2], "F"; with_mmt=true)
+
+    Hextract = LnL.F2Hs(Fextract)
+    _ =  LnL.EPConstraintResidual(Hextract, ro[2], "H"; with_mmt=false)
+    _, _ =  LnL.EPConstraintResidual(Hextract, ro[2], "H"; with_mmt=true)
     @test true # dummy test to make sure the testset runs
 end
