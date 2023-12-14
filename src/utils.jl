@@ -175,6 +175,7 @@ function nommat(m::Integer, n::Integer)
     return 0.5 * (sparse(1.0I, mn, mn) + commat(m, n))
 end
 
+
 """
     nommat(m::Integer) → N
 
@@ -473,7 +474,7 @@ end
 
 
 """
-    invec(r::VecOrMat, m::Int, n::Int) → r
+    invec(r::AbstractArray, m::Int, n::Int) → r
 
 Inverse vectorization.
 
@@ -492,7 +493,7 @@ end
 
 
 """
-    Q2H(Q::Union{Array,VecOrMat}) → H
+    Q2H(Q::AbstractArray) → H
 
 Convert the quadratic `Q` operator into the `H` operator. The `Q` matrix is 
 a 3-dim tensor with dimensions `(n x n x n)`. Thus,
@@ -529,7 +530,7 @@ end
 
 
 """
-    H2Q(H::Union{Array,VecOrMat,SparseMatrixCSC}) → Q
+    H2Q(H::AbstractArray) → Q
 
 Convert the quadratic `H` operator into the `Q` operator
 
