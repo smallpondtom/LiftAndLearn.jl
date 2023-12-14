@@ -521,7 +521,7 @@ function Q2H(Q::Union{Array,VecOrMat})
     H = spzeros(n, n^2)
 
     for i in 1:n
-        H[i, :] = vec(Q[i, :, :])
+        H[i, :] = vec(Q[:, :, i])
     end
 
     return H
@@ -544,10 +544,10 @@ function H2Q(H::Union{Array,VecOrMat,SparseMatrixCSC})
     n = size(H, 1)
 
     # Preallocate the sparse matrix of H
-    Q = Vector{Matrix{Float64}}(undef, n)
+    Q = Array{Float64}(undef, n, n, n)
 
     for i in 1:n
-        Q[i] = invec(H[i, :], n, n)
+        Q[:,:,i] = invec(H[i, :], n, n)
     end
 
     return Q
