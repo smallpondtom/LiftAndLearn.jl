@@ -18,6 +18,7 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [compat]
 BlockDiagonals = "0.1"
+DocStringExtensions = "0.9"
 FFTW = "1.7"
 Ipopt = "1.5"
 JuMP = "1.17"
