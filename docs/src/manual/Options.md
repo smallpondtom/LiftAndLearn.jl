@@ -6,7 +6,7 @@
 This package works with model reduction for polynomial systems with affine control taking a generel form of 
 
 ```math
-\dot{\mathbf{x}} = \mathbf{A}_1\mathbf{x} + \mathbf{A}_2(\mathbf{x}\otimes\mathbf{x}) + \cdots + \mathbf{A}_n(\underbrace{\mathbf{x}\otimes\cdots\otimes\mathbf{x}}_{n-\text{times}}) + \sum_{i=1}^m N_{1,i}\mathbf{x}\mathbf{u} + \cdots + \sum_{i=1}^m N_{k,i}(\underbrace{\mathbf{x}\otimes\cdots\otimes\mathbf{x}}_{k-\text{times}})\mathbf{u} + \mathbf{B}\mathbf{u} +\mathbf{K}~.
+\dot{\mathbf{x}} = \mathbf{A}_1\mathbf{x} + \mathbf{A}_2(\mathbf{x}\otimes\mathbf{x}) + \cdots + \mathbf{A}_n(\underbrace{\mathbf{x}\otimes\cdots\otimes\mathbf{x}}_{n-\text{times}}) + \sum_{i=1}^m N_{1,i}\mathbf{x}\mathbf{u}_i + \cdots + \sum_{i=1}^m N_{k,i}(\underbrace{\mathbf{x}\otimes\cdots\otimes\mathbf{x}}_{k-\text{times}})\mathbf{u}_i + \mathbf{B}\mathbf{u} +\mathbf{K}~.
 ```
 
 !!! note "Current Implementations"
