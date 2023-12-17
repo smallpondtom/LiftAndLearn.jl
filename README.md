@@ -1,15 +1,18 @@
 # Lift & Learn/Operator Inference with Julia
 
-[![Powered by ACE Lab](https://img.shields.io/badge/powered%20by-ACE%20Lab-pink)](
-https://sites.google.com/view/elizabeth-qian/research/ace-group)
+<h1 align="center">
+  <a href="https://github.com/smallpondtom/LiftAndLearn.jl">
+    <img src="docs/src/assets/logo.png" alt="Logo" width="250" height="250">
+  </a>
+</h1>
+
+<div align="center">
+
+[![Powered by ACE Lab](https://img.shields.io/badge/powered%20by-ACE%20Lab-pink)](https://sites.google.com/view/elizabeth-qian/research/ace-group)
 [![CI](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl/graph/badge.svg?token=4MJJ4716UA)](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl)
 [![Doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/dev)
-
-
-<div style="width:60px ; height:60px">
-    ![logo](/docs/src/assets/logo.svg)
-<div>
+</div>
 
 ---
 
