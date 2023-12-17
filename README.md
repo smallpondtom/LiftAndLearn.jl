@@ -2,7 +2,8 @@
 
 <h1 align="center">
   <a href="https://github.com/smallpondtom/LiftAndLearn.jl">
-    <img src="docs/src/assets/logo.png" alt="Logo" width="250" height="250">
+    <img src="docs/src/assets/logo.png#gh-light-mode-only" alt="Logo" width="250" height="250"/>
+    <img src="docs/src/assets/logo-dark.png#gh-dark-mode-only" alt="Logo" width="250" height="250"/>
   </a>
 </h1>
 
