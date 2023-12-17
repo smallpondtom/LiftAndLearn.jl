@@ -14,8 +14,6 @@
 [![Doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/dev)
 </div>
 
----
-
 LiftAndLearn.jl is an implementation of the Lift and Learn as well as the operator inference algorithm proposed in the papers listed in [References](#references). 
 
 ### Operator Inference (OpInf)
