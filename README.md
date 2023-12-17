@@ -1,11 +1,12 @@
 # Lift & Learn/Operator Inference with Julia
 
-<h1 align="center">
-  <a href="https://github.com/smallpondtom/LiftAndLearn.jl">
-    <img src="docs/src/assets/logo.png#gh-light-mode-only" alt="Logo" width="250" height="250"/>
-    <img src="docs/src/assets/logo-dark.png#gh-dark-mode-only" alt="Logo" width="250" height="250"/>
-  </a>
-</h1>
+<div align="center">
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/src/assets/logo-dark.png">
+        <source media="(prefers-color-scheme: light)" srcset="docs/src/assets/logo.png">
+        <img alt="logo" src="docs/src/assets/logo.png" width="250" height="250">
+    </picture>
+</div>
 
 <div align="center">
 
