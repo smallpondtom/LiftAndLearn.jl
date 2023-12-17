@@ -7,6 +7,10 @@ https://sites.google.com/view/elizabeth-qian/research/ace-group)
 [![Doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/dev)
 
 
+<div style="width:60px ; height:60px">
+    ![logo](/docs/src/assets/logo.svg)
+<div>
+
 ---
 
 LiftAndLearn.jl is an implementation of the Lift and Learn as well as the operator inference algorithm proposed in the papers listed in [References](#references). 
