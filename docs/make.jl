@@ -35,7 +35,11 @@ makedocs(
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
         edit_link = "https://github.com/smallpondtom/LiftAndLearn.jl",
-        assets=String["assets/citations.css"],
+        assets=String[
+            "assets/citations.css",
+            "assets/favicon.ico",
+        ],
+        analytics = "G-B2FEJZ9J99",
     ),
     modules = [
         LiftAndLearn,
