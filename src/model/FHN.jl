@@ -1,12 +1,61 @@
+"""
+    Fitzhugh-Nagumo PDE model
+"""
+module FHN
+
+using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
-abstract type Abstract_Models end
+export fhn
+
 
 """
-Struct for Fitzhugh-Nagumo PDE settings
+    Abstract_Models
+
+Abstract type for the models.
 """
-mutable struct FHN <: Abstract_Models
+abstract type Abstract_Models end
+
+
+"""
+$(TYPEDEF)
+
+Fitzhugh-Nagumo PDE model
+    
+```math
+\\begin{aligned}
+\\frac{\\partial u}{\\partial t} &=  \\epsilon^2\\frac{\\partial^2 u}{\\partial x^2} + u(u-0.1)(1-u) - v + g \\\\
+\\frac{\\partial v}{\\partial t} &= hu + \\gamma v + g
+\\end{aligned}
+```
+
+where ``u`` and ``v`` are the state variables, ``g`` is the control input, and ``h``, ``\\gamma``, and ``\\epsilon`` are the parameters.
+Specifically, for this problem we assume the control input to begin
+```math
+g(t) = \\alpha t^3 \\exp(-\\beta t)
+```
+where ``\\alpha`` and ``\\beta`` are the parameters that are going to be varied for training.
+
+## Fields
+- `Ω::Vector{Float64}`: spatial domain
+- `T::Vector{Float64}`: temporal domain
+- `αD::Vector{Float64}`: alpha parameter domain
+- `βD::Vector{Float64}`: beta parameter domain
+- `Δx::Float64`: spatial grid size
+- `Δt::Float64`: temporal step size
+- `Ubc::Matrix{Float64}`: boundary condition (input)
+- `ICx::Matrix{Float64}`: initial condition for the original states
+- `ICw::Matrix{Float64}`: initial condition for the lifted states
+- `x::Vector{Float64}`: spatial grid points
+- `t::Vector{Float64}`: temporal points
+- `Xdim::Int64`: spatial dimension
+- `Tdim::Int64`: temporal dimension
+- `FOM::Function`: function to generate the full order operators
+- `generateFHNmatrices::Function`: function to generate the full order operators for the intrusive model operators
+
+"""
+mutable struct fhn <: Abstract_Models
     Ω::Vector{Float64}  # spatial domain 
     T::Vector{Float64}  # temporal domain
     αD::Vector{Float64}  # alpha parameter domain
@@ -26,7 +75,23 @@ mutable struct FHN <: Abstract_Models
 end
 
 
-function FHN(Ω, T, αD, βD, Δx, Δt)
+"""
+    fhn(Ω, T, αD, βD, Δx, Δt) → fhn
+
+Fitzhugh-Nagumo PDE model
+
+## Arguments
+- `Ω::Vector{Float64}`: spatial domain
+- `T::Vector{Float64}`: temporal domain
+- `αD::Vector{Float64}`: alpha parameter domain
+- `βD::Vector{Float64}`: beta parameter domain
+- `Δx::Float64`: spatial grid size
+- `Δt::Float64`: temporal step size
+
+## Returns
+- `fhn`: Fitzhugh-Nagumo PDE model
+"""
+function fhn(Ω, T, αD, βD, Δx, Δt)
     x = (Ω[1]:Δx:Ω[2]-Δx)  # do not include final boundary conditions
     t = T[1]:Δt:T[2]
     Xdim = length(x)
@@ -35,13 +100,25 @@ function FHN(Ω, T, αD, βD, Δx, Δt)
     ICx = zeros(Xdim*2, 1)
     ICw = zeros(Xdim*3, 1)
 
-    FHN(Ω, T, αD, βD, Δx, Δt, Ubc, ICx, ICw, x, t, Xdim, Tdim, FOM, generateFHNmatrices)
+    fhn(Ω, T, αD, βD, Δx, Δt, Ubc, ICx, ICw, x, t, Xdim, Tdim, FOM, generateFHNmatrices)
 end
 
 
 """
+    FOM(k, l) → A, B, C, K, f
+
 Create the full order operators with the nonlinear operator expressed as f(x). 
-Referenced Elizabeth's matlab function.
+
+## Arguments
+- `k::Int64`: number of spatial grid points
+- `l::Float64`: spatial domain length
+
+## Returns
+- `A::SparseMatrixCSC{Float64,Int64}`: A matrix
+- `B::SparseMatrixCSC{Float64,Int64}`: B matrix
+- `C::SparseMatrixCSC{Float64,Int64}`: C matrix
+- `K::SparseMatrixCSC{Float64,Int64}`: K matrix
+- `f::Function`: nonlinear operator
 """
 function FOM(k, l)
     h = l / (k - 1)
@@ -124,8 +201,22 @@ end
 
 
 """
-Generate the full order operators used for the intrusive model operators. 
-Referenced Elizabeth's matlab function.
+    generateFHNmatrices(k, l) → A, B, C, H, N, K
+
+Generate the full order operators used for the intrusive model operators
+
+## Arguments
+- `k::Int64`: number of spatial grid points
+- `l::Float64`: spatial domain length
+
+## Returns
+- `A::SparseMatrixCSC{Float64,Int64}`: A matrix
+- `B::SparseMatrixCSC{Float64,Int64}`: B matrix
+- `C::SparseMatrixCSC{Float64,Int64}`: C matrix
+- `H::SparseMatrixCSC{Float64,Int64}`: H matrix
+- `N::SparseMatrixCSC{Float64,Int64}`: N matrix
+- `K::SparseMatrixCSC{Float64,Int64}`: K matrix
+
 """
 function generateFHNmatrices(k, l)
     h = l / (k - 1)
@@ -254,4 +345,6 @@ function generateFHNmatrices(k, l)
     # H = sparse(symH)
 
     return A, B, C, H, N, K
+end
+
 end

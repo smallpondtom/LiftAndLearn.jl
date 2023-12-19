@@ -1,10 +1,12 @@
-abstract type Abstract_Options end
-
+export sys_struct, vars, data, opt_settings
+export λtik, LS_options, NC_options, EPHEC_options, EPSIC_options, EPP_options
 
 """ 
+$(TYPEDEF)
+
 Structure of the given system.
 
-# Fields
+## Fields
 - `is_lin::Bool`: the system is linear
 - `is_quad::Bool`: the system is quadratic
 - `is_bilin::Bool`: the system is bilinear
@@ -29,9 +31,11 @@ end
 
 
 """
+$(TYPEDEF)
+
 Information about the system variables.
 
-# Fields
+## Fields
 - `N::Int64`: the number of system variables
 - `N_lift::Int64`: the number of lifted system variables
 """
@@ -42,9 +46,11 @@ end
 
 
 """
+$(TYPEDEF)
+
 Information about the data.
 
-# Fields
+## Fields
 - `Δt::Float64`: the time step or temporal discretization
 - `DS::Int64`: the downsampling rate
 - `deriv_type::String`: the derivative scheme, e.g. "F"orward "E"uler
@@ -57,16 +63,20 @@ end
 
 
 """
+$(TYPEDEF)
+
 Information about the optimization.
 
-# Fields
+## Fields
 - `verbose::Bool`: enable the verbose output for optimization
 - `initial_guess::Bool`: use initial guesses for optimization
 - `max_iter::Int64`: the maximum number of iterations for the optimization
 - `which_quad_term::String`: choose main quadratic operator (H or F) to use for computation
 - `reproject::Bool`: use reprojection method for derivative data
 - `SIGE::Bool`: use successive initial guess estimation
-- `provide_reduced_orders::Bool`: provide reduced orders for the basis
+- `with_bnds::Bool`: add bounds to the variables
+- `linear_solver::String`: the linear solver to use for optimization
+- `HSL_lib_path::String`: the path to the HSL library
 """
 @with_kw mutable struct opt_settings
     verbose::Bool = false
@@ -77,18 +87,20 @@ Information about the optimization.
     SIGE::Bool = false  # Successive Initial Guess Estimation
     with_bnds::Bool = false  # add bounds to the variables
     linear_solver::String = "none"
+    HSL_lib_path::String = "none"
 end
 
 
 """
+$(TYPEDEF)
+
 Tikhonov regularization parameters.
 
-# Fields
+## Fields
 - `lin::Float64`: the Tikhonov regularization parameter for linear state operator
 - `quad::Float64`: the Tikhonov regularization parameter for quadratic state operator
 - `ctrl::Float64`: the Tikhonov regularization parameter for control operator
 - `bilin::Float64`: the Tikhonov regularization parameter for bilinear state operator
-- `lin_threshold::Int64`: the index threshold to apply Tikhonov regularization for linear state operator
 """
 @with_kw struct λtik
     lin::Union{Real, AbstractArray{Real}} = 0.0
@@ -99,15 +111,19 @@ end
 
 
 """
-Least-Squares Operator Inference.
+$(TYPEDEF)
 
-# Fields
+Standard Operator Inference.
+
+## Fields
 - `method::String`: the name of the method
 - `system::sys_struct`: the system structure
 - `vars::vars`: the system variables
 - `data::data`: the data
 - `optim::opt_settings`: the optimization settings
 - `λ::λtik`: the Tikhonov regularization parameters
+- `with_tol::Bool`: the option to use tolerance for the least square pseudo inverse
+- `with_reg::Bool`: the option to use Tikhonov regularization
 - `pinv_tol::Real`: the tolerance for the least square pseudo inverse
 """
 @with_kw mutable struct LS_options <: Abstract_Options
@@ -124,9 +140,11 @@ end
 
 
 """
+$(TYPEDEF)
+
 Non-Constrained Operator Inference.
 
-# Fields
+## Fields
 - `method::String`: the name of the method
 - `system::sys_struct`: the system structure
 - `vars::vars`: the system variables
@@ -147,9 +165,11 @@ end
 
 
 """
+$(TYPEDEF)
+
 Energy-Preserving Hard Equality Constraint Operator Inference.
 
-# Fields
+## Fields
 - `method::String`: the name of the method
 - `system::sys_struct`: the system structure
 - `vars::vars`: the system variables
@@ -157,6 +177,8 @@ Energy-Preserving Hard Equality Constraint Operator Inference.
 - `optim::opt_settings`: the optimization settings
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
+- `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
+- `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
 @with_kw mutable struct EPHEC_options <: Abstract_Options
     method::String = "EPHEC"
@@ -172,9 +194,11 @@ end
 
 
 """
+$(TYPEDEF)
+
 Energy-Preserving Soft Inequality Constraint Operator Inference.
 
-# Fields
+## Fields
 - `method::String`: the name of the method
 - `system::sys_struct`: the system structure
 - `vars::vars`: the system variables
@@ -183,6 +207,8 @@ Energy-Preserving Soft Inequality Constraint Operator Inference.
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 - `ϵ::Real`: soft constraint radius
+- `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
+- `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
 @with_kw mutable struct EPSIC_options <: Abstract_Options
     method::String = "EPSIC"
@@ -199,9 +225,11 @@ end
 
 
 """
+$(TYPEDEF)
+
 Energy-Preserving Penalty Operator Inference.
 
-# Fields
+## Fields
 - `method::String`: the name of the method
 - `system::sys_struct`: the system structure
 - `vars::vars`: the system variables
@@ -210,6 +238,8 @@ Energy-Preserving Penalty Operator Inference.
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 - `α::Float64`: the weight for the energy-preserving term in the cost function
+- `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
+- `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
 @with_kw mutable struct EPP_options <: Abstract_Options
     method::String = "EPP"

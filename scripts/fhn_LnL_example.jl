@@ -4,8 +4,6 @@ Fitzhugh-Nagumo Equation test case using Lift & Learn.
 
 ## Setups 
 using BlockDiagonals
-using FileIO
-using JLD2
 using LinearAlgebra
 using NaNStatistics
 using Plots
@@ -13,16 +11,14 @@ using ProgressMeter
 using Random
 using SparseArrays
 using Statistics
-using Tables
 
-include("../src/model/FHN.jl")
-include("../src/LiftAndLearn.jl")
+using LiftAndLearn
 const LnL = LiftAndLearn
 
 ## Generate models
 start = time()
 # First order Burger's equation setup
-fhn = FHN(
+fhn = LnL.fhn(
     [0.0, 1.0], [0.0, 4.0], [500, 50000], [10, 15], 2^(-9), 1e-4
 )
 
@@ -135,6 +131,7 @@ display(p)
 N_tests = 16
 
 # Parameters for the testing data (1)
+@info "Creating test data 1"
 α_test1 = vec(rand(N_tests, 1) .* (fhn.αD[2] - fhn.αD[1]) .+ fhn.αD[1])
 β_test1 = vec(rand(N_tests, 1) .* (fhn.βD[2] - fhn.βD[1]) .+ fhn.βD[1])
 
@@ -153,6 +150,7 @@ Utest1_all = Vector{Matrix{Float64}}(undef, N_tests)
 end
 
 ## Create test 2 data
+@info "Creating test data 2"
 N_test_sqrt = Int(sqrt(N_tests))
 # Parameters for testing data (2)
 α_test2 = vec((5 * 10 .^ range(start=4, stop=6, length=N_test_sqrt))' .* ones(N_test_sqrt))
@@ -173,6 +171,7 @@ Utest2_all = Vector{Matrix{Float64}}(undef, N_tests)
 end
 
 ## Analyze the training and tests 
+@info "Analyzing the training and test data"
 mode_req = [1 1 1; 2 1 3; 3 3 4; 5 4 5]  # Required number of modes for each lifted variables
 
 # Data lifting

@@ -1,9 +1,52 @@
+"""
+    Viscous Burgers' equation model
+"""
+module Burgers
+
+using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
+export burgers
+
+"""
+    Abstract_Models
+
+Abstract type for the models.
+"""
 abstract type Abstract_Models end
 
-mutable struct Burgers <: Abstract_Models
+
+"""
+$(TYPEDEF)
+
+Viscous Burgers' equation model
+
+```math
+\\frac{\\partial u}{\\partial t} = \\mu\\frac{\\partial^2 u}{\\partial x^2} - u\\frac{\\partial u}{\\partial x}
+```
+
+## Fields
+- `Omega::Vector{Float64}`: spatial domain
+- `T::Vector{Float64}`: temporal domain
+- `D::Vector{Float64}`: parameter domain
+- `Δx::Float64`: spatial grid size
+- `Δt::Float64`: temporal step size
+- `IC::VecOrMat{Float64}`: initial condition
+- `x::Vector{Float64}`: spatial grid points
+- `t::Vector{Float64}`: temporal points
+- `μs::Union{Vector{Float64},Float64}`: parameter vector
+- `Xdim::Int64`: spatial dimension
+- `Tdim::Int64`: temporal dimension
+- `Pdim::Int64`: parameter dimension
+- `BC::String`: boundary condition
+- `generateABFmatrix::Function`: function to generate A, B, F matrices
+- `generateMatrix_NC_periodic::Function`: function to generate A, F matrices for the non-energy preserving Burgers' equation. (Non-conservative Periodic boundary condition)
+- `generateMatrix_C_periodic::Function`: function to generate A, F matrices for the non-energy preserving Burgers' equation. (conservative periodic boundary condition)
+- `generateEPmatrix::Function`: function to generate A, F matrices for the Burgers' equation. (Energy-preserving form)
+- `semiImplicitEuler::Function`: function to integrate the system using semi-implicit Euler scheme
+"""
+mutable struct burgers <: Abstract_Models
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
@@ -25,7 +68,13 @@ mutable struct Burgers <: Abstract_Models
     semiImplicitEuler::Function
 end
 
-function Burgers(Omega, T, D, Δx, Δt, Pdim, BC)
+
+"""
+    burgers(Omega, T, D, Δx, Δt, Pdim, BC) → burgers
+
+Constructor for the Burgers' equation model.
+"""
+function burgers(Omega, T, D, Δx, Δt, Pdim, BC)
     if BC == "dirichlet"
         x = collect(Omega[1]:Δx:Omega[2])  # include boundary conditions
     elseif BC == "periodic"
@@ -37,7 +86,7 @@ function Burgers(Omega, T, D, Δx, Δt, Pdim, BC)
     Tdim = length(t)
     IC = zeros(Xdim, 1)
 
-    Burgers(
+    burgers(
         Omega, T, D, Δx, Δt, IC, x, t, μs, Xdim, Tdim, Pdim, BC,
         generateABFmatrix, generateMatrix_NC_periodic, generateMatrix_C_periodic,
         generateEPmatrix, semiImplicitEuler
@@ -46,18 +95,20 @@ end
 
 
 """
-    Generate A, B, F matrices for the Burgers' equation.
+    generateABFmatrix(model, μ) → A, B, F
 
-    # Arguments
-    - `model`: Burgers' equation model
-    - `μ`: parameter value
+Generate A, B, F matrices for the Burgers' equation.
 
-    # Return
-    - `A`: A matrix
-    - `B`: B matrix
-    - `F`: F matrix
+## Arguments
+- `model`: Burgers' equation model
+- `μ`: parameter value
+
+## Returns
+- `A`: A matrix
+- `B`: B matrix
+- `F`: F matrix
 """
-function generateABFmatrix(model::Burgers, μ::Float64)
+function generateABFmatrix(model::burgers, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
     Δt = model.Δt
@@ -87,17 +138,19 @@ end
 
 
 """
-    Generate A, F matrices for the non-energy preserving Burgers' equation. (Non-conservative Periodic boundary condition)
+    generateMatrix_NC_periodic(model, μ) → A, F
 
-    # Arguments
-    - `model`: Burgers' equation model
-    - `μ`: parameter value
+Generate A, F matrices for the non-energy preserving Burgers' equation. (Non-conservative Periodic boundary condition)
 
-    # Return
-    - `A`: A matrix
-    - `F`: F matrix
+## Arguments
+- `model`: Burgers' equation model
+- `μ`: parameter value
+
+## Returns
+- `A`: A matrix
+- `F`: F matrix
 """
-function generateMatrix_NC_periodic(model::Burgers, μ::Float64)
+function generateMatrix_NC_periodic(model::burgers, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
 
@@ -128,17 +181,19 @@ end
 
 
 """
-    Generate A, F matrices for the non-energy preserving Burgers' equation. (conservative periodic boundary condition)
+    generateMatrix_C_periodic(model, μ) → A, F
 
-    # Arguments
-    - `model`: Burgers' equation model
-    - `μ`: parameter value
+Generate A, F matrices for the non-energy preserving Burgers' equation. (conservative periodic boundary condition)
 
-    # Return
-    - `A`: A matrix
-    - `F`: F matrix
+## Arguments
+- `model`: Burgers' equation model
+- `μ`: parameter value
+
+## Returns
+- `A`: A matrix
+- `F`: F matrix
 """
-function generateMatrix_C_periodic(model::Burgers, μ::Float64)
+function generateMatrix_C_periodic(model::burgers, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
 
@@ -172,17 +227,19 @@ end
 
 
 """
-    Generate A, F matrices for the Burgers' equation. (Energy-preserving form)
+    generateEPmatrix(model, μ) → A, F
 
-    # Arguments
-    - `model`: Burgers' equation model
-    - `μ`: parameter value
+Generate A, F matrices for the Burgers' equation. (Energy-preserving form)
 
-    # Return
-    - `A`: A matrix
-    - `F`: F matrix
+## Arguments
+- `model`: Burgers' equation model
+- `μ`: parameter value
+
+## Returns
+- `A`: A matrix
+- `F`: F matrix
 """
-function generateEPmatrix(model::Burgers, μ::Float64)
+function generateEPmatrix(model::burgers, μ::Float64)
     N = model.Xdim
     Δx = model.Δx
 
@@ -223,12 +280,14 @@ end
 
 
 """
+    vech(A) → v
+
 Half-vectorization operation
 
-# Arguments
+## Arguments
 - `A`: matrix to half-vectorize
 
-# Return
+## Returns
 - `v`: half-vectorized form
 """
 function vech(A::AbstractMatrix{T}) where {T}
@@ -243,9 +302,11 @@ end
 
 
 """
+    semiImplicitEuler(A, B, F, U, tdata, IC) → states
+
 Semi-Implicit Euler scheme
 
-# Arguments
+## Arguments
 - `A`: linear state operator
 - `B`: linear input operator
 - `F`: quadratic state operator
@@ -253,8 +314,7 @@ Semi-Implicit Euler scheme
 - `tdata`: time data
 - `IC`: initial condtions
 
-
-# Return
+## Returns
 - `states`: integrated states
 """
 function semiImplicitEuler(A, B, F, U, tdata, IC)
@@ -271,7 +331,21 @@ function semiImplicitEuler(A, B, F, U, tdata, IC)
     return state
 end
 
-# Dispatch
+
+"""
+    semiImplicitEuler(A, F, tdata, IC) → states
+
+Semi-Implicit Euler scheme without control (dispatch)
+
+## Arguments
+- `A`: linear state operator
+- `F`: quadratic state operator
+- `tdata`: time data
+- `IC`: initial condtions
+
+## Returns
+- `states`: integrated states
+"""
 function semiImplicitEuler(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
@@ -284,4 +358,6 @@ function semiImplicitEuler(A, F, tdata, IC)
         state[:, j] = (1.0I(Xdim) - Δt * A) \ (state[:, j-1] + F * state2 * Δt)
     end
     return state
+end
+
 end
