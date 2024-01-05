@@ -556,6 +556,57 @@ end
 
 
 """
+    makeQuadOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int}}, vals::AbstractArray{Real}, 
+    which_quad_term::Union{String,Char}="H") → H or F or Q
+
+Helper function to construct the quadratic operator from the indices and values. The indices must
+be a 1-dimensional array of tuples of the form `(i,j,k)` where `i,j,k` are the indices of the
+quadratic term. For example, for the quadratic term ``2.5x_1x_2`` for ``\\dot{x}_3`` would have an 
+index of `(1,2,3)` with a value of `2.5`. The `which_quad_term` argument specifies which quadratic
+term to construct. Note that the values must be a 1-dimensional array of the same length as the indices.
+
+## Arguments
+- `n::Int`: dimension of the quadratic operator
+- `inds::AbstractArray{Tuple{Int,Int,Int}}`: indices of the quadratic term
+- `vals::AbstractArray{Real}`: values of the quadratic term
+- `which_quad_term::Union{String,Char}="H"`: which quadratic term to construct
+- `symmetric::Bool=true`: whether to construct the symmetric `H` or `Q` matrix
+
+## Returns
+- the quadratic operator
+"""
+function makeQuadOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int}}, vals::AbstractArray{<:Real}; 
+    which_quad_term::Union{String,Char}="H", symmetric::Bool=true)
+
+    @assert length(inds) == length(vals) "The length of indices and values must be the same."
+    Q = zeros(n, n, n)
+    for (ind,val) in zip(inds, vals)
+        if symmetric
+            i, j, k = ind
+            if i == j
+                Q[ind...] = val
+            else
+                Q[i,j,k] = val/2
+                Q[j,i,k] = val/2
+            end
+        else
+            Q[ind...] = val
+        end
+    end
+
+    if which_quad_term == "H" || which_quad_term == 'H'
+        return Q2H(Q)
+    elseif which_quad_term == "F" || which_quad_term == 'F'
+        return (H2F ∘ Q2H)(Q)
+    elseif which_quad_term == "Q" || which_quad_term == 'Q'
+        return Q
+    else
+        error("The quad term must be either H, F, or Q.")
+    end
+end
+
+
+"""
     fidx(n::Int, j::Int, k::Int) → Int
 
 Auxiliary function for the `F` matrix indexing.

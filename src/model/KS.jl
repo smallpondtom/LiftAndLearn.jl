@@ -10,13 +10,8 @@ using SparseArrays
 
 export ks
 
-"""
-    Abstract_Models
-
-Abstract type for the models.
-"""
-abstract type Abstract_Models end
-
+# Import abstract type Abstract_Models from LiftAndLearn
+import ..LiftAndLearn: Abstract_Models, operators
 
 """
 $(TYPEDEF)
@@ -424,6 +419,67 @@ end
 
 
 """
+    integrate_FD(ops, tdata, IC; const_stepsize=true, u2_lm1=nothing) → u
+
+Integrator using Crank-Nicholson Adams-Bashforth method for (FD). 
+This is a dispatch function for `integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)`.
+Using the operator struct `ops` instead of `A` and `F`.
+
+## Arguments
+- `ops`: operators
+- `tdata`: temporal points
+- `IC`: initial condition
+- `params`: keyword arguments
+    - `const_stepsize`: whether to use a constant time step size
+
+## Returns
+- `u`: state matrix
+"""
+function integrate_FD(ops, tdata, IC; params...)
+    # Unpack the parameters
+    const_stepsize = get(params, :const_stepsize, true)
+
+    A = ops.A
+    F = ops.F
+
+    Xdim = length(IC)
+    Tdim = length(tdata)
+    u = zeros(Xdim, Tdim)
+    u[:, 1] = IC
+    u2_lm1 = Vector{Float64}()  # u2 at j-2 placeholder
+
+    if const_stepsize
+        Δt = tdata[2] - tdata[1]  # assuming a constant time step size
+        ImdtA_inv = Matrix(1.0I(Xdim) - Δt/2 * A) \ 1.0I(Xdim) # |> sparse
+        IpdtA = (1.0I(Xdim) + Δt/2 * A)
+
+        for j in 2:Tdim
+            u2 = vech(u[:, j-1] * u[:, j-1]')
+            if j == 2 
+                u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * Δt)
+            else
+                u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_lm1 * Δt/2)
+            end
+            u2_lm1 = u2
+        end
+    else
+        for j in 2:Tdim
+            Δt = tdata[j] - tdata[j-1]
+            u2 = vech(u[:, j-1] * u[:, j-1]')
+            if j == 2
+                u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * Δt)
+            else
+                u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_lm1 * Δt/2)
+            end
+            u2_lm1 = u2
+        end
+    end
+    return u
+end
+
+
+
+"""
     integrate_PS(A, F, tdata, IC) → u, uhat
 
 Integrator using Crank-Nicholson Adams-Bashforth method for (FFT)
@@ -575,6 +631,25 @@ function integrate_SG(A, F, tdata, IC)
         uhat2_lm1 = uhat2
     end
     return u, uhat
+end
+
+
+"""
+    jacob(A, H, n, x) → Jacobian matrix
+
+Generate Jacobian matrix
+
+## Arguments
+- `A`: A matrix
+- `H`: H matrix
+- `x`: state
+
+## Returns
+- `J`: Jacobian matrix
+"""
+function jacob(ops::operators, x::AbstractVector{T}) where {T}
+    n = length(x)
+    return ops.A + ops.H * kron(1.0I(n), x) + ops.H * kron(x, 1.0I(n))
 end
 
 end

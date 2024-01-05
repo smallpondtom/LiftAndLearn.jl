@@ -8,14 +8,8 @@ using LinearAlgebra
 
 export heat1d
 
-
-"""
-    Abstract_Models
-
-Abstract type for the models.
-"""
-abstract type Abstract_Models end
-
+# Import abstract type Abstract_Models from LiftAndLearn
+import ..LiftAndLearn: Abstract_Models
 
 """
 $(TYPEDEF)

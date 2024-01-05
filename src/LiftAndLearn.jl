@@ -1,12 +1,12 @@
 """
     LiftAndLearn package main module
 """
-
 module LiftAndLearn
 
 using LinearAlgebra
 using BlockDiagonals
 using Parameters
+using ProgressMeter
 using SparseArrays
 using MatrixEquations
 using Random
@@ -26,7 +26,7 @@ abstract type Abstract_Options end
 
 Abstract type for the model.
 """
-abstract type Abstract_Model end
+abstract type Abstract_Models end
 
 include("utils.jl")
 include("OpInf_options.jl")
@@ -41,6 +41,9 @@ include("optimizer/EP_Optimize.jl")
 
 include("learn.jl")
 include("intrusiveROM.jl")
+
+# [Submodule] Analysis of chaos analysis tools
+include("ChaosGizmo/ChaosGizmo.jl")
 
 # Include the models
 include("model/Heat1D.jl")
