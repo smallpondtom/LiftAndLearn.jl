@@ -11,7 +11,7 @@ using SparseArrays
 export ks
 
 # Import abstract type Abstract_Models from LiftAndLearn
-import ..LiftAndLearn: Abstract_Models, operators
+import ..LiftAndLearn: Abstract_Models, operators, elimat
 
 """
 $(TYPEDEF)
@@ -75,6 +75,7 @@ mutable struct ks <: Abstract_Models
     integrate_PS::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
     integrate_PS_ew::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
     integrate_SG::Function  # integrator for second method of Fourier Transform without FFT
+    jacob::Function  # Jacobian
 end
 
 
@@ -111,7 +112,7 @@ function ks(Omega, T, D, nx, Δt, Pdim, type)
     ks(
         Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim, type,
         model_PS, model_PS_ew, model_SG, model_FD, integrate_FD, 
-        integrate_PS, integrate_PS_ew, integrate_SG
+        integrate_PS, integrate_PS_ew, integrate_SG, jacob
     )
 end
 
@@ -649,7 +650,8 @@ Generate Jacobian matrix
 """
 function jacob(ops::operators, x::AbstractVector{T}) where {T}
     n = length(x)
-    return ops.A + ops.H * kron(1.0I(n), x) + ops.H * kron(x, 1.0I(n))
+    # return ops.A + ops.H * kron(1.0I(n), x) + ops.H * kron(x, 1.0I(n))
+    return ops.A + ops.F * elimat(n) * ( kron(1.0I(n), x) + kron(x, 1.0I(n)) )
 end
 
 end
