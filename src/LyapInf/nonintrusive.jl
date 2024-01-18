@@ -98,10 +98,16 @@ end
 #     return value.(Q), model
 # end
 
-function optimize_P(X, A, F, Q, options; Pi=nothing)
+function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T}, 
+        options::NILyapInf_options; Pi=nothing) where {T<:Real}
     n, K = size(X)
+    @assert n < K "The number of states must be less than the number of time steps."
     X2t = squareMatStates(X)'
     Xt = X' # now we want the columns to be the states and rows to be time
+
+    # Unpack operators
+    A = op.A 
+    F = op.F
 
     # Set up optimizer
     if options.optimizer in ["ipopt", "Ipopt"]
@@ -171,40 +177,46 @@ function optimize_P(X, A, F, Q, options; Pi=nothing)
             @constraint(model, P[i, i] >= options.α)
         end
     end
-    @constraint(model, c, Xt*P*Xt' .<= 0.99999)
+    @constraint(model, c, Xt*P*Xt' .<= 1 - eps())
     JuMP.optimize!(model)
     P_sol = value.(P)
-    return P_sol, model
+    return P_sol, JuMP.objective_value(model)
 end
 
 
-function optimize_Q(X, A, F, P, Qi, options)
+function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T}, 
+        options::NILyapInf_options; Qi=nothing) where {T<:Real}
     n, K = size(X)
     X2t = squareMatStates(X)'
     Xt = X' # now we want the columns to be the states and rows to be time
+
+    # Unpack operators
+    A = op.A
+    F = op.F
     
     # Set up optimizer
     if options.optimizer in ["ipopt", "Ipopt"]
         model = Model(Ipopt.Optimizer)
+        set_optimizer_attribute(model, "max_iter", options.max_iter)
+        if options.ipopt_linear_solver != "none"
+            set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+            set_attribute(model, "linear_solver", options.ipopt_linear_solver)
+        end
     else 
         model = Model(SCS.Optimizer)
+        set_optimizer_attribute(model, "max_iters", options.max_iter)
     end
 
     # Set up verbose or silent
     if !options.verbose
         set_silent(model)
     end
-
-    # More setup
-    if options.ipopt_linear_solver != "none"
-        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
-        set_attribute(model, "linear_solver", options.ipopt_linear_solver)
-    end
-    set_optimizer_attribute(model, "max_iter", options.max_iter)
     set_string_names_on_creation(model, false)
 
     @variable(model, Q[1:n, 1:n], Symmetric)
-    set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+    if !isnothing(Qi)
+        set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+    end
     if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
         @variable(model, Z[1:K, 1:K])
         @constraint(
@@ -231,7 +243,7 @@ function optimize_Q(X, A, F, P, Qi, options)
     @constraint(model, c, Xt*P*Xt' .<= 0.99999)
     JuMP.optimize!(model)
     Q_sol = value.(Q)
-    return Q_sol, model
+    return Q_sol, JuMP.objective_value(model)
 end
 
 
@@ -263,43 +275,15 @@ function zubov_error(X, A, F, P, Q)
 end
 
 
-# function pdp(A, n, γ_lb; γ_ub=1)
-#     not_pd = true
-#     γ_lb_copy = deepcopy(γ_lb)
-#     while not_pd
-#         model = Model(SCS.Optimizer)
-#         set_silent(model)
-#         @variable(model, D[1:n, 1:n], PSD)
-#         @variable(model, γ_lb <= γ <= γ_ub)
-#         @expression(model, d, diag(D))
-#         @objective(model, Min, sum(d) + γ)
-#         @constraint(model, (A + D) in PSDCone())
-#         @constraint(model, (A + D .+ γ*I) .>= γ_lb_copy)
-#         JuMP.optimize!(model)
-#         Dopt = value.(D)
-#         γopt = value(γ)
-
-#         Apd = A + Dopt + γopt * I
-#         not_pd = !isposdef(Apd)
-#         γ_lb *= 10
-#         if γ_lb > γ_ub
-#             return Apd, false
-#         end
-
-#         if !not_pd
-#             return Apd, true
-#         end
-#     end
-# end
 
 
-function PR_Zubov_LFInf(
-    X,                          # state trajectory data
-    A,                          # Linear system matrix 
-    F,                          # Quadratic system matrix
-    Pi,                         # Initial P matrix for the optimization
-    Qi,                         # Initial Q matrix for the optimization
-    options::LyapInf_options;   # Options for the optimization
+
+function NILyapInf(
+    op::operators,  # Linear and Quadratic operators
+    X::AbstractArray{T},  # state trajectory data
+    options::NILyapInf_options;   # Options for the optimization
+    Pi=nothing,  # Initial P matrix for the optimization
+    Qi=nothing   # Initial Q matrix for the optimization
 )
     # Convergence metrics
     Jzubov_lm1 = 0  # Jzubov(l-1)
@@ -314,18 +298,17 @@ function PR_Zubov_LFInf(
     if options.optimize_both
         for l in 1:options.max_iter
             # Optimize for the Q matrix
-            Q, _ = optimize_Q(X, A, F, P, Qi, options)
+            Q, _ = optimize_Q(op, X, P, options; Qi=Qi)
             λ_Q = eigen(Q).values
             λ_Q_real = real.(λ_Q)
             Qi = Q
 
             # Optimize for the P matrix
-            P, model_P = optimize_P(X, A, F, Q, options; Pi)
+            P, Jzubov = optimize_P(op, X, Q, options; Pi=Pi)
             λ_P = eigen(P).values
             λ_P_real = real.(λ_P) 
             Pi = P 
 
-            Jzubov = objective_value(model_P) 
             ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
             Jzubov_lm1 = Jzubov 
 
@@ -407,6 +390,36 @@ end
 #####################
 ###### __old__ ######
 #####################
+
+# function pdp(A, n, γ_lb; γ_ub=1)
+#     not_pd = true
+#     γ_lb_copy = deepcopy(γ_lb)
+#     while not_pd
+#         model = Model(SCS.Optimizer)
+#         set_silent(model)
+#         @variable(model, D[1:n, 1:n], PSD)
+#         @variable(model, γ_lb <= γ <= γ_ub)
+#         @expression(model, d, diag(D))
+#         @objective(model, Min, sum(d) + γ)
+#         @constraint(model, (A + D) in PSDCone())
+#         @constraint(model, (A + D .+ γ*I) .>= γ_lb_copy)
+#         JuMP.optimize!(model)
+#         Dopt = value.(D)
+#         γopt = value(γ)
+
+#         Apd = A + Dopt + γopt * I
+#         not_pd = !isposdef(Apd)
+#         γ_lb *= 10
+#         if γ_lb > γ_ub
+#             return Apd, false
+#         end
+
+#         if !not_pd
+#             return Apd, true
+#         end
+#     end
+# end
+
 
 # function PR_Zubov_LFInf(
 #     Xr,                         # Reduced order state trajectory data
