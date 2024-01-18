@@ -1,12 +1,10 @@
-abstract type Abstract_Options end
-
 
 """ 
-Options for Lyapunov function inference.
+    Options for Non-Intrusive Lyapunov Function Inference (NILyapInf)
 
 # Fields
 """
-@with_kw mutable struct LyapInf_options <: Abstract_Options
+@with_kw mutable struct NILyapInf_options 
     α::Real                     = 1e-4     # Eigenvalue shift parameter for P
     β::Real                     = 1e-4     # Eigenvalue shift parameter for Q
     δS::Real                    = 1e-5     # Symmetricity tolerance for P
