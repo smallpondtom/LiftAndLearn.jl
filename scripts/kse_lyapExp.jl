@@ -92,7 +92,7 @@ RES["train_dky"] = Dict(
     :int   => Array{Float64}(undef, length(ro), KSE.Pdim, num_IC),
     :LS    => Array{Float64}(undef, length(ro), KSE.Pdim, num_IC),
     :ephec => Array{Float64}(undef, length(ro), KSE.Pdim, num_IC),
-    :fom   => Array{Float64}(undef, KSE.Pdim)
+    :fom   => 0.0
 )
 
 
@@ -113,7 +113,7 @@ function compute_LE_oneIC!(RES, type, keys, model, op, IC, Vr, ro, integrator, j
                 RES[keys[1]][type][j,i,idx] = foo[:,end]
                 RES[keys[2]][type][j,i,idx] = CG.kaplanYorkeDim(foo; sorted=false)
             end
-            @debug "Reduced order of $(r) completed..."
+            @info "Reduced order of $(r) completed..."
         end
         @debug "Loop $(i) out of $(model.Pdim) completed..."
     end
@@ -127,14 +127,14 @@ function compute_LE_allIC!(RES, type, keys, model, op, ICs, Vr, ro, integrator, 
 end
 
 # FOM dispatch
-function compute_LE_oneIC!(RES, type, keys, model, op, IC, integrator, jacobian, options, idx)
+function compute_LE_oneIC!(RES, type, keys, model, op, IC, integrator, options, idx)
     for i in eachindex(model.μs)    
         if options.history
-            _, foo = CG.lyapunovExponentJacobian(op[i], integrator, jacobian, IC, options)
+            _, foo = CG.lyapunovExponent(op[i], integrator, IC, options)
             RES[keys[1]][type][i,idx] = foo
             RES[keys[2]][type] = CG.kaplanYorkeDim(foo[:,end]; sorted=false)
         else
-            foo = lyapunovExponentJacobian(op[i], integrator, jacobian, IC, options)
+            foo = lyapunovExponent(op[i], integrator, IC, options)
             RES[keys[1]][type][i,idx] = foo
             RES[keys[2]][type] = CG.kaplanYorkeDim(foo; sorted=false)
         end
@@ -143,25 +143,28 @@ function compute_LE_oneIC!(RES, type, keys, model, op, IC, integrator, jacobian,
     end
 end
 
-function compute_LE_allIC!(RES, type, keys, model, op, ICs, integrator, jacobian, options)
+function compute_LE_allIC!(RES, type, keys, model, op, ICs, integrator, options)
     for (idx, IC) in collect(enumerate(ICs))
-        compute_LE_oneIC!(RES, type, keys, model, op, IC, integrator, jacobian, options, idx)
+        compute_LE_oneIC!(RES, type, keys, model, op, IC, integrator, options, idx)
         @info "Initial condition $(idx) out of $(length(ICs)) completed..."
     end
 end
 
-## Compute the LE and Dky for all models 
-options = CG.LE_options(N=1e4, τ=1e3, Δt=10*KSE.Δt, m=9, T=10*KSE.Δt, verbose=true, history=true)
 
-##
+## Options
+options_fom = CG.LE_options(N=1e4, τ=1e3, Δt=0.01, Δτ=KSE.Δt, m=15, T=0.1, verbose=true, history=true)
+options_rom = CG.LE_options(N=1e4, τ=1e3, Δt=5*KSE.Δt, m=9, T=5*KSE.Δt, verbose=true, history=true)
+
+## Compute the LE and Dky for all models 
+@info "Computing the LE and Dky for training..."
 compute_LE_oneIC!(RES, :fom, ["train_LE", "train_dky"], KSE, 
-        DATA["op_fom_tr"], DATA["IC_train"][1], KSE.integrate_FD, KSE.jacob, options, 1)
+        DATA["op_fom_tr"], DATA["IC_train"][1], KSE.integrate_FD, options_fom, 1)
 compute_LE_allIC!(RES, :int, ["train_LE", "train_dky"], KSE, 
-        OPS["op_int"], DATA["IC_train"], DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options)
+        OPS["op_int"], DATA["IC_train"], DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
 compute_LE_allIC!(RES, :LS, ["train_LE", "train_dky"], KSE, 
-        OPS["op_LS"], DATA["IC_train"], DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options)
+        OPS["op_LS"], DATA["IC_train"], DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
 compute_LE_allIC!(RES, :ephec, ["train_LE", "train_dky"], KSE, 
-        OPS["op_ephec"], DATA["IC_train"], DATA["Vr"], ro, KSE.integrator_FD, KSE.jacob, options)
+        OPS["op_ephec"], DATA["IC_train"], DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
 
 ## Save data
 save(resultfile, "RES", RES)
@@ -194,39 +197,186 @@ TEST_RES["test1_dky"] = Dict(
     :int   => Array{Float64}(undef, length(DATA["ro"]), KSE.Pdim, num_IC),
     :LS    => Array{Float64}(undef, length(DATA["ro"]), KSE.Pdim, num_IC),
     :ephec => Array{Float64}(undef, length(DATA["ro"]), KSE.Pdim, num_IC),
-    :fom   => Array{Float64}(undef, KSE.Pdim)
+    :fom   => 0.0
 )
 TEST_RES["test2_dky"] = Dict(
     :int   => Array{Float64}(undef, length(DATA["ro"]), KSE.Pdim, num_IC),
     :LS    => Array{Float64}(undef, length(DATA["ro"]), KSE.Pdim, num_IC),
     :ephec => Array{Float64}(undef, length(DATA["ro"]), KSE.Pdim, num_IC),
-    :fom   => Array{Float64}(undef, KSE.Pdim)
+    :fom   => 0.0
 )
 
 
 ## Test 1
-options = CG.LE_options(N=1e4, τ=1e3, Δt=10*KSE.Δt, m=9, T=10*KSE.Δt, verbose=true, history=true)
-##
+@info "Computing the LE and Dky for test 1..."
 compute_LE_oneIC!(TEST_RES, :fom, ["test1_LE", "test1_dky"], KSE, 
-    DATA["op_fom_tr"], TEST1_ICs[1], DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options, 1)
+    DATA["op_fom_tr"], TEST1_ICs[1], KSE.integrate_FD, options_fom, 1)
 compute_LE_allIC!(TEST_RES, :int, ["test1_LE", "test1_dky"], KSE, 
-    OPS["op_int"], TEST1_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options)
+    OPS["op_int"], TEST1_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
 compute_LE_allIC!(TEST_RES, :LS, ["test1_LE", "test1_dky"], KSE, 
-    OPS["op_LS"], TEST1_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options)
+    OPS["op_LS"], TEST1_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
 compute_LE_allIC!(TEST_RES, :ephec, ["test1_LE", "test1_dky"], KSE, 
-    OPS["op_ephec"], TEST1_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options)
+    OPS["op_ephec"], TEST1_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
 
 ## Test 2
-compute_LE_oneIC!(TEST_RES, :fom, ["test2_LE", "test2_dky"], model, 
-    DATA["op_fom_tr"], TEST2_ICs[1], DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options, 1)
-compute_LE_allIC!(TEST_RES, :int, ["test2_LE", "test2_dky"], model, 
-    OPS["op_int"], TEST2_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options)
-compute_LE_allIC!(TEST_RES, :LS, ["test2_LE", "test2_dky"], model, 
-    OPS["op_LS"], TEST2_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options)
-compute_LE_allIC!(TEST_RES, :ephec, ["test2_LE", "test2_dky"], model, 
-    OPS["op_ephec"], TEST2_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options)
+@debug "Computing the LE and Dky for test 2..."
+compute_LE_oneIC!(TEST_RES, :fom, ["test2_LE", "test2_dky"], KSE, 
+    DATA["op_fom_tr"], TEST2_ICs[1], KSE.integrate_FD, options_fom, 1)
+compute_LE_allIC!(TEST_RES, :int, ["test2_LE", "test2_dky"], KSE, 
+    OPS["op_int"], TEST2_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
+compute_LE_allIC!(TEST_RES, :LS, ["test2_LE", "test2_dky"], KSE, 
+    OPS["op_LS"], TEST2_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
+compute_LE_allIC!(TEST_RES, :ephec, ["test2_LE", "test2_dky"], KSE, 
+    OPS["op_ephec"], TEST2_ICs, DATA["Vr"], ro, KSE.integrate_FD, KSE.jacob, options_rom)
 
 ## Save data
 save(testresultfile, "TEST_RES", TEST_RES)
 
 ## Plotting Results 
+# Normal Distribution
+using Distributions: Normal, pdf
+using LaTeXStrings
+using Plots
+using Statistics
+using StatsPlots
+
+# Function to plot histogram with bell curve
+function plot_dky_distribution(dky_data, fom_dky, ridx, title; bins=30, annote_loc=(3.3, 1.2))
+    rom_dky = vec(dky_data[ridx,:,:])
+    # Gather some info
+    median_rom_dky = median(rom_dky)
+    mean_rom_dky = mean(rom_dky)
+    std_rom_dky = std(rom_dky)
+
+    p1 = histogram(rom_dky, bins=bins, normed=true, alpha=0.6, label="")
+    plot!(Normal(mean_rom_dky, std_rom_dky), label="", lw=2)
+    vline!(p1, [median_rom_dky], color=:red, label="Median")
+    # vline!(p1, [fom_dky], color=:black, label="Full")
+    vline!(p1, [5.198], label="Edson et al.", linestyle=:dash)
+    vline!(p1, [4.2381], label="Cvitanovic et al.", linestyle=:dash)
+    vspan!(p1, [mean_rom_dky - std_rom_dky, mean_rom_dky + std_rom_dky], color=:green, alpha=0.1, label=L"\pm 1\sigma")
+    plot!(p1, fontfamily="Computer Modern", legendfont=9, tickfont=12, guidefontsize=15,
+        legend=:topleft, xlabel=L"D_{ky}", ylabel="Normal Distribution", title=title)
+    annotate!(p1, annote_loc..., text("r = $(DATA["ro"][ridx])", 14, "Computer Modern"))
+    display(p1)
+end
+
+function plot_LEmax_distribution(rom_LE, fom_LE, ridx, title; bins=30, annote_loc=(0.01, 30))
+    # Gather some info
+    LEmax = []
+    _, _, n = size(rom_LE)
+    for i in 1:n
+        push!(LEmax, maximum(rom_LE[ridx,1,i][:,end]))
+    end
+    LEmax_fom = maximum(fom_LE[1][:,end])
+
+    median_rom_LEmax = median(LEmax)
+    mean_rom_LEmax = mean(LEmax)
+    std_rom_LEmax = std(LEmax)
+
+    p1 = histogram(LEmax, bins=bins, normed=true, alpha=0.6, label="")
+    plot!(Normal(mean_rom_LEmax, std_rom_LEmax), label="", lw=2)
+    vline!(p1, [median_rom_LEmax], color=:red, label="Median")
+    # vline!(p1, [LEmax_fom], color=:black, label="Full")
+    vline!(p1, [0.043], label="Edson et al.", linestyle=:dash)
+    vline!(p1, [0.048], label="Cvitanovic et al.", linestyle=:dash)
+    vspan!(p1, [mean_rom_LEmax - std_rom_LEmax, mean_rom_LEmax + std_rom_LEmax], color=:green, alpha=0.1, label=L"\pm 1\sigma")
+    plot!(p1, fontfamily="Computer Modern", legendfont=9, tickfont=12, guidefontsize=15,
+        legend=:topleft, xlabel=L"\lambda_{\text{max}}", ylabel="Normal Distribution", title=title)
+    annotate!(p1, annote_loc..., text("r = $(DATA["ro"][ridx])", 14, "Computer Modern"))
+    display(p1)
+end
+
+function plot_LE_convergence(LE_data, ridx, ICidx, C, title; ylimits=(1e-7, 2e+2), ytickvalues=10.0 .^ (-7:2:2))
+    p = plot()
+    data = LE_data[ridx,1,ICidx]
+    m, n = size(data)
+    for i in 1:m
+        plot!(p, 
+            (1:n-1)[1:100:end], 
+            abs.(data[i,1:100:end-1] .- data[i,end]), 
+            lw=1.5, label=false
+        )
+    end
+    plot!(p, 1:n, C ./ (1:n), c=:black, ls=:dash, lw=1.5, label=L"C/{i}")
+    plot!(p, 1:n, C ./ sqrt.(1:n), c=:red, ls=:dash, lw=1.5, label=L"C/\sqrt{i}")
+    plot!(xscale=:log10, yscale=:log10)
+    ylims!(ylimits...)
+    xticks!(10 .^ (0:floor(Int, log10(n))))
+    yticks!(ytickvalues)
+    xlabel!(L"i" * "-th reorthonormalization step " * L"\mathrm{log}_{10} " * " scale")
+    ylabel!(L"\mathrm{log}_{10}(|\lambda_i - \lambda_N|)")
+    plot!(fontfamily="Computer Modern", guidefontsize=13, tickfontsize=13, legendfontsize=13, legend=:bottomleft)
+    title!(title)
+    annotate!(p, 1e+2, 1e-4, text("r = $(DATA["ro"][ridx])", 14, "Computer Modern"))
+    display(p)
+end
+
+
+## Plot histograms with bell curve
+ridx = 7
+plot_dky_distribution(TEST_RES["test2_dky"][:ephec], TEST_RES["test2_dky"][:fom], ridx, "Test 2: EP-OpInf"; annote_loc=(3.3, 0.7))
+
+## Plot LEmax distribution
+ridx = 2
+plot_LEmax_distribution(RES["train_LE"][:ephec], RES["train_LE"][:fom], ridx, "Train: EP-OpInf"; annote_loc=(-0.1, 10))
+
+## Plot LE convergence
+ridx = 2
+plot_LE_convergence(RES["train_LE"][:ephec], ridx, 1, 200, "Train: EP-OpInf"; ylimits=(1e-5, 1e3))
+
+## Plot LEmax errors
+function plot_LEmax_error(data, ref, ro, title)
+    p = plot()
+    model_type = [:int, :LS, :ephec]
+    r, _, n = size(data[model_type[1]])
+    labels = ["Intru", "OpInf", "EP-OpInf"]
+    errs = zeros(r,length(model_type))
+    for (mi,model) in enumerate(model_type)
+        for ri in 1:r
+            err = 0.0
+            for ni in 1:n
+                err += abs(maximum(data[model][ri,1,ni][:,end]) - ref) / abs(ref)
+            end
+            errs[ri,mi] = err / n
+        end
+        plot!(p, ro, errs[:,mi], label=labels[mi], marker=true)
+    end
+    xticks!(ro)
+    plot!(p, fontfamily="Computer Modern", legendfont=9, tickfont=12, guidefontsize=15,
+        legend=:topright, xlabel=L"r", ylabel="Relative Error", title=title)
+    display(p)
+end
+
+plot_LEmax_error(RES["train_LE"], 0.043, DATA["ro"], "Train: Max LE Error")
+plot_LEmax_error(TEST_RES["test1_LE"], 0.043, DATA["ro"], "Test 1: Max LE Error")
+plot_LEmax_error(TEST_RES["test2_LE"], 0.043, DATA["ro"], "Test 2: Max LE Error")
+
+## Plot Dky errors
+function plot_dky_error(data, ref, ro, title)
+    p = plot()
+    model_type = [:int, :LS, :ephec]
+    r, _, n = size(data[model_type[1]])
+    labels = ["Intru", "OpInf", "EP-OpInf"]
+    errs = zeros(r,length(model_type))
+    for (mi,model) in enumerate(model_type)
+        for ri in 1:r
+            err = 0.0
+            for ni in 1:n
+                err += abs(data[model][ri,1,ni] - ref) / abs(ref)
+            end
+            errs[ri,mi] = err / n
+        end
+        plot!(p, ro, errs[:,mi], label=labels[mi], marker=true)
+    end
+    xticks!(ro)
+    ylims!(9e-3, 1e+0)
+    yticks!(10.0 .^ (-3:1))
+    plot!(p, yscale=:log10, fontfamily="Computer Modern", legendfont=9, tickfont=12, guidefontsize=15,
+        legend=:topright, xlabel=L"r", ylabel="Relative Error", title=title)
+    display(p)
+end
+
+plot_dky_error(RES["train_dky"], 4.2381, DATA["ro"], "Train: "*L"D_{ky}"*" Error")
+plot_dky_error(TEST_RES["test1_dky"], 4.2381, DATA["ro"], "Test 1: "*L"D_{ky}"*" Error")
+plot_dky_error(TEST_RES["test2_dky"], 4.2381, DATA["ro"], "Test 2: "*L"D_{ky}"*" Error")

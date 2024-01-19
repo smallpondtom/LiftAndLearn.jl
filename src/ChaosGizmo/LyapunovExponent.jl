@@ -58,6 +58,7 @@ If you are using the Jacobian/Linear Tangent Map (LTM) method, T should be set e
     τ0::Real = 0.0                       # initial time 
     τ::Real = 1000                       # time to simulate the system before computing exponents
     Δt::Real = 1e-2                      # timestep for the integrator
+    Δτ::Real = Δt                        # timestep for the integrator (before computing exponents)
     T::Real = Δt                         # time between reorthogonalization steps
     N::Integer = 1000                    # the total number of reorthogonalization steps
     ϵ::Real = 1e-6                       # perturbation magnitude
@@ -280,13 +281,13 @@ function lyapunovExponent(
     N = options.N
     ϵ = options.ϵ
     Δt = options.Δt
+    Δτ = options.Δτ
     t0 = options.τ0
 
     nx = size(ic, 1)
     @assert m <= nx "m must be less than or equal to the dimension of the system"
 
-    tmp = integrator(ops, range(t0, stop=τ, step=Δt), ic; params...)
-    ujm1 = tmp[:, end]
+    ujm1 = integrator(ops, range(t0, stop=τ, step=Δτ), ic; params...)[:, end]
 
     if options.history
         λ_all = zeros(m,N)  # all Lyapunov exponents
@@ -294,9 +295,9 @@ function lyapunovExponent(
     λ = zeros(m)         # Lyapunov exponents
 
     # Initialize the Q matrix
-    # Q = 1.0I(nx)[:,1:m]  # orthogonal directions
+    Q = 1.0I(nx)[:,1:m]  # orthogonal directions
     # Q = mapslices(x -> x / norm(x), svd(tmp).U[:,1:m], dims=1)  # orthogonal directions with SVD
-    Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
+    # Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
 
     if options.verbose
         prog = Progress(N)
@@ -409,9 +410,9 @@ function lyapunovExponent(
     λ = zeros(m)         # Lyapunov exponents
 
     # Initialize the Q matrix
-    # Q = 1.0I(nx)[:,1:m]  # orthogonal directions
+    Q = 1.0I(nx)[:,1:m]  # orthogonal directions
     # Q = mapslices(x -> x / norm(x), svd(tmp).U[:,1:m], dims=1)  # orthogonal directions with SVD
-    Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
+    # Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
 
     if options.verbose
         prog = Progress(N)
