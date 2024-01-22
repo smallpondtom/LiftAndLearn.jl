@@ -49,23 +49,6 @@ options = LnL.LS_options(
     optim=KSE_optim,
 )
 
-# # Downsampling rate
-# DS = KSE_data.DS
-
-# # Down-sampled dimension of the time data
-# Tdim_ds = size(1:DS:KSE.Tdim, 1)  # downsampled time dimension
-
-# # Number of random test inputs
-# num_test_ic = 50
-
-# # Prune data to get only the chaotic region
-# prune_data = false
-# prune_idx = KSE.Tdim ÷ 2
-# t_prune = KSE.t[prune_idx-1:end]
-
-# # Parameters of the initial condition
-# ic_a = [0.8, 1.0, 1.2]
-# ic_b = [0.2, 0.4, 0.6]
 
 # num_ic_params = Int(length(ic_a) * length(ic_b))
 L = KSE.Omega[2] - KSE.Omega[1]  # length of the domain
@@ -152,7 +135,7 @@ end
 
 
 ## Options
-options_fom = CG.LE_options(N=1e4, τ=1e3, Δt=0.01, Δτ=KSE.Δt, m=15, T=0.1, verbose=true, history=true)
+options_fom = CG.LE_options(N=1e4, τ=1e3, Δt=0.01, Δτ=KSE.Δt, m=11, T=0.05, verbose=true, history=true)
 options_rom = CG.LE_options(N=1e4, τ=1e3, Δt=5*KSE.Δt, m=9, T=5*KSE.Δt, verbose=true, history=true)
 
 ## Compute the LE and Dky for all models 
@@ -315,15 +298,24 @@ end
 
 ## Plot histograms with bell curve
 ridx = 7
-plot_dky_distribution(TEST_RES["test2_dky"][:ephec], TEST_RES["test2_dky"][:fom], ridx, "Test 2: EP-OpInf"; annote_loc=(3.3, 0.7))
+mdl = :ephec
+plot_dky_distribution(RES["train_dky"][mdl], RES["train_dky"][:fom], ridx, "Train: EP-OpInf"; annote_loc=(3.3, 0.7))
+plot_dky_distribution(TEST_RES["test1_dky"][mdl], TEST_RES["test1_dky"][:fom], ridx, "Test 1: EP-OpInf"; annote_loc=(3.3, 0.7))
+plot_dky_distribution(TEST_RES["test2_dky"][mdl], TEST_RES["test2_dky"][:fom], ridx, "Test 2: EP-OpInf"; annote_loc=(3.3, 0.7))
 
 ## Plot LEmax distribution
 ridx = 2
-plot_LEmax_distribution(RES["train_LE"][:ephec], RES["train_LE"][:fom], ridx, "Train: EP-OpInf"; annote_loc=(-0.1, 10))
+mdl = :ephec
+plot_LEmax_distribution(RES["train_LE"][mdl], RES["train_LE"][:fom], ridx, "Train: EP-OpInf"; annote_loc=(-0.1, 10))
+plot_LEmax_distribution(TEST_RES["test1_LE"][mdl], TEST_RES["test1_LE"][:fom], ridx, "Test 1: EP-OpInf"; annote_loc=(-0.1, 10))
+plot_LEmax_distribution(TEST_RES["test2_LE"][mdl], TEST_RES["test2_LE"][:fom], ridx, "Test 2: EP-OpInf"; annote_loc=(-0.1, 10))
 
 ## Plot LE convergence
 ridx = 2
-plot_LE_convergence(RES["train_LE"][:ephec], ridx, 1, 200, "Train: EP-OpInf"; ylimits=(1e-5, 1e3))
+mdl = :ephec
+plot_LE_convergence(RES["train_LE"][mdl], ridx, 1, 200, "Train: EP-OpInf"; ylimits=(1e-5, 1e3))
+plot_LE_convergence(TEST_RES["test1_LE"][mdl], ridx, 1, 200, "Test 1: EP-OpInf"; ylimits=(1e-5, 1e3))
+plot_LE_convergence(TEST_RES["test2_LE"][mdl], ridx, 1, 200, "Test 2: EP-OpInf"; ylimits=(1e-5, 1e3))
 
 ## Plot LEmax errors
 function plot_LEmax_error(data, ref, ro, title)

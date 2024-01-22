@@ -7,6 +7,7 @@ Options for Lypuanov exponents.
 - `m::Integer`: the number of the most exponents to compute
 - `τ::Real`: time to simulate the system before computing exponents
 - `Δt::Real`: timestep for the integrator
+- `Δτ::Real`: timestep for the integrator (before computing exponents)
 - `T::Real`: time between reorthogonalization steps
 - `N::Integer`: the total number of reorthogonalization steps
 - `ϵ::Real`: perturbation magnitude
@@ -18,6 +19,7 @@ Options for Lypuanov exponents.
 - `m = 1`
 - `τ = 1000`
 - `Δt = 1e-2`
+- `Δτ = Δt`
 - `T = Δt`
 - `N = 1000`
 - `ϵ = 1e-6`
@@ -295,9 +297,9 @@ function lyapunovExponent(
     λ = zeros(m)         # Lyapunov exponents
 
     # Initialize the Q matrix
-    Q = 1.0I(nx)[:,1:m]  # orthogonal directions
+    # Q = 1.0I(nx)[:,1:m]  # orthogonal directions
     # Q = mapslices(x -> x / norm(x), svd(tmp).U[:,1:m], dims=1)  # orthogonal directions with SVD
-    # Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
+    Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
 
     if options.verbose
         prog = Progress(N)
@@ -410,9 +412,9 @@ function lyapunovExponent(
     λ = zeros(m)         # Lyapunov exponents
 
     # Initialize the Q matrix
-    Q = 1.0I(nx)[:,1:m]  # orthogonal directions
+    # Q = 1.0I(nx)[:,1:m]  # orthogonal directions
     # Q = mapslices(x -> x / norm(x), svd(tmp).U[:,1:m], dims=1)  # orthogonal directions with SVD
-    # Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
+    Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
 
     if options.verbose
         prog = Progress(N)
