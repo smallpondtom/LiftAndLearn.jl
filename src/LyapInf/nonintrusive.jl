@@ -16,7 +16,7 @@
     optimizer::String           = "ipopt"  # Optimizer to use for the optimization
     ipopt_linear_solver::String = "none"   # Linear solver for Ipopt
     verbose::Bool               = false    # Enable verbose output for the optimization
-    optimize_both::Bool         = false    # Optimize both P and Q at the same time
+    optimize_PandQ::Bool        = false    # Optimize both P and Q 
 
     @assert (optimizer in ["ipopt", "Ipopt", "SCS"]) "Optimizer options are: Ipopt and SCS."
 end
@@ -103,6 +103,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
     n, K = size(X)
     @assert n < K "The number of states must be less than the number of time steps."
     X2t = squareMatStates(X)'
+    X2 = X2t'
     Xt = X' # now we want the columns to be the states and rows to be time
 
     # Unpack operators
@@ -168,7 +169,8 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         @expression(
             model, 
             inside_norm, 
-            sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
+            # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
+            sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
 
@@ -177,6 +179,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             @constraint(model, P[i, i] >= options.α)
         end
     end
+    
     @constraint(model, c, Xt*P*Xt' .<= 1 - eps())
     JuMP.optimize!(model)
     P_sol = value.(P)
@@ -290,10 +293,10 @@ function NILyapInf(
     # Zerrbest = Inf
     check = 0    # run a few extra iterations to make sure the error is decreasing
 
-    # Initialize Q
-    N = size(Qi,1)
-    Q = 1.0I(N)
-    P = deepcopy(Pi)
+    # Initialize P and Q
+    N = size(op.A,1)
+    Q = isnothing(Qi) ? 1.0I(N) : Qi
+    P = isnothing(Pi) ? 1.0I(N) : Pi
 
     if options.optimize_both
         for l in 1:options.max_iter
@@ -346,7 +349,7 @@ function NILyapInf(
                 check += 1
                 if check == options.extra_iter
                     # return P, Q, Zerr, ∇Jzubov
-                    return P, Q, ∇Jzubov
+                    return P, Q, Jzubov, ∇Jzubov
                 end
             else
                 check = 0  # reset if not converging continuously
@@ -356,31 +359,31 @@ function NILyapInf(
             if l == options.max_iter
                 if (@isdefined Pbest)
                     # return Pbest, Qbest, Zerrbest, ∇Jzubovbest
-                    return Pbest, Qbest, ∇Jzubovbest
+                    return Pbest, Qbest, Jzubov, ∇Jzubovbest
                 else
-                    return P, Q, ∇Jzubov
+                    return P, Q, Jzubov, ∇Jzubov
                 end
             end
         end
     else
         # Optimize for the P matrix
-        P, model_P = optimize_P(X, A, F, Q, options)
+        P, Jzubov = optimize_P(op, X, Q, options)
         λ_P = eigen(P).values
         λ_P_real = real.(λ_P) 
-
-        Jzubov = objective_value(model_P) 
         diff_P = norm(P - P', 2)
+        ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
 
         # Logging
         @info """[Zubov-LyapuInf]
         Objective value:                     $(Jzubov)
+        Gradient of Objective value:         $(∇Jzubov)
         ||P - P'||_F:                        $(diff_P)
         eigenvalues of P:                    $(λ_P)
         # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
         dimension:                           $(N)
         α:                                   $(options.α)
         """
-        return P, Q, Jzubov
+        return P, Q, Jzubov, ∇Jzubov
     end
 end
 
