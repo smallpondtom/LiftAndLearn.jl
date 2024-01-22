@@ -1,28 +1,18 @@
 ## Packages
-using Distributions
-using LaTeXStrings
 using LinearAlgebra
-using MatrixEquations
-using Plots
 using ProgressMeter
 using Random
-using SparseArrays
-using Optim
-
 
 ## My modules
-include("../src/model/Burgers.jl")
-include("../src/LiftAndLearn.jl")
+using LiftAndLearn
 const LnL = LiftAndLearn
-;
+const LyapInf = LnL.LyapInf
 
 ## First order Burger's equation setup
 burger = Burgers(
     [0.0, 1.0], [0.0, 1.0], [0.10, 0.10],
     2^(-7), 1e-4, 1, "periodic"
 )
-;
-
 
 ## Setup
 rmin = 1
@@ -54,9 +44,7 @@ options = LnL.LS_options(
 
 # Downsampling rate
 DS = options.data.DS
-
 Tdim_ds = size(1:DS:burger.Tdim, 1)  # downsampled time dimension
-;
 
 ## Initial condition
 IC = Dict(
@@ -67,8 +55,6 @@ IC = Dict(
 )
 IC[:num] = Int(length(IC[:a])*length(IC[:b])*length(IC[:c]))
 IC[:func] = (a,b,c) -> exp.(-a * cos.(π .* burger.x .+ b).^2) .- c
-;
-
 
 ## Generate training data
 @info "Generate the FOM system matrices and training data."
@@ -100,48 +86,45 @@ R = reduce(hcat, Xdotall)
 # Compute the POD basis from the training data
 tmp = svd(X)
 Vrmax = tmp.U[:, 1:rmax]
-;
 
 ## Compute the intrusive model
 @info "Compute the intrusive model"
 op_int = LnL.intrusiveMR(op_fom, Vrmax, options)
-;
 
 ## Compute the OpInf model
 @info "Compute the standard OpInf solution."
-op_LS = LnL.inferOp(X, zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vrmax, Vrmax' * R, options)
-;
+op_std = LnL.inferOp(X, zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vrmax, Vrmax' * R, options)
 
 ## Define some storage variables
+rsize = rmax - rmin + 1
 P_res = Dict(
-    "int"=> Vector{Matrix{Float64}}(undef, rmax-rmin+1),
-    "inf"=> Vector{Matrix{Float64}}(undef, rmax-rmin+1)
+    "int"=> Vector{Matrix{Float64}}(undef, rsize),
+    "std"=> Vector{Matrix{Float64}}(undef, rsize)
 )
 Q_res = Dict(
-    "int"=> Vector{Matrix{Float64}}(undef, rmax-rmin+1),
-    "inf"=> Vector{Matrix{Float64}}(undef, rmax-rmin+1)
+    "int"=> Vector{Matrix{Float64}}(undef, rsize),
+    "std"=> Vector{Matrix{Float64}}(undef, rsize)
 )
-Zerr_res = Dict(
-    "int"=> Vector{Float64}(undef, rmax-rmin+1),
-    "inf"=> Vector{Float64}(undef, rmax-rmin+1)
+Jzubov_res = Dict(
+    "int"=> Vector{Float64}(undef, rsize),
+    "std"=> Vector{Float64}(undef, rsize)
 )
 ∇Jzubov_res = Dict(
-    "int"=> Vector{Float64}(undef, rmax-rmin+1),
-    "inf"=> Vector{Float64}(undef, rmax-rmin+1)
+    "int"=> Vector{Float64}(undef, rsize),
+    "std"=> Vector{Float64}(undef, rsize)
 )
 ρ_max_res = Dict(
-    "int"=> Vector{Float64}(undef, rmax-rmin+1),
-    "inf"=> Vector{Float64}(undef, rmax-rmin+1)
+    "int"=> Vector{Float64}(undef, rsize),
+    "std"=> Vector{Float64}(undef, rsize)
 )
 ρ_min_res = Dict(
-    "int"=> Vector{Float64}(undef, rmax-rmin+1),
-    "inf"=> Vector{Float64}(undef, rmax-rmin+1)
+    "int"=> Vector{Float64}(undef, rsize),
+    "std"=> Vector{Float64}(undef, rsize)
 )
 ρ_est_res = Dict(
-    "int"=> Vector{Float64}(undef, rmax-rmin+1),
-    "inf"=> Vector{Float64}(undef, rmax-rmin+1)
+    "int"=> Vector{Float64}(undef, rsize),
+    "std"=> Vector{Float64}(undef, rsize)
 )
-;
 
 ## Options for LyapInf
 lyapinf_options = LnL.LyapInf_options(
@@ -149,8 +132,7 @@ lyapinf_options = LnL.LyapInf_options(
     optimizer="Ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
-    optimize_both=false,
-    max_iter=10000,
+    optimize_PandQ=false,
 )
 
 
@@ -163,14 +145,15 @@ i = r - rmin + 1  # index
 A = op_int.A[1:r,1:r]
 F = LnL.extractF(op_int.F, r)
 H = LnL.extractH(op_int.H, r)
+op_tmp = LnL.operators(A=A, F=F, H=H)
 
-# Solve the PP-ZQLFI problem
+# Solve the non-intrusive Lyapunov Function Inference Problem
 Qinit = 1.0I(r)
 foo = round.(rand(r,r), digits=4)
 Pinit = foo * foo'
 
 # P, Q, Zerr_res["int"][i], ∇Jzubov_res["int"][i] = LnL.PR_Zubov_LFInf(Vrmax[:,1:r]' * X, A, F, Pinit, Qinit, lyapinf_options)
-P, Q, ∇Jzubov_res["int"][i] = LnL.PR_Zubov_LFInf(Vrmax[:,1:r]' * X, A, F, Pinit, Qinit, lyapinf_options)
+P, Q, Jzubov_res["int"][i], ∇Jzubov_res["int"][i] = LnL.PR_Zubov_LFInf(op_tmp, Vrmax[:,1:r]' * X, lyapinf_options; Pi=Pinit, Qi=Qinit)
 P_res["int"][i] = P
 Q_res["int"][i] = Q
 
