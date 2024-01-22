@@ -8,15 +8,14 @@ using LinearAlgebra
 using Plots
 using ProgressMeter
 using Random
-using SparseArrays
 using Statistics
 
 ##
-include("../src/model/Burgers.jl")
-include("../src/LiftAndLearn.jl")
+using LiftAndLearn
 const LnL = LiftAndLearn
+
 ##
-burger = Burgers(
+burger = LnL.burgers(
     [0.0, 1.0], [0.0, 1.0], [0.1, 1.0],
     2^(-7), 1e-4, 10, "dirichlet"
 )
@@ -143,9 +142,8 @@ df = DataFrame(
 )
 # CSV.write("scripts/data/burger_data.csv", df)  # Write the data just in case
 
-@info "Plotting results"
-
 ## Plotting
+@info "Plotting results"
 # Projection error
 p = plot(df.order[cutoff], df.projection_err[cutoff], marker=(:rect))
 plot!(yscale=:log10, majorgrid=true, minorgrid=true, legend=false)

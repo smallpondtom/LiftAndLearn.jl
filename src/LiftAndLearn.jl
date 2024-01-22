@@ -1,5 +1,5 @@
 """
-LiftAndLearn package main module
+    LiftAndLearn package main module
 """
 
 module LiftAndLearn
@@ -10,11 +10,23 @@ using Parameters
 using SparseArrays
 using MatrixEquations
 using Random
-using Statistics
 using JuMP
 using Ipopt, SCS
 using FFTW
-import HSL_jll
+using DocStringExtensions
+
+"""
+    Abstract_Options
+
+Abstract type for the options.
+"""
+abstract type Abstract_Options end
+"""
+    Abstract_Model
+
+Abstract type for the model.
+"""
+abstract type Abstract_Model end
 
 include("utils.jl")
 include("OpInf_options.jl")
@@ -31,6 +43,16 @@ include("intrusiveROM.jl")
 
 # Inferring the Lyapunov function
 include("LyapInf.jl")
+
+# Include the models
+include("model/Heat1D.jl")
+include("model/Burgers.jl")
+include("model/FHN.jl")
+include("model/KS.jl")
+using .Heat1D: heat1d
+using .Burgers: burgers
+using .FHN: fhn
+using .KS: ks
 
 end # module LiftAndLearn
 

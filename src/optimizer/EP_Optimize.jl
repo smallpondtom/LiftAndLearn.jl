@@ -1,16 +1,20 @@
+export EPHEC_Optimize, EPSIC_Optimize, EPP_Optimize
+
 """
+    EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
+        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+
 Energy preserved (Hard Equality Constraint) operator inference optimization (EPHEC)
 
-# Arguments
+## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
 - `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
-# Returns
+## Returns
 - Inferred operators
-
 """
 function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     dims::Dict, options::Abstract_Options, IG::operators)
@@ -24,7 +28,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
     if options.optim.linear_solver != "none"
-        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+        set_attribute(model, "hsllib", options.optim.HSL_lib_path)
         set_attribute(model, "linear_solver", options.optim.linear_solver)
     end
     set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
@@ -192,16 +196,19 @@ end
 
 
 """
+    EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
+        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+
 Energy preserved (Soft Inequality Constraint) operator inference optimization (EPSIC)
 
-# Arguments
+## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
 - `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
-# Returns
+## Returns
 - Inferred operators
 
 """
@@ -217,7 +224,7 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
     if options.optim.linear_solver != "none"
-        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+        set_attribute(model, "hsllib", options.optim.HSL_lib_path)
         set_attribute(model, "linear_solver", options.optim.linear_solver)
     end
     set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
@@ -407,16 +414,19 @@ end
 
 
 """
+    EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
+        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+
 Energy preserving penalty operator inference optimization (EPP)
 
-# Arguments
+## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
 - `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
-# Returns
+## Returns
 - Inferred operators
 
 """
@@ -432,7 +442,7 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
     if options.optim.linear_solver != "none"
-        set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+        set_attribute(model, "hsllib", options.optim.HSL_lib_path)
         set_attribute(model, "linear_solver", options.optim.linear_solver)
     end
     set_optimizer_attribute(model, "max_iter", options.optim.max_iter)

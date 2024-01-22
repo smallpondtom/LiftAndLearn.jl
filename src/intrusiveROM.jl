@@ -1,10 +1,10 @@
-"""
-Intrusive model reduction.
-"""
+export intrusiveMR
 
 
 """
-Perform intrusive model reduction
+$(SIGNATURES)
+
+Perform intrusive model reduction using Proper Orthogonal Decomposition (POD)
 
 # Arguments
 - `op`: operators of the target system (A, B, C, F/H, N, K)
@@ -24,10 +24,11 @@ function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractA
         A=Matrix(Ahat), B=Matrix(Bhat[:, :]), C=Matrix(Chat[:, :]), K=Matrix(Khat[:, :])
     )
 
+    n = size(op.A, 1)
+    r = size(Vr, 2)
+
     if options.system.is_quad  # Add the Fhat term here
         if op.F != 0
-            n = size(op.A, 1)
-            r = size(Vr, 2)
             Ln = elimat(n)
             Dr = dupmat(r)
             VV = kron(Vr, Vr)
@@ -53,12 +54,18 @@ function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractA
 
     # Add the Nhat term here
     if options.system.is_bilin
-        if typeof(op.N) == Vector{Matrix}
-            Nhat = Vector{Matrix{Float64}}(undef, length(op.N))
-            i = 0
-            for Ni in op.N
-                tmp = Vr' * Ni * Vr
-                Nhat[i+=1] = Matrix(tmp[:, :])
+        sz = size(op.N)
+        # if typeof(op.N) == Vector{Matrix}
+        if length(sz) == 3
+            p = sz[3]
+            # Nhat = Vector{Matrix{Float64}}(undef, length(op.N))
+            Nhat = Array{Float64}(undef, (r,r,p))
+            # i = 0
+            # for Ni in op.N  # Assuming that op.N is a vector of matrices
+            for i in 1:p
+                tmp = Vr' * op.N[:,:,i] * Vr
+                # Nhat[i+=1] = Matrix(tmp[:, :])
+                Nhat[:,:,i] = Matrix(tmp[:, :])
             end
             op_new.N = Nhat
         else

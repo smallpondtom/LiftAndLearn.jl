@@ -1,19 +1,18 @@
-"""
-File containing integration schemes.
-"""
-
+export forwardEuler, backwardEuler, crankNicolson, semiImplicitEuler
 
 """
-Forward euler scheme
+$(SIGNATURES)
 
-# Arguments
+Forward euler scheme integration.
+
+## Arguments
 - `A`: linear state operator
 - `B`: linear input operator
 - `U`: input vector/matrix
 - `tdata`: time data
 - `IC`: initial conditions
 
-# Return
+## Return
 - `states`: integrated states
 """
 function forwardEuler(A::Matrix, B::Matrix, U::Matrix, tdata::VecOrMat, IC::VecOrMat)::Matrix
@@ -30,15 +29,17 @@ end
 
 
 """
+$(SIGNATURES)
+
 Forward euler scheme [dispatch for f(x,u) and u = g(u,t)]
 
-# Arguments
+## Arguments
 - `f`: Xdot = f(x,g(u,t)) right-hand-side of the dynamics
 - `g`: Xdot = f(x,g(u,t)) input function g(u,t)
 - `tdata`: time data
 - `IC`: initial conditions
 
-# Return
+## Return
 - `states`: integrated states
 """
 function forwardEuler(f::Function, g::Function, tdata::VecOrMat, IC::VecOrMat)::Matrix
@@ -53,16 +54,19 @@ function forwardEuler(f::Function, g::Function, tdata::VecOrMat, IC::VecOrMat)::
     return states
 end
 
+
 """
+$(SIGNATURES)
+
 Forward euler scheme [dispatch for f(x,u) and u-input as U-matrix]
 
-# Arguments
+## Arguments
 - `f`: Xdot = f(x,U) right-hand-side of the dynamics
 - `U`: Xdot = f(x,U) input data U
 - `tdata`: time data
 - `IC`: initial conditions
 
-# Return
+## Return
 - `states`: integrated states
 """
 function forwardEuler(f::Function, U::Matrix, tdata::VecOrMat, IC::VecOrMat)::Matrix
@@ -79,16 +83,18 @@ end
 
 
 """
-Backward Euler scheme
+$(SIGNATURES)
 
-# Arguments
+Backward Euler scheme integration.
+
+## Arguments
 - `A`: linear state operator
 - `B`: linear input operator
 - `U`: input data
 - `tdata`: time data
 - `IC`: initial condtions
 
-# Return
+## Return
 - `states`: integrated states
 """
 function backwardEuler(A, B, U, tdata, IC)
@@ -105,9 +111,11 @@ end
 
 
 """
+$(SIGNATURES)
+
 Crank-Nicolson scheme
 
-# Arguments
+## Arguments
 - `A`: linear state operator
 - `B`: linear input operator
 - `U`: input data
@@ -115,7 +123,7 @@ Crank-Nicolson scheme
 - `IC`: initial condtions
 
 
-# Return
+## Return
 - `states`: integrated states
 """
 function crankNicolson(A, B, U, tdata, IC)
@@ -132,9 +140,11 @@ end
 
 
 """
+$(SIGNATURES)
+
 Semi-Implicit Euler scheme
 
-# Arguments
+## Arguments
 - `A`: linear state operator
 - `B`: linear input operator
 - `F`: quadratic state operator
@@ -142,8 +152,7 @@ Semi-Implicit Euler scheme
 - `tdata`: time data
 - `IC`: initial condtions
 
-
-# Return
+## Return
 - `states`: integrated states
 """
 function semiImplicitEuler(A, B, F, U, tdata, IC)
@@ -162,18 +171,19 @@ end
 
 
 """
+$(SIGNATURES)
+
 Semi-Implicit Euler scheme (dispatch)
 
-# Arguments
+## Arguments
 - `A`: linear state operator
 - `B`: linear input operator
-- `F`: quadratic state operator
+- `F_or_H`: quadratic state operator (F or H)
 - `U`: input data
 - `tdata`: time data
 - `IC`: initial condtions
 
-
-# Return
+## Return
 - `states`: integrated states
 """
 function semiImplicitEuler(A, B, F_or_H, U, tdata, IC, options)
@@ -197,7 +207,3 @@ function semiImplicitEuler(A, B, F_or_H, U, tdata, IC, options)
     end
     return state
 end
-
-
-# TODO: Create additional dispatch functions for the other schemes
-
