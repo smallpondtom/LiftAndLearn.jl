@@ -2,27 +2,22 @@
 One-dimensional heat equation test case using Operator Inference.
 """
 
+## Load packages
 using CSV
 using DataFrames
 using LinearAlgebra
 using Plots
 using ProgressMeter
 
-include("../src/model/Heat1D.jl")
-include("../src/LiftAndLearn.jl")
+using LiftAndLearn
 const LnL = LiftAndLearn
 
-# 1D Heat equation setup
-heat1d = Heat1D(
-    [0.0, 1.0], [0.0, 1.0], [0.1, 10],
-    2^(-7), 1e-3, 10
-);
-
+## Set some options
 savefigure = false
 provide_R = false
 
 # 1D Heat equation setup
-heat1d = Heat1D(
+heat1d = LnL.heat1d(
     [0.0, 1.0], [0.0, 1.0], [0.1, 10],
     2^(-7), 1e-3, 10
 )
@@ -59,6 +54,7 @@ A_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 B_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 C_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 
+## Generate operators
 r = 15  # order of the reduced form
 
 @info "Generate intrusive and inferred operators"
@@ -107,7 +103,7 @@ for (idx, μ) in enumerate(heat1d.μs)
     next!(p)
 end
 
-
+## Analyze
 @info "Compute errors"
 
 # Error analysis 
@@ -162,10 +158,10 @@ df = DataFrame(
 )
 # CSV.write("scripts/data/heat1d_data.csv", df)  # Write the data just in case
 
-println("[INFO] Plot results")
-# Plot data
+## Plot resultse
+@info "Plotting results"
 # Projection error
-p1 = plot(1:r, df.projection_err, marker=(:rect))
+p1 = plot(1:r, df.projection_err, marker=(:rect),show=true)
 plot!(p1, 
     yscale=:log10, 
     majorgrid=true, minorgrid=true, 
@@ -177,10 +173,9 @@ plot!(p1,
     show=true
 )
 display(p1)
-readline()
 
 # State error
-p2 = plot(1:r, df.intrusive_state_err, marker=(:cross, 10), label="intru", reuse=false)
+p2 = plot(1:r, df.intrusive_state_err, marker=(:cross, 10), label="intru", show=true)
 plot!(p2, 1:r, df.inferred_state_err, marker=(:circle), ls=:dash, label="opinf")
 plot!(p2, 
     yscale=:log10, 
@@ -192,10 +187,9 @@ plot!(p2,
     show=true
 )
 display(p2)
-readline()
 
 # Output error
-p3 = plot(1:r, df.intrusive_output_err, marker=(:cross, 10), label="intru", reuse=false)
+p3 = plot(1:r, df.intrusive_output_err, marker=(:cross, 10), label="intru", show=true)
 plot!(p3, 1:r, df.inferred_output_err, marker=(:circle), ls=:dash, label="opinf")
 plot!(p3, 
     yscale=:log10, 
@@ -207,7 +201,6 @@ plot!(p3,
     show=true
 )
 display(p3)
-readline()
 
 if savefigure
     savefig(p1, "scripts/figures/heat1d_proj_err.png")

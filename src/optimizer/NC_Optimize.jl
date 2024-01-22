@@ -1,14 +1,19 @@
-"""
-Non-constrained Optimization of Operator Inference (NC)
+export NC_Optimize, NC_Optimize_output
 
-# Arguments
+"""
+    NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, dims::Dict, 
+        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+
+Optimization version of Standard Operator Inference (NC)
+
+## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
 - `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
-# Returns
+## Returns
 - Inferred operators
 
 """
@@ -24,8 +29,14 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
     @info "Initialize optimization model."
 
     # Model with options
-    model = Model(Ipopt.Optimizer)
-    set_optimizer_attribute(model, "max_iter", options.optim.max_iter)    # maximum number of iterations
+    @info "Initialize optimization model."
+    model = Model(Ipopt.Optimizer; add_bridges = false)
+    if options.optim.linear_solver != "none"
+        set_attribute(model, "hsllib", options.optim.HSL_lib_path)
+        set_attribute(model, "linear_solver", options.optim.linear_solver)
+    end
+    set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
+    set_string_names_on_creation(model, false)
     if !options.optim.verbose
         set_silent(model)
     end
@@ -130,13 +141,15 @@ end
 
 
 """
-Non-constrained optimization for the operator inference (only for the output)
+    NC_Optimize_output(Y::Matrix, Xt_hat::Union{Matrix, Transpose}, dims::Dict, options::Abstract_Options) → C
 
-# Arguments
+Output optimization for the standard operator inference (for operator `C`)
+
+## Arguments
 - `Y`: the output matrix 
 - `Xt_hat`: the state matrix
 
-# Return
+## Return
 - the output state matrix `C`
 """
 function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose}, 
@@ -145,9 +158,16 @@ function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose},
     n = dims[:n]
     q = dims[:q]
 
-    @info "Initialize optimization model."
     Yt = transpose(Y)
-    model = Model(Ipopt.Optimizer)
+
+    @info "Initialize optimization model."
+    model = Model(Ipopt.Optimizer; add_bridges = false)
+    if options.optim.linear_solver != "none"
+        set_attribute(model, "hsllib", options.optim.HSL_lib_path)
+        set_attribute(model, "linear_solver", options.optim.linear_solver)
+    end
+    set_optimizer_attribute(model, "max_iter", options.optim.max_iter)
+    set_string_names_on_creation(model, false)
     if !options.optim.verbose
         set_silent(model)
     end

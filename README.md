@@ -1,14 +1,25 @@
 # Lift & Learn/Operator Inference with Julia
 
-[![Powered by ACE Lab](https://img.shields.io/badge/powered%20by-ACE%20Lab-pink)](
-https://sites.google.com/view/elizabeth-qian/research/ace-group)
+<div align="center">
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/src/assets/logo-dark.png">
+        <source media="(prefers-color-scheme: light)" srcset="docs/src/assets/logo.png">
+        <img alt="logo" src="docs/src/assets/logo.png" width="250" height="250">
+    </picture>
+</div>
 
----
+<div align="center">
+
+[![Powered by ACE Lab](https://img.shields.io/badge/powered%20by-ACE%20Lab-pink)](https://sites.google.com/view/elizabeth-qian/research/ace-group)
+[![CI](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml)
+[![codecov](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl/graph/badge.svg?token=4MJJ4716UA)](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl)
+[![Doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/dev)
+</div>
 
 LiftAndLearn.jl is an implementation of the Lift and Learn as well as the operator inference algorithm proposed in the papers listed in [References](#references). 
 
 ### Operator Inference (OpInf)
-Operator Inference is a scientific machine-learning framework used in data-driven modeling of dynamical systems that aims to learn the governing equations or operators from observed data without explicit knowledge of the underlying physics or dynamics (but with some information such as the structure, e.g., linear, quadratic, bilinear, etc.). To know more about OpInf, please refer to these resources by [Willcox Research Group](https://kiwi.oden.utexas.edu/research/operator-inference) and [ACE Lab](https://github.com/elizqian/operator-inference/tree/master).
+Operator Inference is a scientific machine-learning framework used in data-driven modeling of dynamical systems that aims to learn the governing equations or operators from observed data without explicit knowledge of the underlying physics or dynamics (but with some information such as the structure, e.g., linear, quadratic, bilinear, etc.). To know more about OpInf, please refer to these resources by  [ACE Lab](https://github.com/elizqian/operator-inference/tree/master) and [Willcox Research Group](https://kiwi.oden.utexas.edu/research/operator-inference).
 
 ### Lift and Learn (LnL)
 Lift and Learn is a physics-informed method for learning low-dimensional models for large-scale dynamical systems. Lifting refers to the transformation of the original nonlinear system to a linear, quadratic, bilinear, or polynomial system by mapping the original state space to a new space with additional auxiliary variables. After lifting the system to a more approachable form we can learn a reduced model using the OpInf approach. 
@@ -18,36 +29,32 @@ Lift and Learn is a physics-informed method for learning low-dimensional models 
 - We use [Ipopt](https://github.com/jump-dev/Ipopt.jl) for the optimization (e.g., EP-OpInf)
     - This requires additional proprietary linear-solvers including `ma86` and `ma97`. 
     - You can run the code without it by changing the options. By default Ipopt will use `MUMPS` but we recommend you obtain and download `HSL_jll.jl`. You can find the instructions [here](https://licences.stfc.ac.uk/product/libhsl).
+- As this package is designed for model reduction of large-scale models, we recommend using a high-memory machine to run the examples, ideally with more than 32GB of RAM.
 
 ### Installation
-:hammer: Actively working to make it into a package. 
 ```julia-repl
-(@v1.8) pkg> dev 
+(@v1.9) pkg> add LiftAndLearn
 ```
 
 ### Get Started
-For now you can clone the repo
-```
-git clone https://github.com/smallpondtom/LiftAndLearn.jl.git
-cd LiftAndLearn.jl
-```
-Compile natively and activate the package.
-```
-julia
-]
-instantiate
-activate .
+Try out the 1D heat equation example 
+$$\frac{\partial u}{\partial t} = \mu\frac{\partial^2 u}{\partial x^2}$$
+in the Julia REPL.
+```julia-repl
+> julia
+julia> ;
+shell> cd scripts 
 ⌫
+julia> ]
+(@v1.9) pkg> activate .
+(@v1.9) pkg> instantiate
+⌫
+julia> include("heat1d_OpInf_example.jl")
 ```
-Then you can run the Operator Inference 1D heat equation example.
-```
-include("scripts/heat1d_OpInf_example.jl")
-```
-
 
 ### TODO
 
-- [ ] Generalize the Learn & Lift Julia package for public use and for my personal research
+- [ ] Generalize the Learn & Lift Julia package 
     - [ ] Make an operation where the user gives all the settings and training data then the code outputs the inferred operators
     - [ ] Make an operation where the user inputs the inferred operators and the testing data then the error analysis is automatically completed.
 - [ ] Expand opinf
