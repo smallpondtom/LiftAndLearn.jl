@@ -5,11 +5,14 @@
 module LyapInf
 
 using DocStringExtensions
+using JuMP
+using Ipopt, SCS
 using LinearAlgebra
+using MatrixEquations
 using Parameters
 
-import ..LiftAndLearn: operators
+import ..LiftAndLearn: operators, squareMatStates
 
-include("nonintrusive.jl")
+include("intrusive.jl")
 
 end

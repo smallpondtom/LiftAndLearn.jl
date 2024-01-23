@@ -2,14 +2,15 @@
 using LinearAlgebra
 using ProgressMeter
 using Random
+import HSL_jll
 
-## My modules
+# My modules
 using LiftAndLearn
 const LnL = LiftAndLearn
-const LyapInf = LnL.LyapInf
+const LFI = LnL.LyapInf
 
 ## First order Burger's equation setup
-burger = Burgers(
+burger = LnL.burgers(
     [0.0, 1.0], [0.0, 1.0], [0.10, 0.10],
     2^(-7), 1e-4, 1, "periodic"
 )
@@ -77,7 +78,7 @@ for a in IC[:a], b in IC[:b], c in IC[:c]
     tmp = (states[:, 2:end] - states[:, 1:end-1]) / burger.Δt
     Xdotall[ct] = tmp[:, 1:DS:end]  # downsample data
     
-    @info "(Loop #$ct) Generated training data for a = $a, b = $b, c = $c"
+    @info "(Loop $ct of $(IC[:num])) Generated training data for a = $a, b = $b, c = $c"
     ct += 1
 end
 X = reduce(hcat, Xall)
@@ -127,19 +128,20 @@ Jzubov_res = Dict(
 )
 
 ## Options for LyapInf
-lyapinf_options = LnL.LyapInf_options(
+lyapinf_options = LFI.Int_LyapInf_options(
     extra_iter=3,
     optimizer="Ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
-    optimize_PandQ=false,
+    optimize_PandQ="P",
+    HSL_lib_path=HSL_jll.libhsl_path,
 )
 
 
 ## Infer the Lyapunov function for the intrusive model
 @info "Infer the Lyapunov function for the intrusive model"
 # for r in rmin:rmax
-r = 4
+r = 10
 i = r - rmin + 1  # index
 
 A = op_int.A[1:r,1:r]
@@ -147,20 +149,20 @@ F = LnL.extractF(op_int.F, r)
 H = LnL.extractH(op_int.H, r)
 op_tmp = LnL.operators(A=A, F=F, H=H)
 
-# Solve the non-intrusive Lyapunov Function Inference Problem
+## Solve the non-intrusive Lyapunov Function Inference Problem
 Qinit = 1.0I(r)
 foo = round.(rand(r,r), digits=4)
 Pinit = foo * foo'
 
-# P, Q, Zerr_res["int"][i], ∇Jzubov_res["int"][i] = LnL.PR_Zubov_LFInf(Vrmax[:,1:r]' * X, A, F, Pinit, Qinit, lyapinf_options)
-P, Q, Jzubov_res["int"][i], ∇Jzubov_res["int"][i] = LnL.PR_Zubov_LFInf(op_tmp, Vrmax[:,1:r]' * X, lyapinf_options; Pi=Pinit, Qi=Qinit)
+P, Q, Jzubov_res["int"][i], ∇Jzubov_res["int"][i] = LFI.Int_LyapInf(op_tmp, Vrmax[:,1:r]' * X, lyapinf_options; Qi=Qinit)
 P_res["int"][i] = P
 Q_res["int"][i] = Q
 
-# Compute the DoA 
-ρ_min_res["int"][i], ρ_max_res["int"][i] = LnL.DoA(P)
+## Compute the DoA 
+ρ_min_res["int"][i], ρ_max_res["int"][i] = LFI.DoA(P)
 
-# Compute the estimated domain of attraction from Boris's method
-ρ_est_res["int"][i] = LnL.est_stab_rad(A, H, Q)
+## Compute the estimated domain of attraction from Boris's method
+ρ_est_res["int"][i] = LFI.est_stability_rad(A, H, P)
+##
 @info "Done with r = $r"
 # end
