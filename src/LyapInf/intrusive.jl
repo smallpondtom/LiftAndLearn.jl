@@ -1,23 +1,26 @@
 
 """ 
-    Options for Non-Intrusive Lyapunov Function Inference (NILyapInf)
+    Options for Intrusive Lyapunov Function Inference (Int_LyapInf)
 
 # Fields
 """
-@with_kw mutable struct NILyapInf_options 
+@with_kw mutable struct Int_LyapInf_options 
     α::Real                     = 1e-4     # Eigenvalue shift parameter for P
     β::Real                     = 1e-4     # Eigenvalue shift parameter for Q
     δS::Real                    = 1e-5     # Symmetricity tolerance for P
     δJ::Real                    = 1e-5     # Objective value tolerance for the optimization
     # η_p::Real                   = 1        # Weighting parameter for the Ptilde term
     # η_q::Real                   = 1        # Weighting parameter for the Qtilde term
-    max_iter::Int               = 10000    # Maximum number of iterations for the optimization
+    max_iter::Int               = 100000   # Maximum number of iterations for the optimization
+    opt_max_iter::Int           = 100      # Maximum number of iterations for the solving for both P and Q in loop
     extra_iter::Int             = 3        # Number of extra iterations to run after the optimization has converged
     optimizer::String           = "ipopt"  # Optimizer to use for the optimization
     ipopt_linear_solver::String = "none"   # Linear solver for Ipopt
     verbose::Bool               = false    # Enable verbose output for the optimization
-    optimize_PandQ::Bool        = false    # Optimize both P and Q 
+    optimize_PandQ::String      = "P"      # Optimize both P and Q 
+    HSL_lib_path::String        = "none"   # Path to the HSL library
 
+    @assert (optimize_PandQ in ["P", "both", "together"]) "Optimize P and Q options are: P, both, and together."
     @assert (optimizer in ["ipopt", "Ipopt", "SCS"]) "Optimizer options are: Ipopt and SCS."
 end
 
@@ -99,37 +102,30 @@ end
 # end
 
 function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T}, 
-        options::NILyapInf_options; Pi=nothing) where {T<:Real}
+        options::Int_LyapInf_options; Pi=nothing) where {T<:Real}
     n, K = size(X)
     @assert n < K "The number of states must be less than the number of time steps."
-    X2t = squareMatStates(X)'
-    X2 = X2t'
-    Xt = X' # now we want the columns to be the states and rows to be time
+    X2 = squareMatStates(X)
+    # X2t = squareMatStates(X)'
+    # Xt = X' # now we want the columns to be the states and rows to be time
 
     # Unpack operators
     A = op.A 
     F = op.F
 
-    # Set up optimizer
-    if options.optimizer in ["ipopt", "Ipopt"]
+    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
         model = Model(Ipopt.Optimizer)
         set_optimizer_attribute(model, "max_iter", options.max_iter)
         if options.ipopt_linear_solver != "none"
-            set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+            set_attribute(model, "hsllib", options.HSL_lib_path)
             set_attribute(model, "linear_solver", options.ipopt_linear_solver)
         end
-    else 
-        model = Model(SCS.Optimizer)
-        set_optimizer_attribute(model, "max_iters", options.max_iter)
-    end
+        # Set up verbose or silent
+        if !options.verbose
+            set_silent(model)
+        end 
+        set_string_names_on_creation(model, false)
 
-    # Set up verbose or silent
-    if !options.verbose
-        set_silent(model)
-    end 
-    set_string_names_on_creation(model, false)
-
-    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
         @variable(model, P[1:n, 1:n], Symmetric)
         @variable(model, Ld[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
         L = LinearAlgebra.LowerTriangular(Ld)
@@ -147,21 +143,32 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         #     set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
         # end
 
-        @variable(model, Z[1:K, 1:K])
+        @variable(model, Z[1:n, 1:K])
         @constraint(
             model, 
-            Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
+            # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
+            # Z .== Xt*A'*P .+ X2t*F'*P .- 0.25 .* Xt*P*Xt'*Xt*Q .+ 0.5 .* Xt*Q
+            # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
+            Z .== P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X
         )
         @objective(model, Min, sum(Z.^2))
 
         # Add constraints for positive definiteness:
-        # Cholesky decomposition constraint: A = L * L'
+        # Cholesky decomposition constraint: P = L * L'
         for i in 1:n
             for j in 1:n
                 @constraint(model, P[i, j] == sum(L[i, k] * L[j, k] for k in 1:min(i, j)))
             end
         end
     else   # SCS is okay with large objective
+        model = Model(SCS.Optimizer)
+        set_optimizer_attribute(model, "max_iters", options.max_iter)
+        # Set up verbose or silent
+        if !options.verbose
+            set_silent(model)
+        end 
+        set_string_names_on_creation(model, false)
+
         @variable(model, P[1:n, 1:n], PSD)
         if !isnothing(Pi)
             set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
@@ -170,7 +177,8 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             model, 
             inside_norm, 
             # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
-            sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
+            # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
+            sum((P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
 
@@ -180,7 +188,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         end
     end
     
-    @constraint(model, c, Xt*P*Xt' .<= 1 - eps())
+    @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
     P_sol = value.(P)
     return P_sol, JuMP.objective_value(model)
@@ -188,65 +196,177 @@ end
 
 
 function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T}, 
-        options::NILyapInf_options; Qi=nothing) where {T<:Real}
+        options::Int_LyapInf_options; Qi=nothing) where {T<:Real}
     n, K = size(X)
-    X2t = squareMatStates(X)'
-    Xt = X' # now we want the columns to be the states and rows to be time
+    @assert n < K "The number of states must be less than the number of time steps."
+    X2 = squareMatStates(X)
+    # X2t = squareMatStates(X)'
+    # Xt = X' # now we want the columns to be the states and rows to be time
 
     # Unpack operators
     A = op.A
     F = op.F
     
-    # Set up optimizer
-    if options.optimizer in ["ipopt", "Ipopt"]
+    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
         model = Model(Ipopt.Optimizer)
         set_optimizer_attribute(model, "max_iter", options.max_iter)
         if options.ipopt_linear_solver != "none"
-            set_attribute(model, "hsllib", HSL_jll.libhsl_path)
+            set_attribute(model, "hsllib", options.HSL_lib_path)
             set_attribute(model, "linear_solver", options.ipopt_linear_solver)
         end
-    else 
-        model = Model(SCS.Optimizer)
-        set_optimizer_attribute(model, "max_iters", options.max_iter)
-    end
+        # Set up verbose or silent
+        if !options.verbose
+            set_silent(model)
+        end
+        set_string_names_on_creation(model, false)
 
-    # Set up verbose or silent
-    if !options.verbose
-        set_silent(model)
-    end
-    set_string_names_on_creation(model, false)
+        @variable(model, Q[1:n, 1:n], Symmetric)
+        @variable(model, Rd[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+        R = LinearAlgebra.LowerTriangular(Rd)
+        if !isnothing(Qi)
+            set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+        end
 
-    @variable(model, Q[1:n, 1:n], Symmetric)
-    if !isnothing(Qi)
-        set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
-    end
-    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
-        @variable(model, Z[1:K, 1:K])
+        @variable(model, Z[1:n, 1:K])
         @constraint(
             model, 
-            c_norm, 
-            Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'
+            # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
+            # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
+            Z .== P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X
         )
         @objective(model, Min, sum(Z.^2))
 
         # Add constraints for positive definiteness:
-        # Ensures that each leading principal minor has a determinant greater than a small positive value
-        for i = 1:n
-            @constraint(model, det(Q[1:i, 1:i]) >= options.α)
+        # Cholesky decomposition constraint: Q = R * R'
+        for i in 1:n
+            for j in 1:n
+                @constraint(model, Q[i, j] == sum(R[i, k] * R[j, k] for k in 1:min(i, j)))
+            end
         end
+
     else   # SCS is okay with large objective
+        model = Model(SCS.Optimizer)
+        set_optimizer_attribute(model, "max_iters", options.max_iter)
+
+        @variable(model, Q[1:n, 1:n], Symmetric)
+        if !isnothing(Qi)
+            set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+        end
+
+        # Set up verbose or silent
+        if !options.verbose
+            set_silent(model)
+        end
+        set_string_names_on_creation(model, false)
+
         @expression(
             model, 
             inside_norm, 
-            sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
+            # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
+            # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
+            sum((P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
         @constraint(model, Q .- options.β*I in PSDCone())
     end
-    @constraint(model, c, Xt*P*Xt' .<= 0.99999)
+
+    @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
     Q_sol = value.(Q)
     return Q_sol, JuMP.objective_value(model)
+end
+
+
+function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_options; 
+        Pi=nothing, Qi=nothing) where {T<:Real}
+    n, K = size(X)
+    @assert n < K "The number of states must be less than the number of time steps."
+    X2 = squareMatStates(X)
+
+    # Unpack operators
+    A = op.A 
+    F = op.F
+
+    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
+        model = Model(Ipopt.Optimizer)
+        set_optimizer_attribute(model, "max_iter", options.max_iter)
+        if options.ipopt_linear_solver != "none"
+            set_attribute(model, "hsllib", options.HSL_lib_path)
+            set_attribute(model, "linear_solver", options.ipopt_linear_solver)
+        end
+        # Set up verbose or silent
+        if !options.verbose
+            set_silent(model)
+        end 
+        set_string_names_on_creation(model, false)
+        
+        # P matrix
+        @variable(model, P[1:n, 1:n], Symmetric)
+        @variable(model, Ld[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+        L = LinearAlgebra.LowerTriangular(Ld)
+        if !isnothing(Pi)
+            set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
+        end
+
+        # Q matrix
+        @variable(model, Q[1:n, 1:n], Symmetric)
+        @variable(model, Rd[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+        R = LinearAlgebra.LowerTriangular(Rd)
+        if !isnothing(Qi)
+            set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+        end
+
+        # Objective
+        @variable(model, Z[1:n, 1:K])
+        @constraint(
+            model, 
+            Z .== P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X
+        )
+        @objective(model, Min, sum(Z.^2))
+
+        # Add constraints for positive definiteness:
+        # Cholesky decomposition constraint: P = L * L' and Q = R * R'
+        for i in 1:n
+            for j in 1:n
+                @constraint(model, P[i, j] == sum(L[i, k] * L[j, k] for k in 1:min(i, j)))
+                @constraint(model, Q[i, j] == sum(R[i, k] * R[j, k] for k in 1:min(i, j)))
+            end
+        end
+    else   # SCS is okay with large objective
+        model = Model(SCS.Optimizer)
+        set_optimizer_attribute(model, "max_iters", options.max_iter)
+        # Set up verbose or silent
+        if !options.verbose
+            set_silent(model)
+        end 
+        set_string_names_on_creation(model, false)
+
+        @variable(model, P[1:n, 1:n], PSD)
+        @variable(model, Q[1:n, 1:n], PSD)
+        if !isnothing(Pi)
+            set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
+        end
+        if !isnothing(Qi)
+            set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+        end
+        @expression(
+            model, 
+            sum((P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X).^2) 
+        )  
+        @objective(model, Min, inside_norm)
+
+        # Add a constraint to make A positive definite
+        for i in 1:n
+            @constraint(model, P[i, i] >= options.α)
+            @constraint(model, Q[i, i] >= options.β)
+        end
+    end
+    
+    @constraint(model, X'*P*X .<= 1 - eps())
+    JuMP.optimize!(model)
+    P_sol = value.(P)
+    Q_sol = value.(Q)
+    return P_sol, Q_sol, JuMP.objective_value(model)
 end
 
 
@@ -259,10 +379,14 @@ function DoA(P::Matrix)
 end
 
 
-function est_stab_rad(Ahat, Hhat, Q)
-    P = lyapc(Ahat', 0.5*Q)
-    F = svd(0.25*Q)
-    σmin = minimum(F.S)
+function est_stability_rad(Ahat, Hhat, P; div_by_2=true)
+    if div_by_2
+        LLt = lyapc(Ahat', 0.5*P)
+    else
+        LLt = lyapc(Ahat', P)
+    end
+    L = cholesky(LLt).L
+    σmin = minimum(svd(L).S)
     ρhat = σmin / sqrt(norm(P,2)) / norm(Hhat,2) / 2
     return ρhat
 end
@@ -278,16 +402,13 @@ function zubov_error(X, A, F, P, Q)
 end
 
 
-
-
-
-function NILyapInf(
+function Int_LyapInf(
     op::operators,  # Linear and Quadratic operators
     X::AbstractArray{T},  # state trajectory data
-    options::NILyapInf_options;   # Options for the optimization
+    options::Int_LyapInf_options;   # Options for the optimization
     Pi=nothing,  # Initial P matrix for the optimization
     Qi=nothing   # Initial Q matrix for the optimization
-)
+) where {T<:Real}
     # Convergence metrics
     Jzubov_lm1 = 0  # Jzubov(l-1)
     # Zerrbest = Inf
@@ -298,19 +419,19 @@ function NILyapInf(
     Q = isnothing(Qi) ? 1.0I(N) : Qi
     P = isnothing(Pi) ? 1.0I(N) : Pi
 
-    if options.optimize_both
+    if options.optimize_PandQ == "both"
         for l in 1:options.max_iter
-            # Optimize for the Q matrix
-            Q, _ = optimize_Q(op, X, P, options; Qi=Qi)
-            λ_Q = eigen(Q).values
-            λ_Q_real = real.(λ_Q)
-            Qi = Q
-
             # Optimize for the P matrix
             P, Jzubov = optimize_P(op, X, Q, options; Pi=Pi)
             λ_P = eigen(P).values
             λ_P_real = real.(λ_P) 
             Pi = P 
+
+            # Optimize for the Q matrix
+            Q, _ = optimize_Q(op, X, P, options; Qi=Qi)
+            λ_Q = eigen(Q).values
+            λ_Q_real = real.(λ_Q)
+            Qi = Q
 
             ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
             Jzubov_lm1 = Jzubov 
@@ -330,7 +451,7 @@ function NILyapInf(
 
             # Zubov Equation Error:                $(Zerr)
             # Logging
-            @info """[Zubov-LFI Iteration $l]
+            @info """[Int_LyapInf Iteration $l: Optimize P then Q]
             Objective value:                     $(Jzubov)
             Gradient of Objective value:         $(∇Jzubov)
             ||P - P'||_F:                        $(diff_P)
@@ -356,7 +477,7 @@ function NILyapInf(
             end    
             
             # If the optimization did not end before the maximum iteration assign what we have best for now
-            if l == options.max_iter
+            if l == options.opt_max_iter
                 if (@isdefined Pbest)
                     # return Pbest, Qbest, Zerrbest, ∇Jzubovbest
                     return Pbest, Qbest, Jzubov, ∇Jzubovbest
@@ -365,25 +486,49 @@ function NILyapInf(
                 end
             end
         end
-    else
+    elseif options.optimize_PandQ == "P"
         # Optimize for the P matrix
-        P, Jzubov = optimize_P(op, X, Q, options)
+        P, Jzubov = optimize_P(op, X, Q, options; Pi=P)
         λ_P = eigen(P).values
         λ_P_real = real.(λ_P) 
         diff_P = norm(P - P', 2)
-        ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
 
         # Logging
-        @info """[Zubov-LyapuInf]
+        @info """[Int_LyapInf: Optimize P only]
         Objective value:                     $(Jzubov)
-        Gradient of Objective value:         $(∇Jzubov)
         ||P - P'||_F:                        $(diff_P)
         eigenvalues of P:                    $(λ_P)
         # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
         dimension:                           $(N)
         α:                                   $(options.α)
         """
-        return P, Q, Jzubov, ∇Jzubov
+        return P, Q, Jzubov, Jzubov
+
+    elseif options.optimize_PandQ == "together"
+        # Optimize for the P matrix
+        P, Q, Jzubov = optimize_PQ(op, X, options; Pi=P, Qi=Q)
+        λ_P = eigen(P).values
+        λ_P_real = real.(λ_P) 
+        λ_Q = eigen(Q).values
+        λ_Q_real = real.(λ_Q)
+        diff_P = norm(P - P', 2)
+        diff_Q = norm(Q - Q', 2)
+
+        # Logging
+        @info """[Int_LyapInf: Optimize P and Q together]
+        Objective value:                     $(Jzubov)
+        ||P - P'||_F:                        $(diff_P)
+        ||Q - Q'||_F:                        $(diff_Q)
+        eigenvalues of P:                    $(λ_P)
+        # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
+        eigenvalues of Q:                    $(λ_Q)
+        # of Real(λq) <= 0:                  $(count(i->(i <= 0), λ_Q_real))
+        dimension:                           $(N)
+        α:                                   $(options.α)
+        β:                                   $(options.β)
+        """
+
+        return P, Q, Jzubov, Jzubov
     end
 end
 

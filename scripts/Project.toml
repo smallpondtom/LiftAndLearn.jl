@@ -2,6 +2,7 @@
 BlockDiagonals = "0a1fb500-61f7-11e9-3c65-f5ef3456f9f0"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+HSL_jll = "017b0a0e-03f4-516a-9b91-836bbd1904dd"
 LiftAndLearn = "192fc49d-b0e9-4795-8347-9ce9b8a8946d"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NaNStatistics = "b946abbf-3ea7-4610-9019-9858bfdeaf2d"

@@ -41,8 +41,8 @@ include("optimizer/EP_Optimize.jl")
 include("learn.jl")
 include("intrusiveROM.jl")
 
-# Inferring the Lyapunov function
-include("LyapInf.jl")
+# [Submodule] Inferring the Lyapunov function
+include("LyapInf/LyapInf.jl")
 
 # Include the models
 include("model/Heat1D.jl")
