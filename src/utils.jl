@@ -1,4 +1,4 @@
-export operators, dupmat, elimat, commat, nommat, vech
+export operators, dupmat, elimat, commat, nommat, vech, Unique_Kronecker, ⊘
 export F2H, H2F, F2Hs, squareMatStates, kronMatStates, extractF 
 export insert2F, insert2randF, extractH, insert2H, insert2bilin
 export invec, Q2H, H2Q
@@ -30,6 +30,88 @@ Base.@kwdef mutable struct operators
     N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0
     f::Function = x -> x
 end
+
+
+"""
+    Unique_Kronecker(x::AbstractVector{T}, y::AbstractVector{T}) where T
+
+Unique Kronecker product operation. For example, if
+
+```math
+x = y = \\begin{bmatrix}
+    1  \\\\
+    2
+\\end{bmatrix}
+```
+then
+```math
+Unique_Kronecker(x, x) = \\begin{bmatrix}
+    1 \\\\
+    2 \\\\
+    4
+\\end{bmatrix}
+```
+
+## Arguments
+- `x::AbstractVector{T}`: vector to perform the unique Kronecker product
+- `y::AbstractVector{T}`: vector to perform the unique Kronecker product
+
+## Returns
+- `result`: unique Kronecker product
+"""
+@inline function Unique_Kronecker(x::AbstractArray{T}, y::AbstractArray{T}) where {T<:Number}
+    n = length(x)
+    m = length(y)
+    result = Array{T}(undef, n*(n+1) ÷ 2)
+    k = 1
+    @inbounds for i in 1:n
+        for j in i:m
+            result[k] = x[i] * y[j]
+            k += 1
+        end
+    end
+    return result
+end
+
+
+"""
+    Unique_Kronecker(x::AbstractVector{T}) where T
+
+Unique Kronecker product operation (dispatch)
+
+## Arguments
+- `x::AbstractVector{T}`: vector to perform the unique Kronecker product
+
+## Returns
+- `result`: unique Kronecker product
+"""
+@inline function Unique_Kronecker(x::AbstractArray{T}) where {T<:Number}
+    n = length(x)
+    result = Array{T}(undef, n*(n+1) ÷ 2)
+    k = 1
+    @inbounds for i in 1:n
+        for j in i:n
+            result[k] = x[i] * y[j]
+            k += 1
+        end
+    end
+    return result
+end
+
+
+"""
+    ⊘(x::AbstractVector{T}, y::AbstractVector{T}) where T
+
+Unique Kronecker product operation
+
+## Arguments
+- `x::AbstractVector{T}`: vector to perform the unique Kronecker product
+- `y::AbstractVector{T}`: vector to perform the unique Kronecker product
+
+## Returns
+- unique Kronecker product
+"""
+⊘(x::AbstractArray{T}, y::AbstractArray{T}) where {T<:Number} = Unique_Kronecker(x, y)
 
 
 """
@@ -161,14 +243,14 @@ commat(m::Integer) = commat(m, m)  # dispatch
 """
     nommat(m::Integer, n::Integer) → N
 
-Create symmetric commutation matrix `N` of dimension `m x n` [^magnus1980].
+Create symmetrizer (or symmetric commutation) matrix `N` of dimension `m x n` [^magnus1980].
 
 ## Arguments
 - `m::Integer`: row dimension of the commutation matrix
 - `n::Integer`: column dimension of the commutation matrix
 
 ## Returns
-- `N`: symmetric commutation matrix
+- `N`: symmetrizer (symmetric commutation) matrix
 """
 function nommat(m::Integer, n::Integer)
     mn = Int(m * n)
@@ -298,7 +380,7 @@ snapshot data matrix
 """
 function squareMatStates(Xmat)
     function vech_col(X)
-        return vech(X * X')
+        return X ⊘ X
     end
     tmp = vech_col.(eachcol(Xmat))
     return reduce(hcat, tmp)
@@ -319,7 +401,7 @@ a matrix form state data
 """
 function kronMatStates(Xmat)
     function vec_col(X)
-        return vec(X * X')
+        return X ⊗ X
     end
     tmp = vec_col.(eachcol(Xmat))
     return reduce(hcat, tmp)
@@ -552,6 +634,57 @@ function H2Q(H::AbstractArray)
     end
 
     return Q
+end
+
+
+"""
+    makeQuadOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int}}, vals::AbstractArray{Real}, 
+    which_quad_term::Union{String,Char}="H") → H or F or Q
+
+Helper function to construct the quadratic operator from the indices and values. The indices must
+be a 1-dimensional array of tuples of the form `(i,j,k)` where `i,j,k` are the indices of the
+quadratic term. For example, for the quadratic term ``2.5x_1x_2`` for ``\\dot{x}_3`` would have an 
+index of `(1,2,3)` with a value of `2.5`. The `which_quad_term` argument specifies which quadratic
+term to construct. Note that the values must be a 1-dimensional array of the same length as the indices.
+
+## Arguments
+- `n::Int`: dimension of the quadratic operator
+- `inds::AbstractArray{Tuple{Int,Int,Int}}`: indices of the quadratic term
+- `vals::AbstractArray{Real}`: values of the quadratic term
+- `which_quad_term::Union{String,Char}="H"`: which quadratic term to construct
+- `symmetric::Bool=true`: whether to construct the symmetric `H` or `Q` matrix
+
+## Returns
+- the quadratic operator
+"""
+function makeQuadOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int}}, vals::AbstractArray{<:Real}; 
+    which_quad_term::Union{String,Char}="H", symmetric::Bool=true)
+
+    @assert length(inds) == length(vals) "The length of indices and values must be the same."
+    Q = zeros(n, n, n)
+    for (ind,val) in zip(inds, vals)
+        if symmetric
+            i, j, k = ind
+            if i == j
+                Q[ind...] = val
+            else
+                Q[i,j,k] = val/2
+                Q[j,i,k] = val/2
+            end
+        else
+            Q[ind...] = val
+        end
+    end
+
+    if which_quad_term == "H" || which_quad_term == 'H'
+        return Q2H(Q)
+    elseif which_quad_term == "F" || which_quad_term == 'F'
+        return (H2F ∘ Q2H)(Q)
+    elseif which_quad_term == "Q" || which_quad_term == 'Q'
+        return Q
+    else
+        error("The quad term must be either H, F, or Q.")
+    end
 end
 
 

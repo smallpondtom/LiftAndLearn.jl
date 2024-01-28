@@ -59,6 +59,7 @@ SIAM Journal on Algebraic Discrete Methods, 1(4) 422-449, 1980-12.
 
 ```@docs
 vech
+⊘
 invec
 dupmat
 elimat

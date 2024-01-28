@@ -32,6 +32,11 @@ const LnL = LiftAndLearn
     lift_dataNL = lifter.mapNL(xsep)
     @test lift_data ≈ x_lift
     @test lift_dataNL ≈ x_lift[3:4, :]
+
+   lift_data = lifter.map(x)
+   lift_dataNL = lifter.mapNL(x)
+   @test lift_data ≈ x_lift
+   @test lift_dataNL ≈ x_lift[3:4, :]
 end
 
 

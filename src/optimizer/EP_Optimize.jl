@@ -2,7 +2,7 @@ export EPHEC_Optimize, EPSIC_Optimize, EPP_Optimize
 
 """
     EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+        options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserved (Hard Equality Constraint) operator inference optimization (EPHEC)
 
@@ -17,7 +17,7 @@ Energy preserved (Hard Equality Constraint) operator inference optimization (EPH
 - Inferred operators
 """
 function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
-    dims::Dict, options::Abstract_Options, IG::operators)
+    dims::Dict, options::Abstract_Option, IG::operators)
     # Some dimensions to unpack for convenience
     n = dims[:n]
     p = dims[:p]
@@ -197,7 +197,7 @@ end
 
 """
     EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+        options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserved (Soft Inequality Constraint) operator inference optimization (EPSIC)
 
@@ -213,7 +213,7 @@ Energy preserved (Soft Inequality Constraint) operator inference optimization (E
 
 """
 function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
-    dims::Dict, options::Abstract_Options, IG::operators)
+    dims::Dict, options::Abstract_Option, IG::operators)
     # Some dimensions to unpack for convenience
     n = dims[:n]
     p = dims[:p]
@@ -415,7 +415,7 @@ end
 
 """
     EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-        options::Abstract_Options, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+        options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserving penalty operator inference optimization (EPP)
 
@@ -431,7 +431,7 @@ Energy preserving penalty operator inference optimization (EPP)
 
 """
 function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
-    dims::Dict, options::Abstract_Options, IG::operators)
+    dims::Dict, options::Abstract_Option, IG::operators)
     # Some dimensions to unpack for convenience
     n = dims[:n]
     p = dims[:p]

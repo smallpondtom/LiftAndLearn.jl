@@ -4,6 +4,7 @@ Fitzhugh-Nagumo Equation test case using Lift & Learn.
 
 ## Setups 
 using BlockDiagonals
+using Kronecker
 using LinearAlgebra
 using NaNStatistics
 using Plots
@@ -212,15 +213,15 @@ test2_err = Dict(
     # At = Vr' * fomLinOps.A * Vr
     # Bt = Vr' * fomLinOps.B
     # Kt = Vr' * fomLinOps.K
-    # Ht = Vr' * fomLinOps.H * kron(Vr, Vr)
+    # Ht = Vr' * fomLinOps.H * (Vr ⊗ Vr)
     # Nt = Vr' * fomLinOps.N * Vr
 
     # fint(x, u) = fF(intruOps.A, intruOps.B, intruOps.F, intruOps.N, intruOps.K, x, u)
-    finf = (x, u) -> infOps.A * x + infOps.B * u + infOps.H * kron(x, x) + (infOps.N * x) * u + infOps.K
+    finf = (x, u) -> infOps.A * x + infOps.B * u + infOps.H * (x ⊗ x) + (infOps.N * x) * u + infOps.K
 
     # fint(x, u) = fF(intruOps.A, intruOps.B, intruOps.F, intruOps.N, intruOps.K, x, u)
-    fint = (x, u) -> intruOps.A * x  + intruOps.B * u + intruOps.H * kron(x, x) + (intruOps.N*x)*u + intruOps.K
-    # fint = (x, u) -> At * x + Bt * u + Ht * kron(x, x) + (Nt * x) * u + Kt
+    fint = (x, u) -> intruOps.A * x  + intruOps.B * u + intruOps.H * (x ⊗ x) + (intruOps.N*x)*u + intruOps.K
+    # fint = (x, u) -> At * x + Bt * u + Ht * (x ⊗ x) + (Nt * x) * u + Kt
 
     k, l = 0, 0
     for (X, U) in zip(Xtrain, Utrain_all)

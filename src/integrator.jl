@@ -163,7 +163,8 @@ function semiImplicitEuler(A, B, F, U, tdata, IC)
 
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        state2 = vech(state[:, j-1] * state[:, j-1]')
+        # state2 = vech(state[:, j-1] * state[:, j-1]')
+        state2 = state[:, j-1] ⊘ state[:, j-1]
         state[:, j] = (I(Xdim) - Δt * A) \ (state[:, j-1] + F * state2 * Δt + B * U[j-1] * Δt)
     end
     return state
@@ -195,7 +196,8 @@ function semiImplicitEuler(A, B, F_or_H, U, tdata, IC, options)
     if options.which_quad_term == "F"
         for j in 2:Tdim
             Δt = tdata[j] - tdata[j-1]
-            state2 = vech(state[:, j-1] * state[:, j-1]')
+            # state2 = vech(state[:, j-1] * state[:, j-1]')
+            state2 = state[:, j-1] ⊘ state[:, j-1]
             state[:, j] = (I(Xdim) - Δt * A) \ (state[:, j-1] + F_or_H * state2 * Δt + B * U[j-1] * Δt)
         end
     elseif options.which_quad_term == "H"
