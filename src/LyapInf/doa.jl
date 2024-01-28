@@ -80,7 +80,7 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int,
 end
 
 
-function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, Nl::Int, gp::Int,
+function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, Nl::Int, gp::Int, 
         state_space::Union{Array{Tuple,1},Tuple}, lifter::lifting; uniform_state_space::Bool=true)
     c_hat_star = Inf
     xi = zeros(N)
@@ -355,7 +355,7 @@ end
 
 
 
-function doa_sampling(V, V_dot, ns, N, state_space, Nl=0, gp=1,
+function doa_sampling(V, V_dot, ns, N, state_space; Nl=0, gp=1,
         n_strata=Int(2^N), method="memoryless", lifter=nothing)
     if method == "memoryless"
         if isnothing(lifter)
