@@ -6,21 +6,24 @@ module LiftAndLearn
 
 using LinearAlgebra
 using BlockDiagonals
+using Distributions: Uniform
+using Kronecker
 using Parameters
+using Sobol: SobolSeq, next!
 using SparseArrays
-using MatrixEquations
-using Random
+using MatrixEquations: lyapc
+using Random: rand, rand!
 using JuMP
 using Ipopt, SCS
 using FFTW
 using DocStringExtensions
 
 """
-    Abstract_Options
+    Abstract_Option
 
 Abstract type for the options.
 """
-abstract type Abstract_Options end
+abstract type Abstract_Option end
 """
     Abstract_Model
 
@@ -29,6 +32,8 @@ Abstract type for the model.
 abstract type Abstract_Model end
 
 include("utils.jl")
+export ⊘, vech
+
 include("OpInf_options.jl")
 include("analyze.jl")
 include("integrator.jl")
@@ -43,6 +48,7 @@ include("intrusiveROM.jl")
 
 # [Submodule] Inferring the Lyapunov function
 include("LyapInf/LyapInf.jl")
+export LyapInf
 
 # Include the models
 include("model/Heat1D.jl")

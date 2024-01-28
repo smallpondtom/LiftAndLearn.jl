@@ -6,15 +6,9 @@ module Heat1D
 using DocStringExtensions
 using LinearAlgebra
 
+import ..LiftAndLearn: Abstract_Model
+
 export heat1d
-
-
-"""
-    Abstract_Models
-
-Abstract type for the models.
-"""
-abstract type Abstract_Models end
 
 
 """
@@ -42,7 +36,7 @@ $(TYPEDEF)
 - `Pdim::Int64`: parameter dimension
 - `generateABmatrix::Function`: function to generate A and B matrices
 """
-mutable struct heat1d <: Abstract_Models
+mutable struct heat1d <: Abstract_Model
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain

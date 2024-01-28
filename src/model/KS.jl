@@ -8,14 +8,9 @@ using FFTW
 using LinearAlgebra
 using SparseArrays
 
+import ..LiftAndLearn: Abstract_Model, vech, ⊘
+
 export ks
-
-"""
-    Abstract_Models
-
-Abstract type for the models.
-"""
-abstract type Abstract_Models end
 
 
 """
@@ -54,7 +49,7 @@ where ``u`` is the state variable and ``\\mu`` is the viscosity coefficient.
 - `integrate_PS_ew::Function`: integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
 - `integrate_SG::Function`: integrator for second method of Fourier Transform without FFT
 """
-mutable struct ks <: Abstract_Models
+mutable struct ks <: Abstract_Model
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
@@ -348,27 +343,6 @@ function model_SG(model::ks, μ::Float64)
 end
 
 
-"""
-    vech(A) → v
-
-Half-vectorization operation
-
-## Arguments
-- `A`: matrix to half-vectorize
-
-## Returns
-- `v`: half-vectorized form
-"""
-function vech(A::AbstractMatrix{T}) where {T}
-    m = LinearAlgebra.checksquare(A)
-    v = Vector{T}(undef, (m * (m + 1)) >> 1)
-    k = 0
-    for j = 1:m, i = j:m
-        @inbounds v[k+=1] = A[i, j]
-    end
-    return v
-end
-
 
 """
     integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing) → u
@@ -399,7 +373,8 @@ function integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)
         IpdtA = (1.0I(Xdim) + Δt/2 * A)
 
         for j in 2:Tdim
-            u2 = vech(u[:, j-1] * u[:, j-1]')
+            # u2 = vech(u[:, j-1] * u[:, j-1]')
+            u2 = u[:, j-1] ⊘ u[:, j-1]
             if j == 2 && isnothing(u2_lm1)
                 u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * Δt)
             else
@@ -410,7 +385,8 @@ function integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)
     else
         for j in 2:Tdim
             Δt = tdata[j] - tdata[j-1]
-            u2 = vech(u[:, j-1] * u[:, j-1]')
+            # u2 = vech(u[:, j-1] * u[:, j-1]')
+            u2 = u[:, j-1] ⊘ u[:, j-1]
             if j == 2 && isnothing(u2_lm1)
                 u[:, j] = (1.0I(Xdim) - Δt/2 * A) \ ((1.0I(Xdim) + Δt/2 * A) * u[:, j-1] + F * u2 * Δt)
             else
@@ -558,7 +534,8 @@ function integrate_SG(A, F, tdata, IC)
 
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        uhat2 = vech(uhat[:, j-1] * transpose(uhat[:, j-1]))
+        # uhat2 = vech(uhat[:, j-1] * transpose(uhat[:, j-1]))
+        uhat2 = uhat[:, j-1] ⊘ uhat[:, j-1]
 
         # WARNING: The 1.0im is taken out from F
         if j == 2

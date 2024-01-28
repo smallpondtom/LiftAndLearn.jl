@@ -126,7 +126,7 @@ Standard Operator Inference.
 - `with_reg::Bool`: the option to use Tikhonov regularization
 - `pinv_tol::Real`: the tolerance for the least square pseudo inverse
 """
-@with_kw mutable struct LS_options <: Abstract_Options
+@with_kw mutable struct LS_options <: Abstract_Option
     method::String = "LS"
     system::sys_struct = sys_struct()
     vars::vars = vars()
@@ -153,7 +153,7 @@ Non-Constrained Operator Inference.
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 """
-@with_kw mutable struct NC_options <: Abstract_Options
+@with_kw mutable struct NC_options <: Abstract_Option
     method::String = "NC"
     system::sys_struct = sys_struct()
     vars::vars = vars()
@@ -180,7 +180,7 @@ Energy-Preserving Hard Equality Constraint Operator Inference.
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPHEC_options <: Abstract_Options
+@with_kw mutable struct EPHEC_options <: Abstract_Option
     method::String = "EPHEC"
     system::sys_struct = sys_struct()
     vars::vars = vars()
@@ -210,7 +210,7 @@ Energy-Preserving Soft Inequality Constraint Operator Inference.
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPSIC_options <: Abstract_Options
+@with_kw mutable struct EPSIC_options <: Abstract_Option
     method::String = "EPSIC"
     system::sys_struct = sys_struct()
     vars::vars = vars()
@@ -241,7 +241,7 @@ Energy-Preserving Penalty Operator Inference.
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPP_options <: Abstract_Options
+@with_kw mutable struct EPP_options <: Abstract_Option
     method::String = "EPP"
     system::sys_struct = sys_struct()
     vars::vars = vars()

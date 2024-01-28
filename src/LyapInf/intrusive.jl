@@ -149,7 +149,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
             # Z .== Xt*A'*P .+ X2t*F'*P .- 0.25 .* Xt*P*Xt'*Xt*Q .+ 0.5 .* Xt*Q
             # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
-            Z .== P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X
+            Z .== P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+  Q*X
         )
         @objective(model, Min, sum(Z.^2))
 
@@ -178,7 +178,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             inside_norm, 
             # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
             # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
-            sum((P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X).^2) 
+            sum((P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
 
@@ -232,7 +232,7 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
             model, 
             # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
             # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
-            Z .== P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X
+            Z .== P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X
         )
         @objective(model, Min, sum(Z.^2))
 
@@ -264,7 +264,7 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
             inside_norm, 
             # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
             # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
-            sum((P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X).^2) 
+            sum((P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
         @constraint(model, Q .- options.β*I in PSDCone())
@@ -320,7 +320,7 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
         @variable(model, Z[1:n, 1:K])
         @constraint(
             model, 
-            Z .== P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X
+            Z .== P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X
         )
         @objective(model, Min, sum(Z.^2))
 
@@ -351,7 +351,7 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
         end
         @expression(
             model, 
-            sum((P*A*X .+ P*F*X2 .- 0.25 .* Q*X*X'*P*X .+ 0.5 .* Q*X).^2) 
+            sum((P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
 
@@ -367,38 +367,6 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
     P_sol = value.(P)
     Q_sol = value.(Q)
     return P_sol, Q_sol, JuMP.objective_value(model)
-end
-
-
-function DoA(P::Matrix)
-    λ, _ = eigen(P)
-    λ_abs = abs.(λ)  # this should be unnecessary since P is symmetric
-    rmax = 1 / sqrt(minimum(λ_abs))
-    rmin = 1 / sqrt(maximum(λ_abs))
-    return [rmin, rmax]
-end
-
-
-function est_stability_rad(Ahat, Hhat, P; div_by_2=true)
-    if div_by_2
-        LLt = lyapc(Ahat', 0.5*P)
-    else
-        LLt = lyapc(Ahat', P)
-    end
-    L = cholesky(LLt).L
-    σmin = minimum(svd(L).S)
-    ρhat = σmin / sqrt(norm(P,2)) / norm(Hhat,2) / 2
-    return ρhat
-end
-
-
-function zubov_error(X, A, F, P, Q)
-    n, m = size(X)
-    # Construct some values used in the optimization
-    X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-    X2 = squareMatStates(X)'
-    X = X' # now we want the columns to be the states and rows to be time
-    return norm(X*A'*P*X' + X2*F'*P*X' - 0.25*X*P*X'*X*Q'*X' + 0.5*X*Q'*X', 2)
 end
 
 
@@ -456,9 +424,9 @@ function Int_LyapInf(
             Gradient of Objective value:         $(∇Jzubov)
             ||P - P'||_F:                        $(diff_P)
             ||Q - Q'||_F:                        $(diff_Q)
-            eigenvalues of P:                    $(λ_P)
+            eigenvalues of P:                    $(round.(λ_P; digits=4))
             # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
-            eigenvalues of Q:                    $(λ_Q)
+            eigenvalues of Q:                    $(round.(λ_Q; digits=4))
             # of Real(λq) <= 0:                  $(count(i->(i <= 0), λ_Q_real))
             dimension:                           $(N)
             α:                                   $(options.α)
@@ -488,7 +456,7 @@ function Int_LyapInf(
         end
     elseif options.optimize_PandQ == "P"
         # Optimize for the P matrix
-        P, Jzubov = optimize_P(op, X, Q, options; Pi=P)
+        P, Jzubov = optimize_P(op, X, Q, options; Pi=Pi)
         λ_P = eigen(P).values
         λ_P_real = real.(λ_P) 
         diff_P = norm(P - P', 2)
@@ -497,7 +465,7 @@ function Int_LyapInf(
         @info """[Int_LyapInf: Optimize P only]
         Objective value:                     $(Jzubov)
         ||P - P'||_F:                        $(diff_P)
-        eigenvalues of P:                    $(λ_P)
+        eigenvalues of P:                    $(round.(λ_P; digits=4))
         # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
         dimension:                           $(N)
         α:                                   $(options.α)
@@ -506,7 +474,7 @@ function Int_LyapInf(
 
     elseif options.optimize_PandQ == "together"
         # Optimize for the P matrix
-        P, Q, Jzubov = optimize_PQ(op, X, options; Pi=P, Qi=Q)
+        P, Q, Jzubov = optimize_PQ(op, X, options; Pi=Pi, Qi=Qi)
         λ_P = eigen(P).values
         λ_P_real = real.(λ_P) 
         λ_Q = eigen(Q).values
@@ -519,9 +487,9 @@ function Int_LyapInf(
         Objective value:                     $(Jzubov)
         ||P - P'||_F:                        $(diff_P)
         ||Q - Q'||_F:                        $(diff_Q)
-        eigenvalues of P:                    $(λ_P)
+        eigenvalues of P:                    $(round.(λ_P; digits=4))
         # of Real(λp) <= 0:                  $(count(i->(i <= 0), λ_P_real))
-        eigenvalues of Q:                    $(λ_Q)
+        eigenvalues of Q:                    $(round.(λ_Q; digits=4))
         # of Real(λq) <= 0:                  $(count(i->(i <= 0), λ_Q_real))
         dimension:                           $(N)
         α:                                   $(options.α)

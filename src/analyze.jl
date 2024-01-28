@@ -176,7 +176,7 @@ function EPConstraintViolation(Data::AbstractArray, X::Union{Matrix, SparseMatri
     viol = zeros(m,1)
     if which_quad == "H"
         for i in 1:m
-            viol[i] = Data[:,i]' * X * kron(Data[:,i], Data[:,i])
+            viol[i] = Data[:,i]' * X * (Data[:,i] ⊗ Data[:,i])
         end
     else
         for i in 1:m
