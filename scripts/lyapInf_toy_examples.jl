@@ -41,8 +41,8 @@ function nonlinear_pendulum_example()
         x0 = lifter.map(π*rand(2) .- π/2)
         prob = ODEProblem(nonlinear_pendulum!, x0, (0, tf))
         sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[:,:]
-        ddata = sol(tspan, Val{1})[:,:]
+        data = sol[1:4,:]
+        ddata = sol(tspan, Val{1})[1:4,:]
 
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
@@ -90,8 +90,8 @@ function E1_example()
         x0 = 4*rand(2) .- 2
         prob = ODEProblem(E1!, x0, (0, tf))
         sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[:,:]
-        ddata = sol(tspan, Val{1})[:,:]
+        data = sol[1:2,:]
+        ddata = sol(tspan, Val{1})[1:2,:]
 
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
@@ -145,8 +145,8 @@ function E2_example()
         x0 = lifter.map(2 * rand(2) .- 1)
         prob = ODEProblem(E1!, x0, (0, tf))
         sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[:,:]
-        ddata = sol(tspan, Val{1})[:,:]
+        data = sol[1:3,:]
+        ddata = sol(tspan, Val{1})[1:3,:]
 
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
@@ -199,8 +199,8 @@ function E3_example()
         x0 = lifter.map([foo1, foo2, foo3])
         prob = ODEProblem(E1!, x0, (0, tf))
         sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[:,:]
-        ddata = sol(tspan, Val{1})[:,:]
+        data = sol[1:4,:]
+        ddata = sol(tspan, Val{1})[1:4,:]
 
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
@@ -253,8 +253,8 @@ function E5_example()
         x0 = lifter.map([foo1, foo2])
         prob = ODEProblem(E1!, x0, (0, tf))
         sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[:,:]
-        ddata = sol(tspan, Val{1})[:,:]
+        data = sol[1:4,:]
+        ddata = sol(tspan, Val{1})[1:4,:]
 
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
@@ -277,8 +277,9 @@ function E5_example()
     return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
 end
 
-##
+## Example 0
 P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = nonlinear_pendulum_example()
+##
 c_star = LFI.doa_sampling(
     (x) -> x' * P * x, 
     (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
@@ -286,34 +287,38 @@ c_star = LFI.doa_sampling(
 )
 
 
-##
-P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example()
-c_star = LFI.doa_sampling(
-    (x) -> x' * P * x, 
-    (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
-    500, 2, (-5,5)
-)
+# ## Example 1
+# P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example()
+# ##
+# c_star = LFI.doa_sampling(
+#     (x) -> x' * P * x, 
+#     (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
+#     500, 2, (-5,5)
+# )
 
-##
-P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E2_example()
-c_star = LFI.doa_sampling(
-    (x) -> x' * P * x, 
-    (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
-    500, 2, (-5,5), Nl=3, lifter=lifter
-)
+# ## Example 2
+# P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E2_example()
+# ##
+# c_star = LFI.doa_sampling(
+#     (x) -> x' * P * x, 
+#     (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
+#     500, 2, (-5,5), Nl=3, lifter=lifter
+# )
 
-##
-P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E3_example()
-c_star = LFI.doa_sampling(
-    (x) -> x' * P * x, 
-    (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
-    500, 3, (-5,5), Nl=4, lifter=lifter
-)
+# ## Example 3
+# P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E3_example()
+# ##
+# c_star = LFI.doa_sampling(
+#     (x) -> x' * P * x, 
+#     (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
+#     500, 3, (-5,5), Nl=4, lifter=lifter
+# )
 
-##
-P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E5_example()
-c_star = LFI.doa_sampling(
-    (x) -> x' * P * x, 
-    (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
-    500, 2, (-5,5), Nl=4, lifter=lifter
-)
+# ## Example 5
+# P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E5_example()
+# ##
+# c_star = LFI.doa_sampling(
+#     (x) -> x' * P * x, 
+#     (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
+#     500, 2, (-5,5), Nl=4, lifter=lifter
+# )
