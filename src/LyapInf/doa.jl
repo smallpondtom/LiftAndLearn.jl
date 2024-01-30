@@ -57,10 +57,15 @@ end
 
 
 function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, 
-        state_space::Union{Array{Tuple,1},Tuple}; uniform_state_space::Bool=true)
+        state_space::Union{Array{Tuple,1},Tuple}; uniform_state_space::Bool=true, history=false)
     c_hat_star = Inf
+
     xi = zeros(N)
-    for _ = 1:ns
+    if history
+        chistory = zeros(ns)
+        xi_all = zeros(N,ns)
+    end
+    for j = 1:ns
         if uniform_state_space
             rand!(Uniform(state_space[1], state_space[2]), xi)
         else
@@ -75,25 +80,39 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int,
         if Vdot_xi >= 0 && V_xi < c_hat_star
             c_hat_star = V_xi
         end
+
+        if history
+            xi_all[:,j] = xi
+            chistory[j] += c_hat_star
+        end
     end
-    return c_hat_star
+    if history
+        return c_hat_star, chistory, xi_all
+    else
+        return c_hat_star
+    end
 end
 
 
 function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, Nl::Int, gp::Int, 
-        state_space::Union{Array{Tuple,1},Tuple}, lifter::lifting; uniform_state_space::Bool=true)
+        state_space::Union{Array{Tuple,1},Tuple}, lifter::lifting; uniform_state_space::Bool=true, history=false)
     c_hat_star = Inf
+
     xi = zeros(N)
     xi_lift = zeros(Nl)
-    for _ = 1:ns
+    if history
+        chistory = zeros(ns)
+        xi_all = zeros(N,ns)
+    end
+    for j = 1:ns
         if uniform_state_space
             rand!(Uniform(state_space[1], state_space[2]), xi)
-            xi_lift = lifter.map(xi, gp)
+            xi_lift = vec(lifter.map(xi, gp))
         else
             @inbounds for i = 1:N
                 xi[i] = rand(Uniform(state_space[i][1], state_space[i][2]))
             end
-            xi_lift = lifter.map(xi, gp)
+            xi_lift = vec(lifter.map(xi, gp))
         end
 
         Vdot_xi = Vdot(xi_lift)
@@ -102,19 +121,32 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, Nl::I
         if Vdot_xi >= 0 && V_xi < c_hat_star
             c_hat_star = V_xi
         end
+
+        if history
+            xi_all[:,j] = xi
+            chistory[j] += c_hat_star
+        end
     end
-    return c_hat_star
+    if history
+        return c_hat_star, chistory, xi_all
+    else
+        return c_hat_star
+    end
 end
 
 
 function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int, 
-        state_space::Union{Array{Tuple,1},Tuple}; uniform_state_space::Bool=true)
+        state_space::Union{Array{Tuple,1},Tuple}; uniform_state_space::Bool=true, history=false)
     c_underbar_star = 0
     c_bar_star = Inf
-    E = [0]
+    E = [0.0]
     sizehint!(E, ns+1)
     xi = zeros(N)
-    for i = 1:ns
+    if history
+        chistory = zeros(ns)
+        xi_all = zeros(N,ns)
+    end
+    for j = 1:ns
         if uniform_state_space
             rand!(Uniform(state_space[1], state_space[2]), xi)
         else
@@ -137,29 +169,41 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int,
                 c_underbar_star = maximum(filter(c -> c < c_bar_star, E))
             end
         end
-    end
 
-    return c_underbar_star
+        if history
+            xi_all[:,j] = xi
+            chistory[j] += c_underbar_star
+        end
+    end
+    if history
+        return c_underbar_star, chistory, xi_all
+    else
+        return c_underbar_star
+    end
 end
 
 
 function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int, Nl::Int, gp::Int,
-        state_space::Union{Array{Tuple,1},Tuple}, lifter::lifting; uniform_state_space::Bool=true)
+        state_space::Union{Array{Tuple,1},Tuple}, lifter::lifting; uniform_state_space::Bool=true, history=false)
     c_underbar_star = 0
     c_bar_star = Inf
-    E = [0]
+    E = [0.0]
     sizehint!(E, ns+1)
     xi = zeros(N)
     xi_lift = zeros(Nl)
-    for i = 1:ns
+    if history
+        chistory = zeros(ns)
+        xi_all = zeros(N,ns)
+    end
+    for j = 1:ns
         if uniform_state_space
             rand!(Uniform(state_space[1], state_space[2]), xi)
-            xi_lift = lifter.map(xi, gp)
+            xi_lift = vec(lifter.map(xi, gp))
         else
             @inbounds for i = 1:N
                 xi[i] = rand(Uniform(state_space[i][1], state_space[i][2]))
             end
-            xi_lift = lifter.map(xi, gp)
+            xi_lift = vec(lifter.map(xi, gp))
         end
 
         Vdot_xi = Vdot(xi_lift)
@@ -176,9 +220,18 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int, Nl::
                 c_underbar_star = maximum(filter(c -> c < c_bar_star, E))
             end
         end
+
+        if history
+            xi_all[:,j] = xi
+            chistory[j] += c_underbar_star
+        end
     end
 
-    return c_underbar_star
+    if history
+        return c_underbar_star, chistory, xi_all
+    else
+        return c_underbar_star
+    end
 end
 
 
@@ -334,7 +387,7 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
         for i = 1:sample_per_stratum
             # Quasi-Monte Carlo sampling within the current stratum
             Sobol.next!(sobol, xi)
-            xi_lift = lifter.map(xi, gp)
+            xi_lift = vec(lifter.map(xi, gp))
 
             if V_dot(xi_lift) < 0 && V(xi_lift) < c_bar_star
                 push!(E, V(xi_lift))
@@ -356,24 +409,24 @@ end
 
 
 function doa_sampling(V, V_dot, ns, N, state_space; Nl=0, gp=1,
-        n_strata=Int(2^N), method="memoryless", lifter=nothing)
+        n_strata=Int(2^N), method="memoryless", lifter=nothing, uniform_state_space=true, history=false)
     if method == "memoryless"
         if isnothing(lifter)
-            return sampling_memoryless(V, V_dot, ns, N, state_space)
+            return sampling_memoryless(V, V_dot, ns, N, state_space; uniform_state_space=uniform_state_space, history=history)
         else
-            return sampling_memoryless(V, V_dot, ns, N, Nl, gp, state_space, lifter)
+            return sampling_memoryless(V, V_dot, ns, N, Nl, gp, state_space, lifter; uniform_state_space=uniform_state_space, history=history)
         end
     elseif method == "memory"
         if isnothing(lifter)
-            return sampling_with_memory(V, V_dot, ns, N, Nl, gp, state_space, lifter)
+            return sampling_with_memory(V, V_dot, ns, N, state_space; uniform_state_space=uniform_state_space, history=history)
         else
-            return sampling_with_memory(V, V_dot, ns, N, state_space)
+            return sampling_with_memory(V, V_dot, ns, N, Nl, gp, state_space, lifter; uniform_state_space=uniform_state_space, history=history)
         end
     elseif method == "enhanced"
         if isnothing(lifter)
-            return enhanced_sampling_with_memory(V, V_dot, ns, N, Nl, gp, state_space, n_strata, lifter)
-        else
             return enhanced_sampling_with_memory(V, V_dot, ns, N, state_space, n_strata)
+        else
+            return enhanced_sampling_with_memory(V, V_dot, ns, N, Nl, gp, state_space, n_strata, lifter)
         end
     else
         error("Invalid method. Options are memoryless, memory, and enhanced.")
