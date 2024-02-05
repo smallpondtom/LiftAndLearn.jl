@@ -37,7 +37,7 @@ Lift and Learn is a physics-informed method for learning low-dimensional models 
 ```
 
 ### Get Started
-Try out the 1D heat equation example 
+Clone this repository and try the 1D heat equation example out
 $$\frac{\partial u}{\partial t} = \mu\frac{\partial^2 u}{\partial x^2}$$
 in the Julia REPL.
 ```julia-repl
@@ -67,6 +67,9 @@ julia> include("heat1d_OpInf_example.jl")
     - [x] Fitzhugh-Nagumo equation
     - [x] Kuramoto-Sivashinsky equation
 
+### Similar Works
+- [Python Operator Inference Code](https://github.com/Willcox-Research-Group/rom-operator-inference-Python3?tab=readme-ov-file) by [Willcox Research Group](https://oden.utexas.edu/research/centers-and-groups/willcox-research-group/)
+- Julia SciML [ModelReduction.jl](https://github.com/SciML/ModelOrderReduction.jl)
 
 ### References
 
