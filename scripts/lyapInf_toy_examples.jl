@@ -1,12 +1,10 @@
 ## Packages
 using Kronecker
 using LinearAlgebra
-using ProgressMeter
 using CairoMakie
-import Distributions: Uniform
 import Random: rand, rand!
 import DifferentialEquations: solve, ODEProblem, RK4
-import MatrixEquations: lyapc
+# import MatrixEquations: lyapc
 import HSL_jll
 
 ## My modules
@@ -365,7 +363,7 @@ end
 
 
 ## Example 1 #########################################################################
-P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(type="NI")
+P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="P", type="I")
 ##
 V = (x) -> x' * P * x
 Vdot = (x) -> x' * P * A * x + x' * P * F * (x ⊘ x)
