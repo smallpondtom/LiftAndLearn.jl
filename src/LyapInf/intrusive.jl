@@ -8,7 +8,7 @@
     α::Real                     = 1e-4     # Eigenvalue shift parameter for P
     β::Real                     = 1e-4     # Eigenvalue shift parameter for Q
     δS::Real                    = 1e-5     # Symmetricity tolerance for P
-    δJ::Real                    = 1e-5     # Objective value tolerance for the optimization
+    δJ::Real                    = 1e-3     # Objective value tolerance for the optimization
     # η_p::Real                   = 1        # Weighting parameter for the Ptilde term
     # η_q::Real                   = 1        # Weighting parameter for the Qtilde term
     max_iter::Int               = 100000   # Maximum number of iterations for the optimization
@@ -22,6 +22,7 @@
 
     @assert (optimize_PandQ in ["P", "both", "together"]) "Optimize P and Q options are: P, both, and together."
     @assert (optimizer in ["ipopt", "Ipopt", "SCS"]) "Optimizer options are: Ipopt and SCS."
+    @assert !(optimizer == "SCS" && optimize_PandQ in ["both","together"]) "SCS does not support optimizing P and Q together or both."
 end
 
 
@@ -41,7 +42,9 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         model = Model(Ipopt.Optimizer)
         set_optimizer_attribute(model, "max_iter", options.max_iter)
         if options.ipopt_linear_solver != "none"
-            set_attribute(model, "hsllib", options.HSL_lib_path)
+            if options.HSL_lib_path != "none"
+                set_attribute(model, "hsllib", options.HSL_lib_path)
+            end
             set_attribute(model, "linear_solver", options.ipopt_linear_solver)
         end
         # Set up verbose or silent
@@ -106,7 +109,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         )  
         @objective(model, Min, inside_norm)
 
-        # Add a constraint to make A positive definite
+        # Add a constraint to make positive definite
         for i in 1:n
             @constraint(model, P[i, i] >= options.α)
         end
@@ -131,68 +134,75 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
     A = op.A
     F = op.F
     
-    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
-        model = Model(Ipopt.Optimizer)
-        set_optimizer_attribute(model, "max_iter", options.max_iter)
-        if options.ipopt_linear_solver != "none"
+    # if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
+
+    model = Model(Ipopt.Optimizer)
+    set_optimizer_attribute(model, "max_iter", options.max_iter)
+    if options.ipopt_linear_solver != "none"
+        if options.HSL_lib_path != "none"
             set_attribute(model, "hsllib", options.HSL_lib_path)
-            set_attribute(model, "linear_solver", options.ipopt_linear_solver)
         end
-        # Set up verbose or silent
-        if !options.verbose
-            set_silent(model)
-        end
-        set_string_names_on_creation(model, false)
-
-        @variable(model, Q[1:n, 1:n], Symmetric)
-        @variable(model, Rd[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
-        R = LinearAlgebra.LowerTriangular(Rd)
-        if !isnothing(Qi)
-            set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
-        end
-
-        @variable(model, Z[1:n, 1:K])
-        @constraint(
-            model, 
-            # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
-            # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
-            Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
-        )
-        @objective(model, Min, sum(Z.^2))
-
-        # Add constraints for positive definiteness:
-        # Cholesky decomposition constraint: Q = R * R'
-        for i in 1:n
-            for j in 1:n
-                @constraint(model, Q[i, j] == sum(R[i, k] * R[j, k] for k in 1:min(i, j)))
-            end
-        end
-
-    else   # SCS is okay with large objective
-        model = Model(SCS.Optimizer)
-        set_optimizer_attribute(model, "max_iters", options.max_iter)
-
-        @variable(model, Q[1:n, 1:n], Symmetric)
-        if !isnothing(Qi)
-            set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
-        end
-
-        # Set up verbose or silent
-        if !options.verbose
-            set_silent(model)
-        end
-        set_string_names_on_creation(model, false)
-
-        @expression(
-            model, 
-            inside_norm, 
-            # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
-            # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
-            sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
-        )  
-        @objective(model, Min, inside_norm)
-        @constraint(model, Q .- options.β*I in PSDCone())
+        set_attribute(model, "linear_solver", options.ipopt_linear_solver)
     end
+    # Set up verbose or silent
+    if !options.verbose
+        set_silent(model)
+    end
+    set_string_names_on_creation(model, false)
+
+    @variable(model, Q[1:n, 1:n], Symmetric)
+    @variable(model, Rd[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+    R = LinearAlgebra.LowerTriangular(Rd)
+    if !isnothing(Qi)
+        set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+    end
+
+    @variable(model, Z[1:n, 1:K])
+    @constraint(
+        model, 
+        # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
+        # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
+        Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
+    )
+    @objective(model, Min, sum(Z.^2))
+
+    # Add constraints for positive definiteness:
+    # Cholesky decomposition constraint: Q = R * R'
+    for i in 1:n
+        for j in 1:n
+            @constraint(model, Q[i, j] == sum(R[i, k] * R[j, k] for k in 1:min(i, j)))
+        end
+    end
+
+    # else   # SCS is okay with large objective
+    #     model = Model(SCS.Optimizer)
+    #     set_optimizer_attribute(model, "max_iters", options.max_iter)
+
+    #     @variable(model, Q[1:n, 1:n], PSD)
+    #     if !isnothing(Qi)
+    #         set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+    #     end
+
+    #     # Set up verbose or silent
+    #     if !options.verbose
+    #         set_silent(model)
+    #     end
+    #     set_string_names_on_creation(model, false)
+
+    #     @expression(
+    #         model, 
+    #         inside_norm, 
+    #         # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
+    #         # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
+    #         sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
+    #     )  
+    #     @objective(model, Min, inside_norm)
+
+    #     # Add a constraint to make positive definite
+    #     for i in 1:n
+    #         @constraint(model, Q[i, i] >= options.β)
+    #     end
+    # end
 
     @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
@@ -211,80 +221,85 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
     A = op.A 
     F = op.F
 
-    if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
-        model = Model(Ipopt.Optimizer)
-        set_optimizer_attribute(model, "max_iter", options.max_iter)
-        if options.ipopt_linear_solver != "none"
+    # if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
+
+    model = Model(Ipopt.Optimizer)
+    set_optimizer_attribute(model, "max_iter", options.max_iter)
+    if options.ipopt_linear_solver != "none"
+        if options.HSL_lib_path != "none"
             set_attribute(model, "hsllib", options.HSL_lib_path)
-            set_attribute(model, "linear_solver", options.ipopt_linear_solver)
         end
-        # Set up verbose or silent
-        if !options.verbose
-            set_silent(model)
-        end 
-        set_string_names_on_creation(model, false)
-        
-        # P matrix
-        @variable(model, P[1:n, 1:n], Symmetric)
-        @variable(model, Ld[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
-        L = LinearAlgebra.LowerTriangular(Ld)
-        if !isnothing(Pi)
-            set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
-        end
+        set_attribute(model, "linear_solver", options.ipopt_linear_solver)
+    end
+    # Set up verbose or silent
+    if !options.verbose
+        set_silent(model)
+    end 
+    set_string_names_on_creation(model, false)
+    
+    # P matrix
+    @variable(model, P[1:n, 1:n], Symmetric)
+    @variable(model, Ld[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+    L = LinearAlgebra.LowerTriangular(Ld)
+    if !isnothing(Pi)
+        set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
+    end
 
-        # Q matrix
-        @variable(model, Q[1:n, 1:n], Symmetric)
-        @variable(model, Rd[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
-        R = LinearAlgebra.LowerTriangular(Rd)
-        if !isnothing(Qi)
-            set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
-        end
+    # Q matrix
+    @variable(model, Q[1:n, 1:n], Symmetric)
+    @variable(model, Rd[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+    R = LinearAlgebra.LowerTriangular(Rd)
+    if !isnothing(Qi)
+        set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+    end
 
-        # Objective
-        @variable(model, Z[1:n, 1:K])
-        @constraint(
-            model, 
-            Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
-        )
-        @objective(model, Min, sum(Z.^2))
+    # Objective
+    @variable(model, Z[1:n, 1:K])
+    @constraint(
+        model, 
+        Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
+    )
+    @objective(model, Min, sum(Z.^2))
 
-        # Add constraints for positive definiteness:
-        # Cholesky decomposition constraint: P = L * L' and Q = R * R'
-        for i in 1:n
-            for j in 1:n
-                @constraint(model, P[i, j] == sum(L[i, k] * L[j, k] for k in 1:min(i, j)))
-                @constraint(model, Q[i, j] == sum(R[i, k] * R[j, k] for k in 1:min(i, j)))
-            end
-        end
-    else   # SCS is okay with large objective
-        model = Model(SCS.Optimizer)
-        set_optimizer_attribute(model, "max_iters", options.max_iter)
-        # Set up verbose or silent
-        if !options.verbose
-            set_silent(model)
-        end 
-        set_string_names_on_creation(model, false)
-
-        @variable(model, P[1:n, 1:n], PSD)
-        @variable(model, Q[1:n, 1:n], PSD)
-        if !isnothing(Pi)
-            set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
-        end
-        if !isnothing(Qi)
-            set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
-        end
-        @expression(
-            model, 
-            sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
-        )  
-        @objective(model, Min, inside_norm)
-
-        # Add a constraint to make A positive definite
-        for i in 1:n
-            @constraint(model, P[i, i] >= options.α)
-            @constraint(model, Q[i, i] >= options.β)
+    # Add constraints for positive definiteness:
+    # Cholesky decomposition constraint: P = L * L' and Q = R * R'
+    for i in 1:n
+        for j in 1:n
+            @constraint(model, P[i, j] == sum(L[i, k] * L[j, k] for k in 1:min(i, j)))
+            @constraint(model, Q[i, j] == sum(R[i, k] * R[j, k] for k in 1:min(i, j)))
         end
     end
+
+    # else   # SCS is okay with large objective
+    #     model = Model(SCS.Optimizer)
+    #     set_optimizer_attribute(model, "max_iters", options.max_iter)
+    #     # Set up verbose or silent
+    #     if !options.verbose
+    #         set_silent(model)
+    #     end 
+    #     set_string_names_on_creation(model, false)
+
+    #     @variable(model, P[1:n, 1:n], PSD)
+    #     @variable(model, Q[1:n, 1:n], PSD)
+    #     if !isnothing(Pi)
+    #         set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
+    #     end
+    #     if !isnothing(Qi)
+    #         set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
+    #     end
+    #     @expression(
+    #         model, 
+    #         inside_norm,
+    #         sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
+    #     )  
+    #     @objective(model, Min, inside_norm)
+
+    #     # Add a constraint to make A positive definite
+    #     for i in 1:n
+    #         @constraint(model, P[i, i] >= options.α)
+    #         @constraint(model, Q[i, i] >= options.β)
+    #     end
+    # end
     
     @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
