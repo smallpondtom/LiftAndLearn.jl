@@ -57,7 +57,7 @@ end
 
 
 function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, 
-        state_space::Union{Array{Tuple,1},Tuple}; uniform_state_space::Bool=true, history=false)
+        state_space::Union{Array,Tuple}; uniform_state_space::Bool=true, history=false)
     c_hat_star = Inf
 
     xi = zeros(N)
@@ -95,7 +95,7 @@ end
 
 
 function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, Nl::Int, gp::Int, 
-        state_space::Union{Array{Tuple,1},Tuple}, lifter::lifting; uniform_state_space::Bool=true, history=false)
+        state_space::Union{Array,Tuple}, lifter::lifting; uniform_state_space::Bool=true, history=false)
     c_hat_star = Inf
 
     xi = zeros(N)
@@ -136,7 +136,7 @@ end
 
 
 function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int, 
-        state_space::Union{Array{Tuple,1},Tuple}; uniform_state_space::Bool=true, history=false)
+        state_space::Union{Array,Tuple}; uniform_state_space::Bool=true, history=false)
     c_underbar_star = 0
     c_bar_star = Inf
     E = [0.0]
@@ -184,7 +184,7 @@ end
 
 
 function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int, Nl::Int, gp::Int,
-        state_space::Union{Array{Tuple,1},Tuple}, lifter::lifting; uniform_state_space::Bool=true, history=false)
+        state_space::Union{Array,Tuple}, lifter::lifting; uniform_state_space::Bool=true, history=false)
     c_underbar_star = 0
     c_bar_star = Inf
     E = [0.0]
@@ -244,7 +244,7 @@ use
   ensure a more uniform coverage of the space, which can lead to faster convergence in higher dimensions.
 """
 function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N::Int, 
-        state_space::Array{Tuple}, n_strata::Int)
+        state_space::Array, n_strata::Int; history=false)
 
     function stratify_state_space(state_space, n_strata)
         num_dims = length(state_space)
@@ -288,8 +288,13 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
 
     c_underbar_star = 0
     c_bar_star = Inf
-    E = [0]
+    E = [0.0]
     sizehint!(E, ns+1)
+
+    if history
+        chistory = zeros(ns)
+        xi_all = zeros(N,ns)
+    end
 
     # Stratify the state space into n_strata
     strata_lb, strata_ub = stratify_state_space(state_space, n_strata)
@@ -297,7 +302,8 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
 
     xi = Vector{Float64}(undef, N)
     sample_per_stratum = div(ns, n_strata)
-    for k in n_strata
+    ct = 1
+    for k in 1:n_strata
         lb = strata_lb[k,:]
         ub = strata_ub[k,:]
 
@@ -305,7 +311,7 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
         for i = 1:sample_per_stratum
             # Quasi-Monte Carlo sampling within the current stratum
             Sobol.next!(sobol, xi)
-
+            
             if V_dot(xi) < 0 && V(xi) < c_bar_star
                 push!(E, V(xi))
                 if V(xi) > c_underbar_star
@@ -314,18 +320,37 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
             elseif V_dot(xi) >= 0 && V(xi) < c_bar_star
                 c_bar_star = V(xi)
                 if c_underbar_star >= c_bar_star
-                    c_underbar_star = maximum(filter(c -> c < c_bar_star, E))
+                    c_underbar_star = try
+                        maximum(filter(c -> c < c_bar_star, E))
+                    catch e 
+                        if isa(e, MethodError) 
+                            continue
+                        else
+                            @error e 
+                        end
+                    end
                 end
             end
+
+            if history
+                xi_all[:,ct] = xi
+                chistory[ct] += c_underbar_star
+            end
+
+            ct += 1  # increment counter
         end
     end
 
-    return c_underbar_star
+    if history
+        return c_underbar_star, chistory, xi_all
+    else
+        return c_underbar_star
+    end
 end
 
 
 function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N::Int, Nl::Int,
-        gp::Int, state_space::Array{Tuple}, n_strata::Int, lifter::lifting)
+        gp::Int, state_space::Array, n_strata::Int, lifter::lifting; history=false)
 
     function stratify_state_space(state_space, n_strata)
         num_dims = length(state_space)
@@ -369,8 +394,13 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
 
     c_underbar_star = 0
     c_bar_star = Inf
-    E = [0]
+    E = [0.0]
     sizehint!(E, ns+1)
+
+    if history
+        chistory = zeros(ns)
+        xi_all = zeros(N,ns)
+    end
 
     # Stratify the state space into n_strata
     strata_lb, strata_ub = stratify_state_space(state_space, n_strata)
@@ -379,7 +409,8 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
     xi = Vector{Float64}(undef, N)
     xi_lift = Vector{Float64}(undef, Nl)
     sample_per_stratum = div(ns, n_strata)
-    for k in n_strata
+    ct = 1
+    for k in 1:n_strata
         lb = strata_lb[k,:]
         ub = strata_ub[k,:]
 
@@ -397,13 +428,32 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
             elseif V_dot(xi_lift) >= 0 && V(xi_lift) < c_bar_star
                 c_bar_star = V(xi_lift)
                 if c_underbar_star >= c_bar_star
-                    c_underbar_star = maximum(filter(c -> c < c_bar_star, E))
+                    c_underbar_star = try
+                        maximum(filter(c -> c < c_bar_star, E))
+                    catch e 
+                        if isa(e, MethodError) 
+                            continue
+                        else
+                            @error e 
+                        end
+                    end
                 end
             end
+
+            if history
+                xi_all[:,ct] = xi
+                chistory[ct] += c_underbar_star
+            end
+
+            ct += 1  # increment counter
         end
     end
 
-    return c_underbar_star
+    if history
+        return c_underbar_star, chistory, xi_all
+    else
+        return c_underbar_star
+    end
 end
 
 
@@ -424,9 +474,9 @@ function doa_sampling(V, V_dot, ns, N, state_space; Nl=0, gp=1,
         end
     elseif method == "enhanced"
         if isnothing(lifter)
-            return enhanced_sampling_with_memory(V, V_dot, ns, N, state_space, n_strata)
+            return enhanced_sampling_with_memory(V, V_dot, ns, N, state_space, n_strata; history=history)
         else
-            return enhanced_sampling_with_memory(V, V_dot, ns, N, Nl, gp, state_space, n_strata, lifter)
+            return enhanced_sampling_with_memory(V, V_dot, ns, N, Nl, gp, state_space, n_strata, lifter; history=history)
         end
     else
         error("Invalid method. Options are memoryless, memory, and enhanced.")

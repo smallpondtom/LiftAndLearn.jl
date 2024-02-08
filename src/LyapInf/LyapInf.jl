@@ -18,5 +18,6 @@ import ..LiftAndLearn: operators, lifting, squareMatStates
 
 include("doa.jl")
 include("intrusive.jl")
+include("nonintrusive.jl")
 
 end

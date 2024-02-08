@@ -15,7 +15,7 @@ const LnL = LiftAndLearn
 const LFI = LyapInf
 
 ## 
-function nonlinear_pendulum_example(method="P")
+function nonlinear_pendulum_example(; method="P", type="I")
     A = zeros(4,4)
     A[1,2] = 1
     A[2,2] = -0.5
@@ -52,25 +52,40 @@ function nonlinear_pendulum_example(method="P")
     X = reduce(hcat, X)
     Xdot = reduce(hcat, Xdot)
 
-    ## Compute the Lyapunov Function using the intrusive method
-    lyapinf_options = LFI.Int_LyapInf_options(
-        extra_iter=3,
-        optimizer="Ipopt",
-        ipopt_linear_solver="ma86",
-        verbose=true,
-        optimize_PandQ=method,
-        HSL_lib_path=HSL_jll.libhsl_path,
-    )
-    # Pi = lyapc([0 1; -1 -0.5]', 1.0I(2))
-    # Pi = [Pi zeros(2,2); zeros(2,4)]
-    op = LnL.operators(A=A, H=H, F=F)
-    P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+    if type == "I"
+        ## Compute the Lyapunov Function using the intrusive method
+        lyapinf_options = LFI.Int_LyapInf_options(
+            extra_iter=3,
+            optimizer="Ipopt",
+            ipopt_linear_solver="ma86",
+            verbose=true,
+            optimize_PandQ=method,
+            HSL_lib_path=HSL_jll.libhsl_path,
+        )
+        # Pi = lyapc([0 1; -1 -0.5]', 1.0I(2))
+        # Pi = [Pi zeros(2,2); zeros(2,4)]
+        op = LnL.operators(A=A, H=H, F=F)
+        P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+    elseif type == "NI"
+        ## Compute the Lyapunov Function using the non-intrusive method
+        lyapinf_options = LFI.NonInt_LyapInf_options(
+            extra_iter=3,
+            optimizer="Ipopt",
+            ipopt_linear_solver="ma86",
+            verbose=true,
+            optimize_PandQ=method,
+            HSL_lib_path=HSL_jll.libhsl_path,
+        )
+        P, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options)
+    else
+        error("Invalid type")
+    end
     ρ_min, ρ_max = LFI.DoA(P[1:2,1:2])
     return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
 end
 
 
-function E1_example()
+function E1_example(; method="P", type="I")
     A = [-2.0 0.0; 0.0 -1.0]
     H = LnL.makeQuadOp(2, [(1,2,1), (1,2,2)], [1.0, 1.0])
     F = LnL.H2F(H)
@@ -101,186 +116,42 @@ function E1_example()
     X = reduce(hcat, X)
     Xdot = reduce(hcat, Xdot)
 
-    ## Compute the Lyapunov Function using the intrusive method
-    lyapinf_options = LFI.Int_LyapInf_options(
-        extra_iter=3,
-        optimizer="Ipopt",
-        ipopt_linear_solver="ma86",
-        verbose=true,
-        optimize_PandQ="P",
-        HSL_lib_path=HSL_jll.libhsl_path,
-    )
-    Pi = [1 0; 0 1]
-    op = LnL.operators(A=A, H=H, F=F)
-    P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options; Pi=Pi)
+    if type == "I"
+        ## Compute the Lyapunov Function using the intrusive method
+        lyapinf_options = LFI.Int_LyapInf_options(
+            extra_iter=3,
+            optimizer="Ipopt",
+            ipopt_linear_solver="ma86",
+            verbose=true,
+            optimize_PandQ=method,
+            HSL_lib_path=HSL_jll.libhsl_path,
+        )
+        Pi = [1 0; 0 1]
+        op = LnL.operators(A=A, H=H, F=F)
+        P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options; Pi=Pi)
+    elseif type == "NI"
+        ## Compute the Lyapunov Function using the intrusive method
+        lyapinf_options = LFI.NonInt_LyapInf_options(
+            extra_iter=3,
+            optimizer="Ipopt",
+            ipopt_linear_solver="ma86",
+            verbose=true,
+            optimize_PandQ=method,
+            HSL_lib_path=HSL_jll.libhsl_path,
+        )
+        Pi = [1 0; 0 1]
+        P, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options; Pi=Pi)
+    else 
+        error("Invalid type")
+    end
     ρ_min, ρ_max = LFI.DoA(P)
     ρ_est = LFI.est_stability_rad(A, H, P)
     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F
 end
 
 
-function E2_example()
-    A = zeros(3,3)
-    A[1,2] = -1.0
-    A[2,1] = 1.0
-    A[2,2] = -1.0
-    H = LnL.makeQuadOp(3, [(2,3,2), (1,2,3)], [1.0, -2.0])
-    F = LnL.H2F(H)
 
-    function E1!(xdot, x, p, t)
-        xdot .= A * x + H * (x ⊗ x)
-    end
-
-    # Generate the data
-    num_ic = 5  # number of initial conditions
-    tf = 10.0
-    dt = 0.001
-    tspan = 0.0:dt:tf
-    DS = 100  # down-sampling
-
-    # Lifting
-    lifter = LnL.lifting(2, 3, [x -> x[1]^2])
-
-    X = []
-    Xdot = []
-    for i in 1:num_ic
-        x0 = lifter.map(2 * rand(2) .- 1)
-        prob = ODEProblem(E1!, x0, (0, tf))
-        sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[1:3,:]
-        ddata = sol(tspan, Val{1})[1:3,:]
-
-        push!(X, data[:,1:DS:end])
-        push!(Xdot, ddata[:,1:DS:end])
-    end
-    X = reduce(hcat, X)
-    Xdot = reduce(hcat, Xdot)
-
-    ## Compute the Lyapunov Function using the intrusive method
-    lyapinf_options = LFI.Int_LyapInf_options(
-        extra_iter=3,
-        optimizer="Ipopt",
-        ipopt_linear_solver="ma86",
-        verbose=true,
-        optimize_PandQ="P",
-        HSL_lib_path=HSL_jll.libhsl_path,
-    )
-    op = LnL.operators(A=A, H=H, F=F)
-    P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
-    ρ_min, ρ_max = LFI.DoA(P)
-    return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
-end
-
-
-function E3_example()
-    A = zeros(4,4)
-    A[1,1] = -1.0
-    A[2,2] = -1.0
-    A[3,3] = -1.0
-    H = LnL.makeQuadOp(4, [(2,4,1), (1,2,2), (3,3,4)], [1.0, 1.0, -2.0])
-    F = LnL.H2F(H)
-
-    function E1!(xdot, x, p, t)
-        xdot .= A * x + H * (x ⊗ x)
-    end
-
-    # Generate the data
-    num_ic = 5  # number of initial conditions
-    tf = 10.0
-    dt = 0.001
-    tspan = 0.0:dt:tf
-    DS = 100  # down-sampling
-
-    # Lifting
-    lifter = LnL.lifting(3, 4, [x -> x[3]^2])
-
-    X = []
-    Xdot = []
-    for i in 1:num_ic
-        foo1, foo2, foo3 = 4.0*rand(3) .- 2.0
-        x0 = lifter.map([foo1, foo2, foo3])
-        prob = ODEProblem(E1!, x0, (0, tf))
-        sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[1:4,:]
-        ddata = sol(tspan, Val{1})[1:4,:]
-
-        push!(X, data[:,1:DS:end])
-        push!(Xdot, ddata[:,1:DS:end])
-    end
-    X = reduce(hcat, X)
-    Xdot = reduce(hcat, Xdot)
-
-    ## Compute the Lyapunov Function using the intrusive method
-    lyapinf_options = LFI.Int_LyapInf_options(
-        extra_iter=3,
-        optimizer="Ipopt",
-        ipopt_linear_solver="ma86",
-        verbose=true,
-        optimize_PandQ="P",
-        HSL_lib_path=HSL_jll.libhsl_path,
-    )
-    op = LnL.operators(A=A, H=H, F=F)
-    P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
-    ρ_min, ρ_max = LFI.DoA(P[1:3,1:3])
-    return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
-end
-
-
-function E5_example()
-    A = zeros(4,4)
-    A[1,2] = 1.0
-    A[2,2] = -2.0
-    A[2,3] = -1.0
-    H = LnL.makeQuadOp(4, [(3,4,2), (2,4,3), (2,3,4)], [0.81, 1.0, -1.0])
-    F = LnL.H2F(H)
-
-    function E1!(xdot, x, p, t)
-        xdot .= A * x + H * (x ⊗ x)
-    end
-
-    # Generate the data
-    num_ic = 5  # number of initial conditions
-    tf = 10.0
-    dt = 0.001
-    tspan = 0.0:dt:tf
-    DS = 100  # down-sampling
-
-    # Lifting
-    lifter = LnL.lifting(2, 4, [x -> sin.(x[1]), x -> cos.(x[1])])
-
-    X = []
-    Xdot = []
-    for i in 1:num_ic
-        foo1, foo2 = 2π/3*rand(3) .- π/3
-        x0 = lifter.map([foo1, foo2])
-        prob = ODEProblem(E1!, x0, (0, tf))
-        sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[1:4,:]
-        ddata = sol(tspan, Val{1})[1:4,:]
-
-        push!(X, data[:,1:DS:end])
-        push!(Xdot, ddata[:,1:DS:end])
-    end
-    X = reduce(hcat, X)
-    Xdot = reduce(hcat, Xdot)
-
-    ## Compute the Lyapunov Function using the intrusive method
-    lyapinf_options = LFI.Int_LyapInf_options(
-        extra_iter=3,
-        optimizer="Ipopt",
-        ipopt_linear_solver="ma86",
-        verbose=true,
-        optimize_PandQ="P",
-        HSL_lib_path=HSL_jll.libhsl_path,
-    )
-    op = LnL.operators(A=A, H=H, F=F)
-    P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
-    ρ_min, ρ_max = LFI.DoA(P[1:2,1:2])
-    return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
-end
-
-
-function E6_example()
+function E6_example(; method="P", type="I")
     A = zeros(2,2)
     A[1,2] = 1.0
     A[2,1] = -1.0
@@ -314,17 +185,32 @@ function E6_example()
     X = reduce(hcat, X)
     Xdot = reduce(hcat, Xdot)
 
-    ## Compute the Lyapunov Function using the intrusive method
-    lyapinf_options = LFI.Int_LyapInf_options(
-        extra_iter=3,
-        optimizer="Ipopt",
-        ipopt_linear_solver="ma86",
-        verbose=true,
-        optimize_PandQ="P",
-        HSL_lib_path=HSL_jll.libhsl_path,
-    )
-    op = LnL.operators(A=A, H=H, F=F)
-    P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+    if type == "I"
+        ## Compute the Lyapunov Function using the intrusive method
+        lyapinf_options = LFI.Int_LyapInf_options(
+            extra_iter=3,
+            optimizer="Ipopt",
+            ipopt_linear_solver="ma86",
+            verbose=true,
+            optimize_PandQ=method,
+            HSL_lib_path=HSL_jll.libhsl_path,
+        )
+        op = LnL.operators(A=A, H=H, F=F)
+        P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+    elseif type == "NI"
+        ## Compute the Lyapunov Function using the non-intrusive method
+        lyapinf_options = LFI.NonInt_LyapInf_options(
+            extra_iter=3,
+            optimizer="Ipopt",
+            ipopt_linear_solver="ma86",
+            verbose=true,
+            optimize_PandQ=method,
+            HSL_lib_path=HSL_jll.libhsl_path,
+        )
+        P, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options)
+    else
+        error("Invalid type")
+    end
     ρ_min, ρ_max = LFI.DoA(P)
     ρ_est = LFI.est_stability_rad(A, H, P)
     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F
@@ -440,64 +326,64 @@ function plot_doa_results(c_all, c_star, x_sample, P, Vdot, xrange, yrange; heat
 end
 
 
-## Example 0
-P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = nonlinear_pendulum_example()
-## Reproduce Paper Result
-P = [2.25 0.5; 0.5 2.0]
-V = (x) -> x' * P * x
-Vdot = (x) -> 4.5*x[1]*x[2] - x[2]^2 - (x[1] + 4*x[2])*sin(x[1])
-c_star, c_all, x_sample = LFI.doa_sampling(
-    V,
-    Vdot,
-    500, 2, (-5,5); 
-    method="memory", history=true
-)
-## Plot
-fig1, fig2 = plot_doa_results(c_all, c_star, x_sample, P, Vdot, lifter, (-5,5), (-5,5))
-##
-fig1
-##
-fig2
+# ## Example 0 #########################################################################
+# P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = nonlinear_pendulum_example()
+# ## Reproduce Paper Result
+# Ptest = [2.25 0.5; 0.5 2.0]
+# V = (x) -> x' * Ptest * x
+# Vdot = (x) -> 4.5*x[1]*x[2] - x[2]^2 - (x[1] + 4*x[2])*sin(x[1])
+# c_star, c_all, x_sample = LFI.doa_sampling(
+#     V,
+#     Vdot,
+#     500, 2, (-5,5); 
+#     method="memory", history=true
+# )
+# ## Plot
+# fig1, fig2 = plot_doa_results(c_all, c_star, x_sample, Ptest, Vdot, lifter, (-5,5), (-5,5))
+# ##
+# fig1
+# ##
+# fig2
 
-## LyapInf
-P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = nonlinear_pendulum_example()
+# ## LyapInf
+# P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = nonlinear_pendulum_example()
+# ##
+# V = (x) -> x' * P * x
+# Vdot = (x) -> x' * P * A * x + x' * P * F * (x ⊘ x)
+# c_star, c_all, x_sample = LFI.doa_sampling(
+#     V,
+#     Vdot,
+#     1000, 2, (-8,8); Nl=4, lifter=lifter,
+#     method="memory", history=true
+# )
+# ## Plot
+# fig1, fig2 = plot_doa_results(c_all, 1, x_sample, P[1:2,1:2], Vdot, lifter, (-8,8), (-8,8); lift=true, heatmap_lb=-0.5)
+# ##
+# fig1
+# ##
+# fig2
+
+
+## Example 1 #########################################################################
+P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(type="NI")
 ##
 V = (x) -> x' * P * x
 Vdot = (x) -> x' * P * A * x + x' * P * F * (x ⊘ x)
 c_star, c_all, x_sample = LFI.doa_sampling(
     V,
     Vdot,
-    1000, 2, (-8,8); Nl=4, lifter=lifter,
-    method="memory", history=true
+    1000, 2, (-5,5);
+    method="memory", history=true, n_strata=8, uniform_state_space=true
 )
 ## Plot
-fig1, fig2 = plot_doa_results(c_all, 1, x_sample, P[1:2,1:2], Vdot, lifter, (-8,8), (-8,8); lift=true, heatmap_lb=-0.5)
+fig1, fig2 = plot_doa_results(c_all, c_star, x_sample, P[1:2,1:2], Vdot, (-5,5), (-5,5); heatmap_lb=-5, meshsize=1e-2)
 ##
 fig1
 ##
 fig2
 
-
-## Example 1
-P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example()
-##
-V = (x) -> x' * P * x
-Vdot = (x) -> x' * P * A * x + x' * P * F * (x ⊘ x)
-c_star, c_all, x_sample = LFI.doa_sampling(
-    V,
-    Vdot,
-    500, 2, (-5,5);
-    method="memory", history=true
-)
-## Plot
-fig1, fig2 = plot_doa_results(c_all, c_star, x_sample, P[1:2,1:2], Vdot, (-5,5), (-5,5); heatmap_lb=-20)
-##
-fig1
-##
-fig2
-
-## Example 6
-P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E6_example()
+## Example 6 #########################################################################
+P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E6_example(type="NI")
 ##
 V = (x) -> x' * P * x
 Vdot = (x) -> x' * P * A * x + x' * P * F * (x ⊘ x)
@@ -513,6 +399,170 @@ fig1, fig2 = plot_doa_results(c_all, c_star, x_sample, P[1:2,1:2], Vdot, (-2,2),
 fig1
 ##
 fig2
+
+
+## ########################
+# function E2_example()
+#     A = zeros(3,3)
+#     A[1,2] = -1.0
+#     A[2,1] = 1.0
+#     A[2,2] = -1.0
+#     H = LnL.makeQuadOp(3, [(2,3,2), (1,2,3)], [1.0, -2.0])
+#     F = LnL.H2F(H)
+
+#     function E1!(xdot, x, p, t)
+#         xdot .= A * x + H * (x ⊗ x)
+#     end
+
+#     # Generate the data
+#     num_ic = 5  # number of initial conditions
+#     tf = 10.0
+#     dt = 0.001
+#     tspan = 0.0:dt:tf
+#     DS = 100  # down-sampling
+
+#     # Lifting
+#     lifter = LnL.lifting(2, 3, [x -> x[1]^2])
+
+#     X = []
+#     Xdot = []
+#     for i in 1:num_ic
+#         x0 = lifter.map(2 * rand(2) .- 1)
+#         prob = ODEProblem(E1!, x0, (0, tf))
+#         sol = solve(prob, RK4(); dt=dt, adaptive=false)
+#         data = sol[1:3,:]
+#         ddata = sol(tspan, Val{1})[1:3,:]
+
+#         push!(X, data[:,1:DS:end])
+#         push!(Xdot, ddata[:,1:DS:end])
+#     end
+#     X = reduce(hcat, X)
+#     Xdot = reduce(hcat, Xdot)
+
+#     ## Compute the Lyapunov Function using the intrusive method
+#     lyapinf_options = LFI.Int_LyapInf_options(
+#         extra_iter=3,
+#         optimizer="Ipopt",
+#         ipopt_linear_solver="ma86",
+#         verbose=true,
+#         optimize_PandQ="P",
+#         HSL_lib_path=HSL_jll.libhsl_path,
+#     )
+#     op = LnL.operators(A=A, H=H, F=F)
+#     P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+#     ρ_min, ρ_max = LFI.DoA(P)
+#     return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
+# end
+
+
+# function E3_example()
+#     A = zeros(4,4)
+#     A[1,1] = -1.0
+#     A[2,2] = -1.0
+#     A[3,3] = -1.0
+#     H = LnL.makeQuadOp(4, [(2,4,1), (1,2,2), (3,3,4)], [1.0, 1.0, -2.0])
+#     F = LnL.H2F(H)
+
+#     function E1!(xdot, x, p, t)
+#         xdot .= A * x + H * (x ⊗ x)
+#     end
+
+#     # Generate the data
+#     num_ic = 5  # number of initial conditions
+#     tf = 10.0
+#     dt = 0.001
+#     tspan = 0.0:dt:tf
+#     DS = 100  # down-sampling
+
+#     # Lifting
+#     lifter = LnL.lifting(3, 4, [x -> x[3]^2])
+
+#     X = []
+#     Xdot = []
+#     for i in 1:num_ic
+#         foo1, foo2, foo3 = 4.0*rand(3) .- 2.0
+#         x0 = lifter.map([foo1, foo2, foo3])
+#         prob = ODEProblem(E1!, x0, (0, tf))
+#         sol = solve(prob, RK4(); dt=dt, adaptive=false)
+#         data = sol[1:4,:]
+#         ddata = sol(tspan, Val{1})[1:4,:]
+
+#         push!(X, data[:,1:DS:end])
+#         push!(Xdot, ddata[:,1:DS:end])
+#     end
+#     X = reduce(hcat, X)
+#     Xdot = reduce(hcat, Xdot)
+
+#     ## Compute the Lyapunov Function using the intrusive method
+#     lyapinf_options = LFI.Int_LyapInf_options(
+#         extra_iter=3,
+#         optimizer="Ipopt",
+#         ipopt_linear_solver="ma86",
+#         verbose=true,
+#         optimize_PandQ="P",
+#         HSL_lib_path=HSL_jll.libhsl_path,
+#     )
+#     op = LnL.operators(A=A, H=H, F=F)
+#     P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+#     ρ_min, ρ_max = LFI.DoA(P[1:3,1:3])
+#     return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
+# end
+
+
+# function E5_example()
+#     A = zeros(4,4)
+#     A[1,2] = 1.0
+#     A[2,2] = -2.0
+#     A[2,3] = -1.0
+#     H = LnL.makeQuadOp(4, [(3,4,2), (2,4,3), (2,3,4)], [0.81, 1.0, -1.0])
+#     F = LnL.H2F(H)
+
+#     function E1!(xdot, x, p, t)
+#         xdot .= A * x + H * (x ⊗ x)
+#     end
+
+#     # Generate the data
+#     num_ic = 5  # number of initial conditions
+#     tf = 10.0
+#     dt = 0.001
+#     tspan = 0.0:dt:tf
+#     DS = 100  # down-sampling
+
+#     # Lifting
+#     lifter = LnL.lifting(2, 4, [x -> sin.(x[1]), x -> cos.(x[1])])
+
+#     X = []
+#     Xdot = []
+#     for i in 1:num_ic
+#         foo1, foo2 = 2π/3*rand(3) .- π/3
+#         x0 = lifter.map([foo1, foo2])
+#         prob = ODEProblem(E1!, x0, (0, tf))
+#         sol = solve(prob, RK4(); dt=dt, adaptive=false)
+#         data = sol[1:4,:]
+#         ddata = sol(tspan, Val{1})[1:4,:]
+
+#         push!(X, data[:,1:DS:end])
+#         push!(Xdot, ddata[:,1:DS:end])
+#     end
+#     X = reduce(hcat, X)
+#     Xdot = reduce(hcat, Xdot)
+
+#     ## Compute the Lyapunov Function using the intrusive method
+#     lyapinf_options = LFI.Int_LyapInf_options(
+#         extra_iter=3,
+#         optimizer="Ipopt",
+#         ipopt_linear_solver="ma86",
+#         verbose=true,
+#         optimize_PandQ="P",
+#         HSL_lib_path=HSL_jll.libhsl_path,
+#     )
+#     op = LnL.operators(A=A, H=H, F=F)
+#     P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+#     ρ_min, ρ_max = LFI.DoA(P[1:2,1:2])
+#     return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
+# end
+
+
 
 # ## Example 2
 # P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E2_example()
