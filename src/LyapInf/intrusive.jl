@@ -25,82 +25,6 @@
 end
 
 
-# function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
-#     n, m = size(X)
-    
-#     # Construct some values used in the optimization
-#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-#     X2 = squareMatStates(X)'
-#     X = X' # now we want the columns to be the states and rows to be time
-    
-#     model = Model(Ipopt.Optimizer)
-#     set_silent(model)
-#     @variable(model, P[1:n, 1:n])
-#     set_start_value.(P, Pi)
-#     @expression(model, Ps, 0.5 * (P + P'))
-#     @expression(
-#         model, 
-#         PDEnorm, 
-#         sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q'*X' + 0.5*X*Q'*X').^2)
-#     )
-#     @expression(model, Pnorm, sum((Ptilde - (Ps .- α.*I(n))).^2)*η)
-#     @constraint(model, c, X*Ps*X' .<= 0.99999)
-#     @objective(model, Min, PDEnorm + Pnorm)
-#     JuMP.optimize!(model)
-#     return value.(P), model
-# end
-
-
-# function optimize_P(X, Ahat, Fhat, Q, Pi, Ptilde, η)
-#     n, m = size(X)
-    
-#     # Construct some values used in the optimization
-#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-#     X2 = squareMatStates(X)'
-#     X = X' # now we want the columns to be the states and rows to be time
-    
-#     model = Model(Ipopt.Optimizer)
-#     set_silent(model)
-#     @variable(model, P[1:n, 1:n])
-#     set_start_value.(P, Pi)
-#     @expression(model, Ps, 0.5 * (P + P'))
-#     @expression(
-#         model, 
-#         PDEnorm, 
-#         sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q*X' + 0.5*X*Q*X').^2) 
-#     )  
-#     @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
-#     @constraint(model, c, X*Ps*X' .<= 0.99999)
-#     @objective(model, Min, PDEnorm + Pnorm)
-#     JuMP.optimize!(model)
-#     return value.(P), model
-# end
-
-
-# function optimize_Q(X, Ahat, Fhat, P, Qi, Qtilde, η)
-#     n, m = size(X)
-    
-#     # Construct some values used in the optimization
-#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-#     X2 = squareMatStates(X)'
-#     X = X' # now we want the columns to be the states and rows to be time
-    
-#     model = Model(Ipopt.Optimizer)
-#     set_silent(model)
-#     @variable(model, Q[1:n, 1:n])
-#     set_start_value.(Q, Qi)
-#     @expression(model, Qs, 0.5 * (Q + Q'))
-#     @expression(
-#         model, 
-#         PDEnorm, 
-#         sum((X*Ahat'*P*X' + X2*Fhat'*P*X' - 0.25*X*P*X'*X*Qs*X' + 0.5*X*Qs*X').^2)  
-#     )  
-#     @expression(model, Qnorm, sum((Qtilde - Qs).^2)*η)
-#     @objective(model, Min, PDEnorm + Qnorm)
-#     JuMP.optimize!(model)
-#     return value.(Q), model
-# end
-
 function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T}, 
         options::Int_LyapInf_options; Pi=nothing) where {T<:Real}
     n, K = size(X)
@@ -149,7 +73,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
             # Z .== Xt*A'*P .+ X2t*F'*P .- 0.25 .* Xt*P*Xt'*Xt*Q .+ 0.5 .* Xt*Q
             # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
-            Z .== P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+  Q*X
+            Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+  Q*X
         )
         @objective(model, Min, sum(Z.^2))
 
@@ -178,7 +102,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             inside_norm, 
             # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
             # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
-            sum((P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
+            sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
 
@@ -232,7 +156,7 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
             model, 
             # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
             # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
-            Z .== P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X
+            Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
         )
         @objective(model, Min, sum(Z.^2))
 
@@ -264,7 +188,7 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
             inside_norm, 
             # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
             # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
-            sum((P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
+            sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
         @constraint(model, Q .- options.β*I in PSDCone())
@@ -320,7 +244,7 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
         @variable(model, Z[1:n, 1:K])
         @constraint(
             model, 
-            Z .== P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X
+            Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
         )
         @objective(model, Min, sum(Z.^2))
 
@@ -351,7 +275,7 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
         end
         @expression(
             model, 
-            sum((P*A*X .+ P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
+            sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
 
@@ -506,6 +430,83 @@ end
 #####################
 ###### __old__ ######
 #####################
+
+# function opt_zubov(X, Ahat, Fhat, Q, Pi, Ptilde, η, α)
+#     n, m = size(X)
+    
+#     # Construct some values used in the optimization
+#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
+#     X2 = squareMatStates(X)'
+#     X = X' # now we want the columns to be the states and rows to be time
+    
+#     model = Model(Ipopt.Optimizer)
+#     set_silent(model)
+#     @variable(model, P[1:n, 1:n])
+#     set_start_value.(P, Pi)
+#     @expression(model, Ps, 0.5 * (P + P'))
+#     @expression(
+#         model, 
+#         PDEnorm, 
+#         sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q'*X' + 0.5*X*Q'*X').^2)
+#     )
+#     @expression(model, Pnorm, sum((Ptilde - (Ps .- α.*I(n))).^2)*η)
+#     @constraint(model, c, X*Ps*X' .<= 0.99999)
+#     @objective(model, Min, PDEnorm + Pnorm)
+#     JuMP.optimize!(model)
+#     return value.(P), model
+# end
+
+
+# function optimize_P(X, Ahat, Fhat, Q, Pi, Ptilde, η)
+#     n, m = size(X)
+    
+#     # Construct some values used in the optimization
+#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
+#     X2 = squareMatStates(X)'
+#     X = X' # now we want the columns to be the states and rows to be time
+    
+#     model = Model(Ipopt.Optimizer)
+#     set_silent(model)
+#     @variable(model, P[1:n, 1:n])
+#     set_start_value.(P, Pi)
+#     @expression(model, Ps, 0.5 * (P + P'))
+#     @expression(
+#         model, 
+#         PDEnorm, 
+#         sum((X*Ahat'*Ps*X' + X2*Fhat'*Ps*X' - 0.25*X*Ps*X'*X*Q*X' + 0.5*X*Q*X').^2) 
+#     )  
+#     @expression(model, Pnorm, sum((Ptilde - Ps).^2)*η)
+#     @constraint(model, c, X*Ps*X' .<= 0.99999)
+#     @objective(model, Min, PDEnorm + Pnorm)
+#     JuMP.optimize!(model)
+#     return value.(P), model
+# end
+
+
+# function optimize_Q(X, Ahat, Fhat, P, Qi, Qtilde, η)
+#     n, m = size(X)
+    
+#     # Construct some values used in the optimization
+#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
+#     X2 = squareMatStates(X)'
+#     X = X' # now we want the columns to be the states and rows to be time
+    
+#     model = Model(Ipopt.Optimizer)
+#     set_silent(model)
+#     @variable(model, Q[1:n, 1:n])
+#     set_start_value.(Q, Qi)
+#     @expression(model, Qs, 0.5 * (Q + Q'))
+#     @expression(
+#         model, 
+#         PDEnorm, 
+#         sum((X*Ahat'*P*X' + X2*Fhat'*P*X' - 0.25*X*P*X'*X*Qs*X' + 0.5*X*Qs*X').^2)  
+#     )  
+#     @expression(model, Qnorm, sum((Qtilde - Qs).^2)*η)
+#     @objective(model, Min, PDEnorm + Qnorm)
+#     JuMP.optimize!(model)
+#     return value.(Q), model
+# end
+
 
 # function pdp(A, n, γ_lb; γ_ub=1)
 #     not_pd = true
