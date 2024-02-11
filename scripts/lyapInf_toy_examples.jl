@@ -216,7 +216,8 @@ end
 
 
 ## Plotting function
-function plot_doa_results(c_all, c_star, x_sample, P, Vdot, lifter, xrange, yrange; lift=false, heatmap_lb=-100)
+function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, lifter, xrange, yrange;
+        lift=false, heatmap_lb=-100)
     fig1 = Figure(fontsize=20)
     ax1 = Axis(fig1[1,1],
         title="Level Convergence",
@@ -225,10 +226,8 @@ function plot_doa_results(c_all, c_star, x_sample, P, Vdot, lifter, xrange, yran
         xticks=0:100:length(c_all),
     )
     lines!(ax1, 1:length(c_all), c_all)
-    fig1
 
-
-    fig2 = Figure(size=(800,600), fontsize=20)
+    fig2 = Figure(size=(800,800), fontsize=20)
     ax2 = Axis(fig2[1,1],
         title="Domain of Attraction Estimate",
         xlabel=L"x_1",
@@ -266,13 +265,13 @@ function plot_doa_results(c_all, c_star, x_sample, P, Vdot, lifter, xrange, yran
     # Vector field of state trajectories
     f(x) = Point2f( (A*vec(lifter.map(x)) + F*(vec(lifter.map(x)) ⊘ vec(lifter.map(x))))[1:2] )
     streamplot!(ax2, f, xi..xf, yi..yf, arrow_size=10, colormap=:gray1)
-    fig2
 
     return fig1, fig2
 end
 
 
-function plot_doa_results(c_all, c_star, x_sample, P, Vdot, xrange, yrange; heatmap_lb=-100, meshsize=1e-3)
+function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange;
+         heatmap_lb=-100, meshsize=1e-3)
     fig1 = Figure(fontsize=20)
     ax1 = Axis(fig1[1,1],
         title="Level Convergence",
@@ -281,10 +280,8 @@ function plot_doa_results(c_all, c_star, x_sample, P, Vdot, xrange, yrange; heat
         xticks=0:100:length(c_all),
     )
     lines!(ax1, 1:length(c_all), c_all)
-    fig1
 
-
-    fig2 = Figure(size=(800,600), fontsize=20)
+    fig2 = Figure(size=(800,800), fontsize=20)
     ax2 = Axis(fig2[1,1],
         title="Domain of Attraction Estimate",
         xlabel=L"x_1",
@@ -318,9 +315,71 @@ function plot_doa_results(c_all, c_star, x_sample, P, Vdot, xrange, yrange; heat
     # Vector field of state trajectories
     f(x) = Point2f( (A*x + F*(x ⊘ x)) )
     streamplot!(ax2, f, xi..xf, yi..yf, arrow_size=10, colormap=:gray1)
-    fig2
 
     return fig1, fig2
+end
+
+ 
+function plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, xrange, yrange, ρest; 
+        heatmap_lb=-1000, meshsize=1e-3)
+    fig = Figure(size=(800,800), fontsize=20)
+    ax2 = Axis(fig[1,1],
+        title="Domain of Attraction Estimate",
+        xlabel=L"x_1",
+        ylabel=L"x_2",
+        xlabelsize=25,
+        ylabelsize=25,
+        aspect=DataAspect()
+    )
+    # Heatmap to show area where Vdot <= 0
+    xi, xf = xrange[1], xrange[2]
+    yi, yf = yrange[1], yrange[2]
+    xpoints = xi:meshsize:xf
+    ypoints = yi:meshsize:yf
+
+    data = [Vdot1([x,y]) for x=xpoints, y=ypoints]
+    hm1 = heatmap!(ax2, xpoints, ypoints, data, colorrange=(heatmap_lb,0), 
+        colormap=:blues, alpha=0.3, highclip=:transparent)
+
+    data = [Vdot2([x,y]) for x=xpoints, y=ypoints]
+    hm2 = heatmap!(ax2, xpoints, ypoints, data, colorrange=(heatmap_lb,0), 
+        colormap=:greens, alpha=0.3, highclip=:transparent)
+
+    # Plot the Lyapunov function ellipse of intrusive
+    α = range(0, 2π, length=1000)
+    Λ, V = eigen(P1)
+    θ = acos(dot(V[:,1], [1,0]) / (norm(V[:,1])))
+    xα = (α) -> sqrt(c_star1/Λ[1])*cos(θ)*cos.(α) .+ sqrt(c_star1/Λ[2])*sin(θ)*sin.(α)
+    yα = (α) -> -sqrt(c_star1/Λ[1])*sin(θ)*cos.(α) .+ sqrt(c_star1/Λ[2])*cos(θ)*sin.(α)
+    lines!(ax2, xα(α), yα(α), label="Intrusive", color=:blue, linewidth=2)
+    # # Plot the Minimal DoA with single radius
+    # xβ = (β) -> sqrt(c_star1/maximum(Λ))*cos.(β)
+    # yβ = (β) -> sqrt(c_star1/maximum(Λ))*sin.(β)
+    # lines!(ax2, xβ(α), yβ(α), label="", color=:black, linestyle=:dash, linewidth=3)
+
+    # Plot the Lyapunov function ellipse of non-intrusive
+    Λ, V = eigen(P2)
+    θ = acos(dot(V[:,1], [1,0]) / (norm(V[:,1])))
+    xα = (α) -> sqrt(c_star2/Λ[1])*cos(θ)*cos.(α) .+ sqrt(c_star2/Λ[2])*sin(θ)*sin.(α)
+    yα = (α) -> -sqrt(c_star2/Λ[1])*sin(θ)*cos.(α) .+ sqrt(c_star2/Λ[2])*cos(θ)*sin.(α)
+    lines!(ax2, xα(α), yα(α), label="Non-Intrusive", color=:red, linewidth=2)
+    # # Plot the Minimal DoA with single radius
+    # xβ = (β) -> sqrt(c_star2/maximum(Λ))*cos.(β)
+    # yβ = (β) -> sqrt(c_star2/maximum(Λ))*sin.(β)
+    # lines!(ax2, xβ(α), yβ(α), label="", color=:red, linestyle=:dash, linewidth=3)
+
+    # Plot the estimated stability radius
+    xγ = (γ) -> ρest*cos.(γ)
+    yγ = (γ) -> ρest*sin.(γ)
+    lines!(ax2, xγ(α), yγ(α), label="SKP", color=:yellow, linewidth=3)
+
+    # Vector field of state trajectories
+    f(x) = Point2f( (A*x + F*(x ⊘ x)) )
+    streamplot!(ax2, f, xi..xf, yi..yf, arrow_size=10, colormap=:bone)
+
+    axislegend(position = :lb)
+
+    return fig
 end
 
 
@@ -363,40 +422,93 @@ end
 
 
 ## Example 1 #########################################################################
-P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="P", type="I")
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="P", type="I")
 ##
-V = (x) -> x' * P * x
-Vdot = (x) -> x' * P * A * x + x' * P * F * (x ⊘ x)
-c_star, c_all, x_sample = LFI.doa_sampling(
-    V,
-    Vdot,
+V1 = (x) -> x' * P1 * x
+Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
+c_star1, c_all, x_sample = LFI.doa_sampling(
+    V1,
+    Vdot1,
     1000, 2, (-5,5);
     method="memory", history=true, n_strata=8, uniform_state_space=true
 )
-## Plot
-fig1, fig2 = plot_doa_results(c_all, c_star, x_sample, P[1:2,1:2], Vdot, (-5,5), (-5,5); heatmap_lb=-5, meshsize=1e-2)
+## Plot Only for Intrusive
+fig1, fig2 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-5,5), (-5,5);
+                                 heatmap_lb=-5, meshsize=1e-2)
 ##
 fig1
 ##
 fig2
 
-## Example 6 #########################################################################
-P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E6_example(type="NI")
 ##
-V = (x) -> x' * P * x
-Vdot = (x) -> x' * P * A * x + x' * P * F * (x ⊘ x)
-c_star, c_all, x_sample = LFI.doa_sampling(
-    V,
-    Vdot,
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="P", type="NI")
+##
+V2 = (x) -> x' * P2 * x
+Vdot2 = (x) -> x' * P2 * A * x + x' * P2 * F * (x ⊘ x)
+c_star2, c_all, x_sample = LFI.doa_sampling(
+    V2,
+    Vdot2,
+    1000, 2, (-5,5);
+    method="memory", history=true, n_strata=8, uniform_state_space=true
+)
+## Plot Only for Non-Intrusive
+fig3, fig4 = plot_doa_results(A, F, c_all, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-5,5), (-5,5);
+                                 heatmap_lb=-5, meshsize=1e-2)
+##
+fig3
+##
+fig4
+
+## Plot the comparison
+fig5 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-5,5), (-5,5), ρ_est; 
+        heatmap_lb=-5, meshsize=1e-2)
+fig5
+
+
+
+
+
+## Example 6 #########################################################################
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E6_example(type="I")
+##
+V1 = (x) -> x' * P1 * x
+Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
+c_star1, c_all, x_sample = LFI.doa_sampling(
+    V1,
+    Vdot1,
     1000, 2, (-2,2);
     method="memory", history=true
 )
 ## Plot
-fig1, fig2 = plot_doa_results(c_all, c_star, x_sample, P[1:2,1:2], Vdot, (-2,2), (-2,2); heatmap_lb=-1e-1, meshsize=1e-2)
+fig6, fig7 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-2,2), (-2,2);
+                                 heatmap_lb=-1e-1, meshsize=1e-2)
 ##
-fig1
+fig6
 ##
-fig2
+fig7
+
+##
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E6_example(type="NI")
+##
+V2 = (x) -> x' * P2 * x
+Vdot2 = (x) -> x' * P2 * A * x + x' * P2 * F * (x ⊘ x)
+c_star2, c_all, x_sample = LFI.doa_sampling(
+    V2,
+    Vdot2,
+    1000, 2, (-2,2);
+    method="memory", history=true
+)
+## Plot
+fig8, fig9 = plot_doa_results(A, F, c_all, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-2,2), (-2,2);
+                                 heatmap_lb=-1e-1, meshsize=1e-2)
+##
+fig8
+##
+fig9
+
+##
+fig10 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-2,2), (-2,2), ρ_est; 
+        meshsize=1e-2)
 
 
 ## ########################
