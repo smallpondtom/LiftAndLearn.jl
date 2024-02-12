@@ -1,4 +1,5 @@
 ## Packages
+using CairoMakie
 using LinearAlgebra
 import HSL_jll
 
@@ -82,7 +83,14 @@ op_int = LnL.intrusiveMR(op_fom, Vrmax, opinf_options)
 ## Compute the OpInf model
 op_inf = LnL.inferOp(X, zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vrmax, Vrmax' * R, opinf_options)
 
+## Create a batch of training data
+# batchsize = 300
+# X_batch = map(Iterators.partition(axes(X,2), batchsize)) do cols
+#     X[:, cols]
+# end
+
 ## Intrusive LyapInf for POD model
+ds2= 5  # another downsampling for lyapinf
 int_lyapinf_options = LFI.Int_LyapInf_options(
     extra_iter=3,
     optimizer="Ipopt",
@@ -91,10 +99,10 @@ int_lyapinf_options = LFI.Int_LyapInf_options(
     optimize_PandQ="P",
     HSL_lib_path=HSL_jll.libhsl_path,
 )
-P_int, Q, cost, ∇cost = LFI.Int_LyapInf(op_int, Vrmax' * X, int_lyapinf_options)
+P_int, Q, cost, ∇cost = LFI.Int_LyapInf(op_int, Vrmax' * X[:,1:ds2:end], int_lyapinf_options)
 
 ## Intrusive LyapInf for OpInf model
-P_inf, Q, cost, ∇cost = LFI.Int_LyapInf(op_inf, Vrmax' * X, int_lyapinf_options)
+P_inf, Q, cost, ∇cost = LFI.Int_LyapInf(op_inf, Vrmax' * X[:,1:ds2:end], int_lyapinf_options)
 
 ## Non-intrusive LyapInf
 nonint_lyapinf_options = LFI.NonInt_LyapInf_options(
@@ -105,4 +113,68 @@ nonint_lyapinf_options = LFI.NonInt_LyapInf_options(
     optimize_PandQ="P",
     HSL_lib_path=HSL_jll.libhsl_path,
 )
-P_star, Q, cost, ∇cost = LFI.NonInt_LyapInf(Vrmax' * X, Vrmax' * R, nonint_lyapinf_options)
+P_star, Q, cost, ∇cost = LFI.NonInt_LyapInf(Vrmax' * X[:,1:ds2:end], Vrmax' * R[:,1:ds2:end], nonint_lyapinf_options)
+
+##
+# function skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, Q::AbstractArray{T}; 
+#         div_by_2::Bool=false) where T
+
+#     if div_by_2
+#         P = lyapc(Ahat', 0.5*Q)
+#     else
+#         P = lyapc(Ahat', Q)
+#     end
+#     L = cholesky(Q).L
+#     σmin = minimum(svd(L).S)
+#     ρhat = σmin / sqrt(norm(P,2)) / norm(Hhat,2) / 2
+#     return ρhat
+# end
+
+
+## Sample the correct level surface
+## POD
+V = (x) -> x' * P_int * x
+Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.F * (x ⊘ x)
+c_star1, c_all1, x_sample1 = LFI.doa_sampling(
+    V,
+    Vdot,
+    1000000, rmax, Tuple(burgers.Omega);
+    method="memory", history=true, uniform_state_space=true
+)
+ρmin1 = sqrt(c_star1/maximum(eigvals(P_int)))
+ρskp1 = LFI.skp_stability_rad(op_int.A, op_int.H, Q)
+
+##
+fig1 = Figure(fontsize=20)
+ax1 = Axis(fig1[1,1],
+    title="Level Convergence",
+    ylabel=L"c_*",
+    xlabel="Sample Number",
+    xticks=0:250000:length(c_all1),
+)
+lines!(ax1, 1:length(c_all1), c_all1)
+fig1
+
+## OpInf
+V = (x) -> x' * P_inf * x
+Vdot = (x) -> x' * P_inf * op_inf.A * x + x' * P_inf * op_inf.F * (x ⊘ x)
+c_star2, c_all2, x_sample2 = LFI.doa_sampling(
+    V,
+    Vdot,
+    1000000, rmax, Tuple(burgers.Omega);
+    method="memory", history=true, uniform_state_space=true
+)
+ρmin2 = sqrt(c_star2/maximum(eigvals(P_inf)))
+ρskp2 = LFI.skp_stability_rad(op_inf.A, op_inf.H, Q)
+
+## Non-intrusive
+V = (x) -> x' * P_star * x
+Vdot = (x) -> x' * P_star * op_int.A * x + x' * P_star * op_int.F * (x ⊘ x)
+c_star3, c_all3, x_sample3 = LFI.doa_sampling(
+    V,
+    Vdot,
+    1000000, rmax, Tuple(burgers.Omega);
+    method="memory", history=true, uniform_state_space=true
+)
+ρmin3 = sqrt(c_star3/maximum(eigvals(P_star)))
+ρskp3 = LFI.skp_stability_rad(op_int.A, op_int.H, Q)

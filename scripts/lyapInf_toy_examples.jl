@@ -143,7 +143,7 @@ function E1_example(; method="P", type="I")
         error("Invalid type")
     end
     ρ_min, ρ_max = LFI.DoA(P)
-    ρ_est = LFI.est_stability_rad(A, H, P)
+    ρ_est = LFI.skp_stability_rad(A, H, Q)
     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F
 end
 
@@ -210,7 +210,7 @@ function E6_example(; method="P", type="I")
         error("Invalid type")
     end
     ρ_min, ρ_max = LFI.DoA(P)
-    ρ_est = LFI.est_stability_rad(A, H, P)
+    ρ_est = LFI.skp_stability_rad(A, H, Q)
     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F
 end
 
@@ -463,9 +463,6 @@ fig4
 fig5 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-5,5), (-5,5), ρ_est; 
         heatmap_lb=-5, meshsize=1e-2)
 fig5
-
-
-
 
 
 ## Example 6 #########################################################################
