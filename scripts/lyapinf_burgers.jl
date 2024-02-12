@@ -138,7 +138,7 @@ Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.F * (x ⊘ x)
 c_star1, c_all1, x_sample1 = LFI.doa_sampling(
     V,
     Vdot,
-    1000000, rmax, Tuple(burgers.Omega);
+    1e6, rmax, Tuple(burgers.Omega);
     method="memory", history=true, uniform_state_space=true
 )
 ρmin1 = sqrt(c_star1/maximum(eigvals(P_int)))
@@ -161,7 +161,7 @@ Vdot = (x) -> x' * P_inf * op_inf.A * x + x' * P_inf * op_inf.F * (x ⊘ x)
 c_star2, c_all2, x_sample2 = LFI.doa_sampling(
     V,
     Vdot,
-    1000000, rmax, Tuple(burgers.Omega);
+    1e6, rmax, Tuple(burgers.Omega);
     method="memory", history=true, uniform_state_space=true
 )
 ρmin2 = sqrt(c_star2/maximum(eigvals(P_inf)))
@@ -173,7 +173,7 @@ Vdot = (x) -> x' * P_star * op_int.A * x + x' * P_star * op_int.F * (x ⊘ x)
 c_star3, c_all3, x_sample3 = LFI.doa_sampling(
     V,
     Vdot,
-    1000000, rmax, Tuple(burgers.Omega);
+    1e6, rmax, Tuple(burgers.Omega);
     method="memory", history=true, uniform_state_space=true
 )
 ρmin3 = sqrt(c_star3/maximum(eigvals(P_star)))
