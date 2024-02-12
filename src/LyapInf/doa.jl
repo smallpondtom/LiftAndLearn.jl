@@ -22,15 +22,16 @@ end
 
 
 """
-    est_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, P::AbstractArray{T}; 
+    skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, P::AbstractArray{T}; 
         div_by_2::Bool=true) where T
 
-Estimate the stability radius of the system using the inferred Lyapunov function P.
+Estimate the stability radius of the system using the inferred Lyapunov function P by
+Sawant, Kramer, and Peherstorfer (SKP).
 
 ## Arguments
 * `Ahat::AbstractArray{T}`: inferred system matrix
 * `Hhat::AbstractArray{T}`: inferred quadratic term
-* `P::AbstractArray{T}`: inferred Lyapunov function matrix
+* `Q::AbstractArray{T}`: quadratic matrix for auxiliary function (not P for the Lyapunov function)
 * `div_by_2::Bool=true`: whether to divide the stability radius by 2
 
 ## Returns
@@ -41,17 +42,17 @@ N. Sawant, B. Kramer, and B. Peherstorfer, “Physics-informed regularization an
 preservation for learning stable reduced models from data with operator inference.” arXiv, Jul. 
 06, 2021. Accessed: Jan. 29, 2023. [Online]. Available: http://arxiv.org/abs/2107.02597
 """
-function est_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, P::AbstractArray{T}; 
-        div_by_2::Bool=true) where T
+function skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, Q::AbstractArray{T}; 
+        div_by_2::Bool=false) where T
 
     if div_by_2
-        LLt = lyapc(Ahat', 0.5*P)
+        P = lyapc(Ahat', 0.5*Q)
     else
-        LLt = lyapc(Ahat', P)
+        P = lyapc(Ahat', Q)
     end
-    L = cholesky(LLt).L
+    L = cholesky(Q).L
     σmin = minimum(svd(L).S)
-    ρhat = σmin / sqrt(norm(P,2)) / norm(Hhat,2) / 2
+    ρhat = σmin^2 / sqrt(norm(P,2)) / norm(Hhat,2) / 2
     return ρhat
 end
 
@@ -94,7 +95,7 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int,
 end
 
 
-function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, Nl::Int, gp::Int, 
+function sampling_memoryless(V::Function, Vdot::Function, ns::Real, N::Int, Nl::Int, gp::Int, 
         state_space::Union{Array,Tuple}, lifter::lifting; uniform_state_space::Bool=true, history=false)
     c_hat_star = Inf
 
@@ -135,7 +136,7 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, Nl::I
 end
 
 
-function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int, 
+function sampling_with_memory(V::Function, Vdot::Function, ns::Real, N::Int, 
         state_space::Union{Array,Tuple}; uniform_state_space::Bool=true, history=false)
     c_underbar_star = 0
     c_bar_star = Inf
@@ -183,7 +184,7 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int,
 end
 
 
-function sampling_with_memory(V::Function, Vdot::Function, ns::Int, N::Int, Nl::Int, gp::Int,
+function sampling_with_memory(V::Function, Vdot::Function, ns::Real, N::Int, Nl::Int, gp::Int,
         state_space::Union{Array,Tuple}, lifter::lifting; uniform_state_space::Bool=true, history=false)
     c_underbar_star = 0
     c_bar_star = Inf
@@ -243,7 +244,7 @@ use
 - Quasi-Monte Carlo Methods: These methods use low-discrepancy sequences instead of random sampling to
   ensure a more uniform coverage of the space, which can lead to faster convergence in higher dimensions.
 """
-function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N::Int, 
+function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N::Int, 
         state_space::Array, n_strata::Int; history=false)
 
     function stratify_state_space(state_space, n_strata)
@@ -349,7 +350,7 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N:
 end
 
 
-function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Int, N::Int, Nl::Int,
+function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N::Int, Nl::Int,
         gp::Int, state_space::Array, n_strata::Int, lifter::lifting; history=false)
 
     function stratify_state_space(state_space, n_strata)
