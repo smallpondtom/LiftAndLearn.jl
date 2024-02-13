@@ -63,10 +63,10 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int,
 
     xi = zeros(N)
     if history
-        chistory = zeros(ns)
-        xi_all = zeros(N,ns)
+        chistory = zeros(Int(ns))
+        xi_all = zeros(N,Int(ns))
     end
-    for j = 1:ns
+    for j = 1:Int(ns)
         if uniform_state_space
             rand!(Uniform(state_space[1], state_space[2]), xi)
         else
@@ -102,10 +102,10 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Real, N::Int, Nl::
     xi = zeros(N)
     xi_lift = zeros(Nl)
     if history
-        chistory = zeros(ns)
-        xi_all = zeros(N,ns)
+        chistory = zeros(Int(ns))
+        xi_all = zeros(N,Int(ns))
     end
-    for j = 1:ns
+    for j = 1:Int(ns)
         if uniform_state_space
             rand!(Uniform(state_space[1], state_space[2]), xi)
             xi_lift = vec(lifter.map(xi, gp))
@@ -141,13 +141,13 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Real, N::Int,
     c_underbar_star = 0
     c_bar_star = Inf
     E = [0.0]
-    sizehint!(E, ns+1)
+    sizehint!(E, Int(ns)+1)
     xi = zeros(N)
     if history
-        chistory = zeros(ns)
-        xi_all = zeros(N,ns)
+        chistory = zeros(Int(ns))
+        xi_all = zeros(N,Int(ns))
     end
-    for j = 1:ns
+    for j = 1:Int(ns)
         if uniform_state_space
             rand!(Uniform(state_space[1], state_space[2]), xi)
         else
@@ -189,14 +189,14 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Real, N::Int, Nl:
     c_underbar_star = 0
     c_bar_star = Inf
     E = [0.0]
-    sizehint!(E, ns+1)
+    sizehint!(E, Int(ns)+1)
     xi = zeros(N)
     xi_lift = zeros(Nl)
     if history
-        chistory = zeros(ns)
-        xi_all = zeros(N,ns)
+        chistory = zeros(Int(ns))
+        xi_all = zeros(N,Int(ns))
     end
-    for j = 1:ns
+    for j = 1:Int(ns)
         if uniform_state_space
             rand!(Uniform(state_space[1], state_space[2]), xi)
             xi_lift = vec(lifter.map(xi, gp))
@@ -290,11 +290,11 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
     c_underbar_star = 0
     c_bar_star = Inf
     E = [0.0]
-    sizehint!(E, ns+1)
+    sizehint!(E, Int(ns)+1)
 
     if history
-        chistory = zeros(ns)
-        xi_all = zeros(N,ns)
+        chistory = zeros(Int(ns))
+        xi_all = zeros(N,Int(ns))
     end
 
     # Stratify the state space into n_strata
@@ -302,7 +302,7 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
     n_strata = size(strata_lb, 1)
 
     xi = Vector{Float64}(undef, N)
-    sample_per_stratum = div(ns, n_strata)
+    sample_per_stratum = div(Int(ns), n_strata)
     ct = 1
     for k in 1:n_strata
         lb = strata_lb[k,:]
@@ -396,11 +396,11 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
     c_underbar_star = 0
     c_bar_star = Inf
     E = [0.0]
-    sizehint!(E, ns+1)
+    sizehint!(E, Int(ns)+1)
 
     if history
-        chistory = zeros(ns)
-        xi_all = zeros(N,ns)
+        chistory = zeros(Int(ns))
+        xi_all = zeros(N,Int(ns))
     end
 
     # Stratify the state space into n_strata
@@ -409,7 +409,7 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
 
     xi = Vector{Float64}(undef, N)
     xi_lift = Vector{Float64}(undef, Nl)
-    sample_per_stratum = div(ns, n_strata)
+    sample_per_stratum = div(Int(ns), n_strata)
     ct = 1
     for k in 1:n_strata
         lb = strata_lb[k,:]

@@ -115,7 +115,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         end
     end
     
-    @constraint(model, X'*P*X .<= 1 - eps())
+    # @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
     P_sol = value.(P)
     return P_sol, JuMP.objective_value(model)
@@ -204,7 +204,7 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
     #     end
     # end
 
-    @constraint(model, X'*P*X .<= 1 - eps())
+    # @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
     Q_sol = value.(Q)
     return Q_sol, JuMP.objective_value(model)
@@ -301,7 +301,7 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
     #     end
     # end
     
-    @constraint(model, X'*P*X .<= 1 - eps())
+    # @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
     P_sol = value.(P)
     Q_sol = value.(Q)

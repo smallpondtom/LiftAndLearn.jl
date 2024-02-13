@@ -26,7 +26,7 @@ function nonlinear_pendulum_example(; method="P", type="I")
     end
 
     # Generate the data
-    num_ic = 5  # number of initial conditions
+    num_ic = 20  # number of initial conditions
     tf = 10.0
     dt = 0.001
     tspan = 0.0:dt:tf
@@ -93,7 +93,7 @@ function E1_example(; method="P", type="I")
     end
 
     # Generate the data
-    num_ic = 5  # number of initial conditions
+    num_ic = 50  # number of initial conditions
     tf = 10.0
     dt = 0.001
     tspan = 0.0:dt:tf
@@ -102,7 +102,7 @@ function E1_example(; method="P", type="I")
     X = []
     Xdot = []
     for i in 1:num_ic
-        x0 = 3*rand(2) .- 1.5
+        x0 = 3.6*rand(2) .- 1.8
         prob = ODEProblem(E1!, x0, (0, tf))
         sol = solve(prob, RK4(); dt=dt, adaptive=false)
         data = sol[1:2,:]
@@ -162,7 +162,7 @@ function E6_example(; method="P", type="I")
     end
 
     # Generate the data
-    num_ic = 10  # number of initial conditions
+    num_ic = 100  # number of initial conditions
     tf = 5.0
     dt = 0.001
     tspan = 0.0:dt:tf
@@ -171,7 +171,7 @@ function E6_example(; method="P", type="I")
     X = []
     Xdot = []
     for i in 1:num_ic
-        x0 = 2.0 * rand(2) .- 1.0
+        x0 = 3.0 * rand(2) .- 1.5
         prob = ODEProblem(E1!, x0, (0, tf))
         sol = solve(prob, RK4(); dt=dt, adaptive=false)
         data = sol[1:2,:]
@@ -422,7 +422,7 @@ end
 
 
 ## Example 1 #########################################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="P", type="I")
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="both", type="I")
 ##
 V1 = (x) -> x' * P1 * x
 Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
@@ -434,7 +434,7 @@ c_star1, c_all, x_sample = LFI.doa_sampling(
 )
 ## Plot Only for Intrusive
 fig1, fig2 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-5,5), (-5,5);
-                                 heatmap_lb=-5, meshsize=1e-2)
+                                 heatmap_lb=-0.05, meshsize=1e-2)
 ##
 fig1
 ##

@@ -91,7 +91,7 @@ function optimize_P(X::AbstractArray{T}, Xdot::AbstractArray{T}, Q::AbstractArra
         end
     end
     
-    @constraint(model, X'*P*X .<= 1 - eps())
+    # @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
     P_sol = value.(P)
     return P_sol, JuMP.objective_value(model)
@@ -170,7 +170,7 @@ function optimize_Q(X::AbstractArray{T}, Xdot::AbstractArray{T}, P::AbstractArra
     #     end
     # end
 
-    @constraint(model, X'*P*X .<= 1 - eps())
+    # @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
     Q_sol = value.(Q)
     return Q_sol, JuMP.objective_value(model)
@@ -263,7 +263,7 @@ function optimize_PQ(X::AbstractArray{T}, Xdot::AbstractArray{T}, options::NonIn
     #     end
     # end
     
-    @constraint(model, X'*P*X .<= 1 - eps())
+    # @constraint(model, X'*P*X .<= 1 - eps())
     JuMP.optimize!(model)
     P_sol = value.(P)
     Q_sol = value.(Q)
