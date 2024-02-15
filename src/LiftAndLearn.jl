@@ -11,6 +11,7 @@ using Kronecker
 using Parameters
 using Sobol: SobolSeq, next!
 using SparseArrays
+using StatsBase: countmap
 using MatrixEquations: lyapc
 using Random: rand, rand!
 using JuMP

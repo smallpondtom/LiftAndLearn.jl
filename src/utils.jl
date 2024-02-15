@@ -1,4 +1,4 @@
-export operators, dupmat, elimat, commat, nommat, vech, Unique_Kronecker, ⊘
+export operators, dupmat, elimat, commat, symmtzrmat, vech, Unique_Kronecker, ⊘
 export F2H, H2F, F2Hs, squareMatStates, kronMatStates, extractF 
 export insert2F, insert2randF, extractH, insert2H, insert2bilin
 export invec, Q2H, H2Q
@@ -20,15 +20,17 @@ supported are up to second order.
 - `f`: nonlinear function operator f(x,u)
 """
 Base.@kwdef mutable struct operators
-    A::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    B::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    C::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    F::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    H::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    Q::Union{AbstractArray,Real} = 0
-    K::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Int64} = 0
-    N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0
-    f::Function = x -> x
+    A::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # linear
+    B::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # control
+    C::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # output
+    H::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # quadratic redundant
+    F::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # quadratic non-redundant
+    Q::Union{AbstractArray,Real} = 0   # quadratic -- array of 2-dim square matrices
+    G::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # cubic redundant
+    E::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # cubic non-redundant
+    K::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Int64} = 0  # constant
+    N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0  # bilinear
+    f::Function = x -> x  # nonlinear function
 end
 
 
@@ -73,6 +75,34 @@ Unique_Kronecker(x, x) = \\begin{bmatrix}
     return result
 end
 
+"""
+    Unique_Kronecker(x::AbstractVector{T}, y::AbstractVector{T}, z::AbstractVector{T}) where T
+
+Unique Kronecker product operation for triple Kronecker product.
+
+## Arguments
+- `x::AbstractVector{T}`: vector to perform the unique Kronecker product
+- `y::AbstractVector{T}`: vector to perform the unique Kronecker product
+- `z::AbstractVector{T}`: vector to perform the unique Kronecker product
+
+## Returns
+- `result`: unique Kronecker product
+"""
+@inline function Unique_Kronecker(x::AbstractArray{T}, y::AbstractArray{T}, z::AbstractArray{T}) where {T<:Number}
+    n = length(x)
+    result = Array{T}(undef, n*(n+1)*(n+2) ÷ 6)
+    l = 1
+    @inbounds for i in 1:n
+        for j in i:n
+            for k in j:n
+                result[l] = x[i] * y[j] * z[k]
+                l += 1
+            end
+        end
+    end
+    return result
+end
+
 
 """
     Unique_Kronecker(x::AbstractVector{T}) where T
@@ -91,7 +121,7 @@ Unique Kronecker product operation (dispatch)
     k = 1
     @inbounds for i in 1:n
         for j in i:n
-            result[k] = x[i] * y[j]
+            result[k] = x[i] * x[j]
             k += 1
         end
     end
@@ -112,6 +142,7 @@ Unique Kronecker product operation
 - unique Kronecker product
 """
 ⊘(x::AbstractArray{T}, y::AbstractArray{T}) where {T<:Number} = Unique_Kronecker(x, y)
+⊘(x::AbstractArray{T}, y::AbstractArray{T}, z::AbstractArray{T}) where {T<:Number} = Unique_Kronecker(x,y,z)
 
 
 """
@@ -241,7 +272,7 @@ commat(m::Integer) = commat(m, m)  # dispatch
 
 
 """
-    nommat(m::Integer, n::Integer) → N
+    symmtzrmat(m::Integer, n::Integer) → N
 
 Create symmetrizer (or symmetric commutation) matrix `N` of dimension `m x n` [^magnus1980].
 
@@ -252,14 +283,14 @@ Create symmetrizer (or symmetric commutation) matrix `N` of dimension `m x n` [^
 ## Returns
 - `N`: symmetrizer (symmetric commutation) matrix
 """
-function nommat(m::Integer, n::Integer)
+function symmtzrmat(m::Integer, n::Integer)
     mn = Int(m * n)
     return 0.5 * (sparse(1.0I, mn, mn) + commat(m, n))
 end
 
 
 """
-    nommat(m::Integer) → N
+    symmtzrmat(m::Integer) → N
 
 Dispatch for the symmetric commutation matrix of dimensions (m, m)
 
@@ -269,7 +300,199 @@ Dispatch for the symmetric commutation matrix of dimensions (m, m)
 ## Returns
 - `N`: symmetric commutation matrix
 """
-nommat(m::Integer) = nommat(m, m)  # dispatch
+symmtzrmat(m::Integer) = symmtzrmat(m, m)  # dispatch
+
+
+"""
+    elimat3(m::Integer) → L3
+
+Create elimination matrix `L` of dimension `m` for the 3-dim tensor.
+
+## Arguments
+- `m::Integer`: dimension of the target matrix
+
+## Returns
+- `L3`: elimination matrix
+"""
+function elimat3(m::Int)
+    L3 = zeros(Int, m*(m+1)*(m+2) ÷ 6, m^3)
+    l = 1
+    for i in 1:m
+        for j in i:m
+            for k in j:m
+                ek = [Int(p == k) for p in 1:m]
+                ej = [Int(p == j) for p in 1:m]
+                ei = [Int(p == i) for p in 1:m]
+                eijk = ei' ⊗ ej' ⊗ ek'
+                L3[l, :] = eijk
+                l += 1
+            end
+        end
+    end
+    return sparse(L3)
+end
+
+
+"""
+    dupmat3(n::Int) → D3
+
+Create duplication matrix `D` of dimension `n` for the 3-dim tensor.
+
+## Arguments
+- `n::Int`: dimension of the duplication matrix
+
+## Returns
+- `D3`: duplication matrix
+"""
+function dupmat3(n::Int)
+    num_unique_elements = div(n*(n+1)*(n+2), 6)
+    D3 = zeros(Int, n^3, num_unique_elements)
+    l = 1 # Column index for the unique elements
+    
+    for i in 1:n
+        for j in i:n
+            for k in j:n
+                # Initialize the vector for the column of D3
+                col = zeros(Int, n^3)
+                
+                # Assign the elements for all permutations
+                permutations = [
+                    n^2*(i-1) + n*(j-1) + k, # sub2ind([n, n, n], i, j, k)
+                    n^2*(i-1) + n*(k-1) + j, # sub2ind([n, n, n], i, k, j)
+                    n^2*(j-1) + n*(i-1) + k, # sub2ind([n, n, n], j, i, k)
+                    n^2*(j-1) + n*(k-1) + i, # sub2ind([n, n, n], j, k, i)
+                    n^2*(k-1) + n*(i-1) + j, # sub2ind([n, n, n], k, i, j)
+                    n^2*(k-1) + n*(j-1) + i  # sub2ind([n, n, n], k, j, i)
+                ]
+                
+                # For cases where two or all indices are the same, 
+                # we should not count permutations more than once.
+                unique_permutations = unique(permutations)
+                
+                # Set the corresponding entries in the column of D3
+                for perm in unique_permutations
+                    col[perm] = 1
+                end
+                
+                # Assign the column to the matrix D3
+                D3[:, l] = col
+                
+                # Increment the column index
+                l += 1
+            end
+        end
+    end
+    
+    return sparse(D3)
+end
+
+
+
+"""
+    symmtzrmat3(n::Int) → N3
+
+Create symmetrizer (or symmetric commutation) matrix `N` of dimension `n` for the 3-dim tensor.
+
+## Arguments
+- `n::Int`: row dimension of the commutation matrix
+
+## Returns
+- `N3`: symmetrizer (symmetric commutation) matrix
+"""
+function symmtzrmat3(n::Int)
+    N3 = zeros(n^3, n^3)
+    l = 1 # Column index for the unique elements
+    
+    for i in 1:n
+        for j in 1:n
+            for k in 1:n
+                # Initialize the vector for the column of N
+                col = zeros(n^3)
+                
+                # Assign the elements for all permutations
+                permutations = [
+                    n^2*(i-1) + n*(j-1) + k, # sub2ind([n, n, n], i, j, k)
+                    n^2*(i-1) + n*(k-1) + j, # sub2ind([n, n, n], i, k, j)
+                    n^2*(j-1) + n*(i-1) + k, # sub2ind([n, n, n], j, i, k)
+                    n^2*(j-1) + n*(k-1) + i, # sub2ind([n, n, n], j, k, i)
+                    n^2*(k-1) + n*(i-1) + j, # sub2ind([n, n, n], k, i, j)
+                    n^2*(k-1) + n*(j-1) + i  # sub2ind([n, n, n], k, j, i)
+                ]
+                
+                # For cases where two or all indices are the same, 
+                # we should not count permutations more than once.
+                unique_permutations = countmap(permutations)
+                
+                # Set the corresponding entries in the column of N
+                for (perm, count) in unique_permutations
+                    col[perm] = count / 6
+                end
+                
+                # Assign the column to the matrix N
+                N3[:, l] = col
+                
+                # Increment the column index
+                l += 1
+            end
+        end
+    end
+    return sparse(N3)
+end
+
+
+"""
+    G2E(G::Union{SparseMatrixCSC,VecOrMat}) → E
+
+Convert the cubic `G` operator into the `E` operator
+
+## Arguments
+- `G`: G matrix
+
+## Returns
+- `E`: E matrix
+"""
+function G2E(G)
+    n = size(G, 1)
+    D3 = dupmat3(n)
+    return G * D3
+end
+
+
+"""
+    E2G(E::Union{SparseMatrixCSC,VecOrMat}) → G
+
+Convert the cubic `E` operator into the `G` operator
+
+## Arguments
+- `E`: E matrix
+
+## Returns
+- `G`: G matrix
+"""
+function E2G(E)
+    n = size(E, 1)
+    L3 = elimat3(n)
+    return E * L3
+end
+
+
+"""
+    E2Gs(E::Union{SparseMatrixCSC,VecOrMat}) → G
+
+Convert the cubic `E` operator into the symmetric `G` operator
+
+## Arguments
+- `E`: E matrix
+
+## Returns
+- `G`: symmetric G matrix
+"""
+function E2Gs(E)
+    n = size(E, 1)
+    L3 = elimat3(n)
+    N3 = symmtzrmat3(n)
+    return E * L3 * N3
+end
 
 
 """
@@ -361,7 +584,7 @@ we use the elimination matrix `L` and the symmetric commutation matrix `N` to mu
 function F2Hs(F)
     n = size(F, 1)
     Ln = elimat(n)
-    Nn = nommat(n)
+    Nn = symmtzrmat(n)
     return F * Ln * Nn
 end
 
@@ -381,6 +604,15 @@ snapshot data matrix
 function squareMatStates(Xmat)
     function vech_col(X)
         return X ⊘ X
+    end
+    tmp = vech_col.(eachcol(Xmat))
+    return reduce(hcat, tmp)
+end
+
+
+function cubeMatStates(Xmat)
+    function vech_col(X)
+        return ⊘(X, X, X)
     end
     tmp = vech_col.(eachcol(Xmat))
     return reduce(hcat, tmp)

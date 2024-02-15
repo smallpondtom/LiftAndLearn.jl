@@ -74,5 +74,29 @@ function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractA
         end
     end
 
+    # Cubic term
+    if options.system.is_cubic
+        if op.E != 0
+            Ln3 = elimat3(n)
+            Dr3 = dupmat3(r)
+            Ehat = Vr' * op.E * Ln3 * (Vr ⊗ Vr ⊗ Vr) * Dr3
+            op_new.E = Matrix(Ehat)
+
+            if op.G == 0
+                Ghat = LnL.E2Gs(Ehat)
+                op_new.G = Matrix(Ghat)
+            end
+        end
+        if op.G != 0
+            Ghat = Vr' * op.G * (Vr ⊗ Vr ⊗ Vr)
+            op_new.G = Matrix(Ghat)
+
+            if op.E != 0
+                Ehat = LnL.G2E(Ghat)
+                op_new.E = Matrix(Ehat)
+            end
+        end
+    end
+
     return op_new
 end
