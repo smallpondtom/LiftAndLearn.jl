@@ -9,6 +9,7 @@ Structure of the given system.
 ## Fields
 - `is_lin::Bool`: the system is linear
 - `is_quad::Bool`: the system is quadratic
+- `is_cubic::Bool`: the system is cubic
 - `is_bilin::Bool`: the system is bilinear
 - `has_control::Bool`: the system has control inputs
 - `has_output::Bool`: the system has output
@@ -21,6 +22,7 @@ Structure of the given system.
     has_control::Bool = false
     has_output::Bool = false
     is_quad::Bool = false
+    is_cubic::Bool = false
     is_bilin::Bool = false
     has_const::Bool = false
     has_funcOp::Bool = false

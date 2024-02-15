@@ -64,7 +64,7 @@ invec
 dupmat
 elimat
 commat
-nommat
+symmtzrmat
 F2H
 H2F
 F2Hs
