@@ -1,4 +1,5 @@
 export operators, dupmat, elimat, commat, symmtzrmat, vech, Unique_Kronecker, ⊘
+export dupmat3, elimat3, symmtzrmat3, G2E, E2G, E2Gs, cubeMatStates
 export F2H, H2F, F2Hs, squareMatStates, kronMatStates, extractF 
 export insert2F, insert2randF, extractH, insert2H, insert2bilin
 export invec, Q2H, H2Q
