@@ -1,7 +1,6 @@
 """
     LiftAndLearn package main module
 """
-
 module LiftAndLearn
 
 using LinearAlgebra
@@ -10,6 +9,7 @@ using Distributions: Uniform
 using Kronecker
 using Parameters
 using Sobol: SobolSeq, next!
+using ProgressMeter
 using SparseArrays
 using StatsBase: countmap
 using MatrixEquations: lyapc
@@ -50,6 +50,9 @@ include("intrusiveROM.jl")
 # [Submodule] Inferring the Lyapunov function
 include("LyapInf/LyapInf.jl")
 export LyapInf
+
+# [Submodule] Analysis of chaos analysis tools
+include("ChaosGizmo/ChaosGizmo.jl")
 
 # Include the models
 include("model/Heat1D.jl")
