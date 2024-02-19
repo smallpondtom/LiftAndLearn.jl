@@ -16,6 +16,9 @@ supported are up to second order.
 - `C`: linear output operator
 - `F`: quadratic state operator with no redundancy
 - `H`: quadratic state operator with redundancy
+- `Q`: quadratic state operator with redundancy in 3-dim tensor form
+- `G`: cubic state operator with redundancy
+- `E`: cubic state operator with no redundancy
 - `K`: constant operator
 - `N`: bilinear (state-input) operator
 - `f`: nonlinear function operator f(x,u)
