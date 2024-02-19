@@ -85,6 +85,7 @@ Information about the optimization.
     initial_guess::Bool = false
     max_iter::Int64 = 3000
     which_quad_term::String = "F"
+    which_cubic_term::String = "E"
     reproject::Bool = false
     SIGE::Bool = false  # Successive Initial Guess Estimation
     with_bnds::Bool = false  # add bounds to the variables
@@ -107,6 +108,7 @@ Tikhonov regularization parameters.
 @with_kw struct λtik
     lin::Union{Real, AbstractArray{Real}} = 0.0
     quad::Real = 0.0
+    cubic::Real = 0.0
     ctrl::Real = 0.0
     bilin::Real = 0.0
 end
