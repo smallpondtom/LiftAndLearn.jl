@@ -611,6 +611,18 @@ function squareMatStates(Xmat)
 end
 
 
+"""
+    cubeMatStates(Xmat::Union{SparseMatrixCSC,VecOrMat}) → Xcube
+
+Generate the `x^<3>` cubed state values (corresponding to the `E` matrix) for a
+snapshot data matrix
+
+## Arguments
+- `Xmat`: state snapshot matrix
+
+## Returns
+- cubed state snapshot matrix
+"""
 function cubeMatStates(Xmat)
     function vech_col(X)
         return ⊘(X, X, X)
@@ -635,6 +647,27 @@ a matrix form state data
 function kronMatStates(Xmat)
     function vec_col(X)
         return X ⊗ X
+    end
+    tmp = vec_col.(eachcol(Xmat))
+    return reduce(hcat, tmp)
+end
+
+
+"""
+    kron3MatStates(Xmat::Union{SparseMatrixCSC,VecOrMat}) → Xkron
+
+Generate the 3rd order kronecker product state values (corresponding to the `G` matrix) for 
+a matrix form state data
+
+## Arguments 
+- `Xmat`: state snapshot matrix
+
+## Returns
+- kronecker product state snapshot matrix
+"""
+function kronMatStates(Xmat)
+    function vec_col(X)
+        return X ⊗ X ⊗ x
     end
     tmp = vec_col.(eachcol(Xmat))
     return reduce(hcat, tmp)
