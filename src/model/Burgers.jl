@@ -7,7 +7,7 @@ using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
-import ..LiftAndLearn: Abstract_Model, vech, ⊘
+import ..LiftAndLearn: Abstract_Model, vech, ⊘, operators
 
 export burgers
 
@@ -335,5 +335,36 @@ function semiImplicitEuler(A, F, tdata, IC)
     end
     return state
 end
+
+
+"""
+    semiImplicitEuler(ops, tdata, IC) → states
+
+Semi-Implicit Euler scheme without control (dispatch)
+
+## Arguments
+- `ops`: operators
+- `tdata`: time data
+- `IC`: initial condtions
+
+## Returns
+- `states`: integrated states
+"""
+function semiImplicitEuler(ops, tdata, IC)
+    A = ops.A 
+    F = ops.F
+    Xdim = length(IC)
+    Tdim = length(tdata)
+    state = zeros(Xdim, Tdim)
+    state[:, 1] = IC
+
+    for j in 2:Tdim
+        Δt = tdata[j] - tdata[j-1]
+        state2 = vech(state[:, j-1] * state[:, j-1]')
+        state[:, j] = (1.0I(Xdim) - Δt * A) \ (state[:, j-1] + F * state2 * Δt)
+    end
+    return state
+end
+
 
 end
