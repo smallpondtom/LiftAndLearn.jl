@@ -362,6 +362,7 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
         end
     else
         Ehat = 0
+        Ghat = 0
     end
 
     # Extract Bilinear terms 
@@ -419,31 +420,31 @@ function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
 
     if options.method == "LS"
         Ahat, Bhat, Chat, Fhat, Hhat, Ehat, Ghat, Nhat, Khat = LS_solve(D, Rt, Y, Xhat_t, dims, options)
-        Qhat = 0.0
+        Qhat = 0
     elseif options.method == "NC"  # Non-constrained
         Ahat, Bhat, Fhat, Hhat, Nhat, Khat = NC_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
-        Qhat = 0.0
-        Ghat = 0.0
-        Ehat = 0.0
+        Qhat = 0
+        Ghat = 0
+        Ehat = 0
     elseif options.method == "EPHEC" || options.method == "EPHC"
         Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
         Qhat = H2Q(Hhat)
-        Ghat = 0.0
-        Ehat = 0.0
+        Ghat = 0
+        Ehat = 0
     elseif options.method == "EPSC" || options.method == "EPSIC"
         Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPSIC_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
         Qhat = H2Q(Hhat)
-        Ghat = 0.0
-        Ehat = 0.0
+        Ghat = 0
+        Ehat = 0
     elseif options.method == "EPP"
         Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPP_Optimize(D, Rt, dims, options, IG)
         Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
         Qhat = H2Q(Hhat)
-        Ghat = 0.0
-        Ehat = 0.0
+        Ghat = 0
+        Ehat = 0
     else
         error("Incorrect optimization options.")
     end

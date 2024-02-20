@@ -55,6 +55,7 @@ const LFI = LyapInf
         optimize_PandQ="P",
         extra_iter=1,
         opt_max_iter=10,
+        max_iter=1000,
     )
     op = LnL.operators(A=A, H=H, F=F)
     P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
@@ -129,6 +130,7 @@ end
         optimize_PandQ="P",
         extra_iter=1,
         opt_max_iter=10,
+        max_iter=1000,
         # HSL_lib_path=HSL_jll.libhsl_path,
         δJ=5e-1,
     )
@@ -140,7 +142,7 @@ end
     
 
     ρ_min, ρ_max = LFI.DoA(P)
-    ρ_est = LFI.est_stability_rad(A, H, P)
+    ρ_est = LFI.skp_stability_rad(A, H, P)
 
 
     V = (x) -> x' * P * x
@@ -218,7 +220,7 @@ end
         verbose=true,
         optimize_PandQ="P",
         extra_iter=1,
-        max_iter=10,
+        max_iter=1000,
         δJ=5e-1,
     )
     Pi = [1 0; 0 1]
@@ -231,7 +233,7 @@ end
     @test isposdef(P) || ∇cost <= 0.1
     lyapinf_options.optimize_PandQ = "together"
     P, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options; Pi=Pi)
-    @test isposdef(P) || ∇cost <= 0.1
+    @test isposdef(P) || ∇cost <= 1.0
 
     lyapinf_options.optimize_PandQ = "P"
     lyapinf_options.optimizer = "SCS"

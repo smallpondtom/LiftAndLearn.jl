@@ -1,4 +1,4 @@
-export DoA, est_stability_rad
+export DoA, skp_stability_rad
 
 """
     DoA(P::AbstractArray{T}) where T

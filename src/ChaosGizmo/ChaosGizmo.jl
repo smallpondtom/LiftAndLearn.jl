@@ -6,14 +6,13 @@ module ChaosGizmo
 using DocStringExtensions
 using LinearAlgebra
 using Parameters
-using ProgressMeter
 using SparseArrays
 
 # Import 
 #   - abstract type Abstract_Models 
 #   - operators
 # from LiftAndLearn
-import ..LiftAndLearn: Abstract_Models, operators, extractF, extractH
+import ..LiftAndLearn: Abstract_Model, operators, extractF, extractH
 
 include("LyapunovExponent.jl")
 
