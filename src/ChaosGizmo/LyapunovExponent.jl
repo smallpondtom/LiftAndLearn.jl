@@ -301,9 +301,6 @@ function lyapunovExponent(
     # Q = mapslices(x -> x / norm(x), svd(tmp).U[:,1:m], dims=1)  # orthogonal directions with SVD
     Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
 
-    if options.verbose
-        prog = Progress(N)
-    end
     tj = τ
     for j in 1:N
         uj = integrator(ops, range(tj, stop=tj+T, step=Δt), ujm1; params...)[:,end]
@@ -332,7 +329,7 @@ function lyapunovExponent(
         ujm1 = uj
 
         if options.verbose
-            next!(prog)
+            @info "Progress: $(j/N*100) %"
         end
     end
 
@@ -416,9 +413,6 @@ function lyapunovExponent(
     # Q = mapslices(x -> x / norm(x), svd(tmp).U[:,1:m], dims=1)  # orthogonal directions with SVD
     Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
 
-    if options.verbose
-        prog = Progress(N)
-    end
     tj = τ
     for j in 1:N
         # Run the ROM
@@ -453,7 +447,7 @@ function lyapunovExponent(
         ujm1_recon = uj_recon
 
         if options.verbose
-            next!(prog)
+            @info "Progress: $(j/N*100) %"
         end
     end
 
@@ -572,9 +566,6 @@ function lyapunovExponentJacobian(
     # Q = 100 * Matrix(LinearAlgebra.qr(randn(ro, m)).Q)     # orthogonal directions with random vectors
     # Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
 
-    if options.verbose
-        prog = Progress(N)
-    end
     tj = τ
     for j in 1:N
         # Compute perturbed states
@@ -601,7 +592,7 @@ function lyapunovExponentJacobian(
         # update time
         tj += T
         if options.verbose
-            next!(prog)
+            @info "Progress: $(j/N*100) %"
         end
     end
 
@@ -709,9 +700,6 @@ function lyapunovExponentJacobian(
     # Q = 100 * Matrix(LinearAlgebra.qr(randn(ro, m)).Q)     # orthogonal directions with random vectors
     # Q = Matrix(LinearAlgebra.qr(randn(nx, m)).Q)     # orthogonal directions with random vectors
 
-    if options.verbose
-        prog = Progress(N)
-    end
     tj = τ
     for j in 1:N
         # Compute perturbed states
@@ -738,7 +726,7 @@ function lyapunovExponentJacobian(
         # update time
         tj += T
         if options.verbose
-            next!(prog)
+            @info "Progress: $(j/N*100) %"
         end
     end
 

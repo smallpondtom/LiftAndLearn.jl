@@ -120,7 +120,7 @@ end
     m = 3
 
     # Algorithm 1: without using Jacobian
-    options = CG.LE_options(N=N, τ=τ, τ0=0.0, Δt=Δt, m=m, T=Δt, ϵ=1e-8, verbose=true, history=true, pert_integrator=RK4)
+    options = CG.LE_options(N=N, τ=τ, τ0=0.0, Δt=Δt, m=m, T=Δt, ϵ=1e-8, verbose=true, history=true)
     λ, λall = CG.lyapunovExponent(lorenz_ops, lorenz_integrator, x0, options)
     dky = CG.kaplanYorkeDim(λ; sorted=false)
     @test dky ≈ 2.06 atol=2e-2

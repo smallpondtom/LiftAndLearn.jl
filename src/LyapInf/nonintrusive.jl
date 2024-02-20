@@ -288,7 +288,7 @@ function NonInt_LyapInf(
     P = isnothing(Pi) ? 1.0I(N) : Pi
 
     if options.optimize_PandQ == "both"
-        for l in 1:options.max_iter
+        for l in 1:options.opt_max_iter
             # Optimize for the P matrix
             P, Jzubov = optimize_P(X, Xdot, Q, options; Pi=Pi)
             λ_P = eigen(P).values

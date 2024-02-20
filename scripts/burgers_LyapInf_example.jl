@@ -162,7 +162,7 @@ Q_res["int"][i] = Q
 ρ_min_res["int"][i], ρ_max_res["int"][i] = LFI.DoA(P)
 
 ## Compute the estimated domain of attraction from Boris's method
-ρ_est_res["int"][i] = LFI.est_stability_rad(A, H, P)
+ρ_est_res["int"][i] = LFI.skp_stability_rad(A, H, P)
 ##
 @info "Done with r = $r"
 # end

@@ -9,7 +9,6 @@ using Distributions: Uniform
 using Kronecker
 using Parameters
 using Sobol: SobolSeq, next!
-using ProgressMeter
 using SparseArrays
 using StatsBase: countmap
 using MatrixEquations: lyapc

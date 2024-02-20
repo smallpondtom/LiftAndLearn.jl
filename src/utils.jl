@@ -24,16 +24,16 @@ supported are up to second order.
 - `f`: nonlinear function operator f(x,u)
 """
 Base.@kwdef mutable struct operators
-    A::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # linear
-    B::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # control
-    C::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # output
-    H::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # quadratic redundant
-    F::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # quadratic non-redundant
+    A::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # linear
+    B::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # control
+    C::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # output
+    H::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # quadratic redundant
+    F::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # quadratic non-redundant
     Q::Union{AbstractArray,Real} = 0   # quadratic -- array of 2-dim square matrices
-    G::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # cubic redundant
-    E::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0  # cubic non-redundant
-    K::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Int64} = 0  # constant
-    N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0  # bilinear
+    G::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # cubic redundant
+    E::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # cubic non-redundant
+    K::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Real} = 0  # constant
+    N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Real} = 0  # bilinear
     f::Function = x -> x  # nonlinear function
 end
 
@@ -668,7 +668,7 @@ a matrix form state data
 ## Returns
 - kronecker product state snapshot matrix
 """
-function kronMatStates(Xmat)
+function kron3MatStates(Xmat)
     function vec_col(X)
         return X ⊗ X ⊗ x
     end
