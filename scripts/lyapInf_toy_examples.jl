@@ -23,7 +23,7 @@ function E1_example(; method="P", type="I")
     end
 
     # Generate the data
-    num_ic = 50  # number of initial conditions
+    num_ic = 1  # number of initial conditions
     tf = 10.0
     dt = 0.001
     tspan = 0.0:dt:tf
@@ -96,7 +96,7 @@ function E6_example(; method="P", type="I")
     tf = 5.0
     dt = 0.001
     tspan = 0.0:dt:tf
-    DS = 100  # down-sampling
+    DS = 1  # down-sampling
 
     X = []
     Xdot = []
@@ -260,7 +260,7 @@ end
 
 
 ## Example 1 #########################################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="both", type="I")
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="together", type="I")
 ##
 V1 = (x) -> x' * P1 * x
 Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
@@ -272,7 +272,7 @@ c_star1, c_all, x_sample = LFI.doa_sampling(
 )
 ## Plot Only for Intrusive
 fig1, fig2 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-5,5), (-5,5);
-                                 heatmap_lb=-0.05, meshsize=1e-2)
+                                 heatmap_lb=-5, meshsize=1e-2)
 ##
 fig1
 ##
