@@ -322,11 +322,11 @@ function elimat3(m::Int)
     L3 = zeros(Int, m*(m+1)*(m+2) ÷ 6, m^3)
     l = 1
     for i in 1:m
+        ei = [Int(p == i) for p in 1:m]
         for j in i:m
+            ej = [Int(p == j) for p in 1:m]
             for k in j:m
                 ek = [Int(p == k) for p in 1:m]
-                ej = [Int(p == j) for p in 1:m]
-                ei = [Int(p == i) for p in 1:m]
                 eijk = ei' ⊗ ej' ⊗ ek'
                 L3[l, :] = eijk
                 l += 1
