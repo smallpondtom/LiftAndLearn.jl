@@ -4,7 +4,6 @@ using LinearAlgebra
 using CairoMakie
 import Random: rand, rand!
 import DifferentialEquations: solve, ODEProblem, RK4
-# import MatrixEquations: lyapc
 import HSL_jll
 
 ## My modules
@@ -12,32 +11,38 @@ using LiftAndLearn
 const LnL = LiftAndLearn
 const LFI = LyapInf
 
-## 
-function E1_example(; method="P", type="I")
+## Functions for the examples
+function lin_quad_model!(xdot, x, p, t)
+    A, F = p[1], p[2]
+    xdot .= A * x + F * (x ⊘ x)
+end
+
+function integrate_model(A, F, x0, ti, tf, dt)
+    prob = ODEProblem(lin_quad_model!, x0, (ti, tf), [A, F])
+    sol = solve(prob, RK4(); dt=dt, adaptive=false)
+    data = sol[1:2,:]
+    ddata = sol(ti:dt:tf, Val{1})[1:2,:]
+    return data, ddata
+end
+
+# Lotka-Volterra Predator-Prey (LVPP) Example
+function lvpp_example(; method="P", type="I", x0_bnds=(-1.8, 1.8))
     A = [-2.0 0.0; 0.0 -1.0]
     H = LnL.makeQuadOp(2, [(1,2,1), (1,2,2)], [1.0, 1.0])
     F = LnL.H2F(H)
 
-    function E1!(xdot, x, p, t)
-        xdot .= A * x + H * (x ⊗ x)
-    end
-
     # Generate the data
-    num_ic = 1  # number of initial conditions
+    num_ic = 100  # number of initial conditions
     tf = 10.0
     dt = 0.001
-    tspan = 0.0:dt:tf
-    DS = 100  # down-sampling
+    DS = 1  # down-sampling
 
     X = []
     Xdot = []
+    lb, ub = x0_bnds
     for i in 1:num_ic
-        x0 = 3.6*rand(2) .- 1.8
-        prob = ODEProblem(E1!, x0, (0, tf))
-        sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[1:2,:]
-        ddata = sol(tspan, Val{1})[1:2,:]
-
+        x0 = (ub - lb)*rand(2) .+ lb
+        data, ddata = integrate_model(A, F, x0,0.0,tf,dt)
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
     end
@@ -78,8 +83,8 @@ function E1_example(; method="P", type="I")
 end
 
 
-
-function E6_example(; method="P", type="I")
+# Van der Pol Oscillator (VPO) Example
+function vpo_example(; method="P", type="I", x0_bnds=(-1.5, 1.5))
     A = zeros(2,2)
     A[1,2] = 1.0
     A[2,1] = -1.0
@@ -87,26 +92,18 @@ function E6_example(; method="P", type="I")
     H = LnL.makeQuadOp(2, [(1,2,2), (2,2,2)], [-0.5, -0.1])
     F = LnL.H2F(H)
 
-    function E1!(xdot, x, p, t)
-        xdot .= A * x + H * (x ⊗ x)
-    end
-
     # Generate the data
-    num_ic = 100  # number of initial conditions
-    tf = 5.0
+    num_ic = 20  # number of initial conditions
+    tf = 10.0
     dt = 0.001
-    tspan = 0.0:dt:tf
-    DS = 1  # down-sampling
+    DS = 100  # down-sampling
 
     X = []
     Xdot = []
+    lb, ub = x0_bnds
     for i in 1:num_ic
-        x0 = 3.0 * rand(2) .- 1.5
-        prob = ODEProblem(E1!, x0, (0, tf))
-        sol = solve(prob, RK4(); dt=dt, adaptive=false)
-        data = sol[1:2,:]
-        ddata = sol(tspan, Val{1})[1:2,:]
-
+        x0 = (ub - lb) * rand(2) .+ lb
+        data, ddata = integrate_model(A,F,x0,0.0,tf,dt)
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
     end
@@ -145,9 +142,10 @@ function E6_example(; method="P", type="I")
 end
 
 
-## Plotting function
+## Plotting functions
+# Plot the DoA result for a single Lyapunov function
 function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange;
-         heatmap_lb=-100, meshsize=1e-3)
+         heatmap_lb=-100, meshsize=1e-3, ax2title="Domain of Attraction Estimate")
     fig1 = Figure(fontsize=20)
     ax1 = Axis(fig1[1,1],
         title="Level Convergence",
@@ -159,7 +157,7 @@ function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange
 
     fig2 = Figure(size=(800,800), fontsize=20)
     ax2 = Axis(fig2[1,1],
-        title="Domain of Attraction Estimate",
+        title=ax2title,
         xlabel=L"x_1",
         ylabel=L"x_2",
         xlabelsize=25,
@@ -195,12 +193,12 @@ function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange
     return fig1, fig2
 end
 
- 
+# Plot the DoA comparison for the intrusive and non-intrusive results 
 function plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, xrange, yrange, ρest; 
         heatmap_lb=-1000, meshsize=1e-3)
     fig = Figure(size=(800,800), fontsize=20)
     ax2 = Axis(fig[1,1],
-        title="Domain of Attraction Estimate",
+        title="Comparison of DoA",
         xlabel=L"x_1",
         ylabel=L"x_2",
         xlabelsize=25,
@@ -258,9 +256,88 @@ function plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot
     return fig
 end
 
+# Function to verify the actual domain of attraction using Monte-Carlo sampling
+function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1)
+    # Initialize the plot
+    fig = Figure(size=(1000,600), fontsize=20)
+    ax = Axis(fig[1:3,1:3],
+        xlabel=L"x_1",
+        ylabel=L"x_2",
+        xlabelsize=25,
+        ylabelsize=25,
+        limits=(domain..., domain...),
+        aspect=1
+    )
+    colsize!(fig.layout, 1, Aspect(1, 1.0))
 
-## Example 1 #########################################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="together", type="I")
+    A, F, ti, tf, dt = integration_params
+    ρ_est = Inf  # initialize the estimated DoA
+    for _ in 1:max_iter
+        lb, ub = domain
+        x0 = (ub .- lb) .* rand(length(domain)) .+ lb
+        data, _ = integrate_model(A, F, x0, ti, tf, dt)
+        δ = norm(data[:,1], 2)
+        ϵ = maximum(norm.(eachcol(data), 2))
+        η = ϵ / δ
+
+        # Plot the sample
+        if η <= M
+            scatter!(ax, data[1,1], data[2,1], color=:green3, label="", strokewidth=0)
+        else
+            scatter!(ax, data[1,1], data[2,1], color=:red, label="", strokewidth=0)
+
+            # Update the estimated DoA
+            if ρ_est > δ
+                ρ_est = δ
+            end
+        end
+    end
+    px = ρ_est * cos.(range(0, 2π, length=1000))
+    py = ρ_est * sin.(range(0, 2π, length=1000))
+    lines!(ax, px, py, color=:black, linestyle=:solid, linewidth=3, label="")
+    px = ρ_int * cos.(range(0, 2π, length=1000))
+    py = ρ_int * sin.(range(0, 2π, length=1000))
+    lines!(ax, px, py, color=:blue3, linestyle=:dash, linewidth=3, label="")
+    px = ρ_nonint * cos.(range(0, 2π, length=1000))
+    py = ρ_nonint * sin.(range(0, 2π, length=1000))
+    lines!(ax, px, py, color=:orange, linestyle=:dash, linewidth=3, label="")
+    # text!(ax2, domain[1]+0.5, domain[1]+0.5, text=L"\hat{ρ} = %$(round(ρ_est,digits=4))", color=:black, fontsize=20)
+
+    # Legend 
+    elem1 = MarkerElement(color=:green3, markersize=10, marker=:circle, strokewidth=0)
+    elem2 = MarkerElement(color=:red, markersize=10, marker=:circle, strokewidth=0)
+    elem3 = LineElement(color=:black, linestyle=:solid, linewidth=3)
+    elem4 = LineElement(color=:blue3, linestyle=:dash, linewidth=3)
+    elem5 = LineElement(color=:orange, linestyle=:dash, linewidth=3)
+    if M != 1
+        Legend(fig[2,4:5],
+            [elem1, elem2, elem3, elem4, elem5], 
+            [
+                L"Stable: $\max\Vert\textbf{x}(t)\Vert_2 ~\leq $ %$(M)$\Vert\textbf{x}_0\Vert_2$", 
+                L"Unstable: $\max\Vert\textbf{x}(t)\Vert_2 ~>$ %$(M)$\Vert\textbf{x}_0\Vert_2$",
+                L"True DoA: %$(round(ρ_est,digits=4)) $$",
+                L"Intrusive LyapInf DoA: %$(round(ρ_int,digits=4)) $$",
+                L"Non-Intrusive LyapInf DoA: %$(round(ρ_nonint,digits=4)) $$"
+            ], rowgap = 8
+        )
+    else
+        Legend(fig[2,4:5],
+            [elem1, elem2, elem3, elem4, elem5], 
+            [
+                L"Stable: $\max\Vert\textbf{x}(t)\Vert_2 ~\leq~\Vert\textbf{x}_0\Vert_2$", 
+                L"Unstable: $\max\Vert\textbf{x}(t)\Vert_2 ~>~\Vert\textbf{x}_0\Vert_2$",
+                L"True DoA: %$(round(ρ_est,digits=4)) $$",
+                L"Intrusive LyapInf DoA: %$(round(ρ_int,digits=4)) $$",
+                L"Non-Intrusive LyapInf DoA: %$(round(ρ_nonint,digits=4)) $$"
+            ], rowgap = 8
+        )
+    end
+    return ρ_est, fig
+end
+
+
+## Example 1: Lotka-Volterra Predator-Prey ############################################################
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = lvpp_example(method="P", type="I", x0_bnds=(-1.5, 1.5))
 ##
 V1 = (x) -> x' * P1 * x
 Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
@@ -270,16 +347,20 @@ c_star1, c_all, x_sample = LFI.doa_sampling(
     1000, 2, (-5,5);
     method="memory", history=true, n_strata=8, uniform_state_space=true
 )
-## Plot Only for Intrusive
-fig1, fig2 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-5,5), (-5,5);
-                                 heatmap_lb=-5, meshsize=1e-2)
-##
-fig1
-##
-fig2
+ρ_star1 = sqrt(c_star1) * ρ_min
+println("c_star1 = ", c_star1)
+println("ρ_est = ", ρ_est)
+println("ρ_min = ", ρ_min)
+println("ρ_star = ", ρ_star1)
 
-##
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E1_example(method="P", type="NI")
+## Plot Only for Intrusive
+fig11, fig12 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-5,5), (-5,5);
+                                 heatmap_lb=-5, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA")
+display(fig11)
+display(fig12)
+
+## Non-Intrusive
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = lvpp_example(method="P", type="NI", x0_bnds=(-1.5, 1.5))
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> x' * P2 * A * x + x' * P2 * F * (x ⊘ x)
@@ -289,22 +370,31 @@ c_star2, c_all, x_sample = LFI.doa_sampling(
     1000, 2, (-5,5);
     method="memory", history=true, n_strata=8, uniform_state_space=true
 )
+ρ_star2 = sqrt(c_star2) * ρ_min
+println("c_star1 = ", c_star2)
+println("ρ_est = ", ρ_est)
+println("ρ_min = ", ρ_min)
+println("ρ_star = ", ρ_star2)
+
 ## Plot Only for Non-Intrusive
-fig3, fig4 = plot_doa_results(A, F, c_all, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-5,5), (-5,5);
-                                 heatmap_lb=-5, meshsize=1e-2)
-##
-fig3
-##
-fig4
+fig13, fig14 = plot_doa_results(A, F, c_all, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-5,5), (-5,5);
+                                 heatmap_lb=-5, meshsize=1e-2, ax2title="Non-Intrusive LyapInf: DoA")
+display(fig13)
+display(fig14)
 
 ## Plot the comparison
-fig5 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-5,5), (-5,5), ρ_est; 
+fig15 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-5,5), (-5,5), ρ_est; 
         heatmap_lb=-5, meshsize=1e-2)
-fig5
+display(fig15)
+
+## Verify the DoA
+ρ_mc, fig16 = verify_doa(ρ_star1, ρ_star2, (A, F, 0.0, 10.0, 0.001), (-5,5), 5000)
+display(fig16)
 
 
-## Example 6 #########################################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E6_example(type="I")
+
+## Example 2: Van der Pol Oscillator #################################################################
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = vpo_example(method="P", type="I")
 ##
 V1 = (x) -> x' * P1 * x
 Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
@@ -314,16 +404,20 @@ c_star1, c_all, x_sample = LFI.doa_sampling(
     1000, 2, (-2,2);
     method="memory", history=true
 )
-## Plot
-fig6, fig7 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-2,2), (-2,2);
-                                 heatmap_lb=-1e-1, meshsize=1e-2)
-##
-fig6
-##
-fig7
+ρ_star1 = sqrt(c_star1) * ρ_min
+println("c_star1 = ", c_star1)
+println("ρ_est = ", ρ_est)
+println("ρ_min = ", ρ_min)
+println("ρ_star = ", ρ_star1)
 
-##
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = E6_example(type="NI")
+## Plot
+fig21, fig22 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-2,2), (-2,2);
+                                 heatmap_lb=-1e-1, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA")
+display(fig21)
+display(fig22)
+
+## Non-Intrusive
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = vpo_example(method="P",type="NI")
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> x' * P2 * A * x + x' * P2 * F * (x ⊘ x)
@@ -333,205 +427,23 @@ c_star2, c_all, x_sample = LFI.doa_sampling(
     1000, 2, (-2,2);
     method="memory", history=true
 )
+ρ_star2 = sqrt(c_star2) * ρ_min
+println("c_star1 = ", c_star2)
+println("ρ_est = ", ρ_est)
+println("ρ_min = ", ρ_min)
+println("ρ_star = ", ρ_star2)
+
 ## Plot
-fig8, fig9 = plot_doa_results(A, F, c_all, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-2,2), (-2,2);
-                                 heatmap_lb=-1e-1, meshsize=1e-2)
-##
-fig8
-##
-fig9
+fig23, fig24 = plot_doa_results(A, F, c_all, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-2,2), (-2,2);
+                                 heatmap_lb=-1e-1, meshsize=1e-2, ax2title="Non-Intrusive LyapInf: DoA")
+display(fig23)
+display(fig24)
 
-##
-fig10 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-2,2), (-2,2), ρ_est; 
+## Plot the comparison
+fig25 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-2,2), (-2,2), ρ_est; 
         meshsize=1e-2)
+display(fig25)
 
-
-## ########################
-# function E2_example()
-#     A = zeros(3,3)
-#     A[1,2] = -1.0
-#     A[2,1] = 1.0
-#     A[2,2] = -1.0
-#     H = LnL.makeQuadOp(3, [(2,3,2), (1,2,3)], [1.0, -2.0])
-#     F = LnL.H2F(H)
-
-#     function E1!(xdot, x, p, t)
-#         xdot .= A * x + H * (x ⊗ x)
-#     end
-
-#     # Generate the data
-#     num_ic = 5  # number of initial conditions
-#     tf = 10.0
-#     dt = 0.001
-#     tspan = 0.0:dt:tf
-#     DS = 100  # down-sampling
-
-#     # Lifting
-#     lifter = LnL.lifting(2, 3, [x -> x[1]^2])
-
-#     X = []
-#     Xdot = []
-#     for i in 1:num_ic
-#         x0 = lifter.map(2 * rand(2) .- 1)
-#         prob = ODEProblem(E1!, x0, (0, tf))
-#         sol = solve(prob, RK4(); dt=dt, adaptive=false)
-#         data = sol[1:3,:]
-#         ddata = sol(tspan, Val{1})[1:3,:]
-
-#         push!(X, data[:,1:DS:end])
-#         push!(Xdot, ddata[:,1:DS:end])
-#     end
-#     X = reduce(hcat, X)
-#     Xdot = reduce(hcat, Xdot)
-
-#     ## Compute the Lyapunov Function using the intrusive method
-#     lyapinf_options = LFI.Int_LyapInf_options(
-#         extra_iter=3,
-#         optimizer="Ipopt",
-#         ipopt_linear_solver="ma86",
-#         verbose=true,
-#         optimize_PandQ="P",
-#         HSL_lib_path=HSL_jll.libhsl_path,
-#     )
-#     op = LnL.operators(A=A, H=H, F=F)
-#     P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
-#     ρ_min, ρ_max = LFI.DoA(P)
-#     return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
-# end
-
-
-# function E3_example()
-#     A = zeros(4,4)
-#     A[1,1] = -1.0
-#     A[2,2] = -1.0
-#     A[3,3] = -1.0
-#     H = LnL.makeQuadOp(4, [(2,4,1), (1,2,2), (3,3,4)], [1.0, 1.0, -2.0])
-#     F = LnL.H2F(H)
-
-#     function E1!(xdot, x, p, t)
-#         xdot .= A * x + H * (x ⊗ x)
-#     end
-
-#     # Generate the data
-#     num_ic = 5  # number of initial conditions
-#     tf = 10.0
-#     dt = 0.001
-#     tspan = 0.0:dt:tf
-#     DS = 100  # down-sampling
-
-#     # Lifting
-#     lifter = LnL.lifting(3, 4, [x -> x[3]^2])
-
-#     X = []
-#     Xdot = []
-#     for i in 1:num_ic
-#         foo1, foo2, foo3 = 4.0*rand(3) .- 2.0
-#         x0 = lifter.map([foo1, foo2, foo3])
-#         prob = ODEProblem(E1!, x0, (0, tf))
-#         sol = solve(prob, RK4(); dt=dt, adaptive=false)
-#         data = sol[1:4,:]
-#         ddata = sol(tspan, Val{1})[1:4,:]
-
-#         push!(X, data[:,1:DS:end])
-#         push!(Xdot, ddata[:,1:DS:end])
-#     end
-#     X = reduce(hcat, X)
-#     Xdot = reduce(hcat, Xdot)
-
-#     ## Compute the Lyapunov Function using the intrusive method
-#     lyapinf_options = LFI.Int_LyapInf_options(
-#         extra_iter=3,
-#         optimizer="Ipopt",
-#         ipopt_linear_solver="ma86",
-#         verbose=true,
-#         optimize_PandQ="P",
-#         HSL_lib_path=HSL_jll.libhsl_path,
-#     )
-#     op = LnL.operators(A=A, H=H, F=F)
-#     P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
-#     ρ_min, ρ_max = LFI.DoA(P[1:3,1:3])
-#     return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
-# end
-
-
-# function E5_example()
-#     A = zeros(4,4)
-#     A[1,2] = 1.0
-#     A[2,2] = -2.0
-#     A[2,3] = -1.0
-#     H = LnL.makeQuadOp(4, [(3,4,2), (2,4,3), (2,3,4)], [0.81, 1.0, -1.0])
-#     F = LnL.H2F(H)
-
-#     function E1!(xdot, x, p, t)
-#         xdot .= A * x + H * (x ⊗ x)
-#     end
-
-#     # Generate the data
-#     num_ic = 5  # number of initial conditions
-#     tf = 10.0
-#     dt = 0.001
-#     tspan = 0.0:dt:tf
-#     DS = 100  # down-sampling
-
-#     # Lifting
-#     lifter = LnL.lifting(2, 4, [x -> sin.(x[1]), x -> cos.(x[1])])
-
-#     X = []
-#     Xdot = []
-#     for i in 1:num_ic
-#         foo1, foo2 = 2π/3*rand(3) .- π/3
-#         x0 = lifter.map([foo1, foo2])
-#         prob = ODEProblem(E1!, x0, (0, tf))
-#         sol = solve(prob, RK4(); dt=dt, adaptive=false)
-#         data = sol[1:4,:]
-#         ddata = sol(tspan, Val{1})[1:4,:]
-
-#         push!(X, data[:,1:DS:end])
-#         push!(Xdot, ddata[:,1:DS:end])
-#     end
-#     X = reduce(hcat, X)
-#     Xdot = reduce(hcat, Xdot)
-
-#     ## Compute the Lyapunov Function using the intrusive method
-#     lyapinf_options = LFI.Int_LyapInf_options(
-#         extra_iter=3,
-#         optimizer="Ipopt",
-#         ipopt_linear_solver="ma86",
-#         verbose=true,
-#         optimize_PandQ="P",
-#         HSL_lib_path=HSL_jll.libhsl_path,
-#     )
-#     op = LnL.operators(A=A, H=H, F=F)
-#     P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
-#     ρ_min, ρ_max = LFI.DoA(P[1:2,1:2])
-#     return P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter
-# end
-
-
-
-# ## Example 2
-# P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E2_example()
-# ##
-# c_star = LFI.doa_sampling(
-#     (x) -> x' * P * x, 
-#     (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
-#     500, 2, (-5,5), Nl=3, lifter=lifter
-# )
-
-# ## Example 3
-# P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E3_example()
-# ##
-# c_star = LFI.doa_sampling(
-#     (x) -> x' * P * x, 
-#     (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
-#     500, 3, (-5,5), Nl=4, lifter=lifter
-# )
-
-# ## Example 5
-# P, Q, cost, ∇cost, ρ_min, ρ_max, A, F, lifter = E5_example()
-# ##
-# c_star = LFI.doa_sampling(
-#     (x) -> x' * P * x, 
-#     (x) -> x' * P * A * x + x' * P * F * (x ⊘ x), 
-#     500, 2, (-5,5), Nl=4, lifter=lifter
-# )
+## Verify the DoA
+ρ_mc, fig26 = verify_doa(ρ_star1, ρ_star2, (A, F, 0.0, 10.0, 0.001), (-2.5,2.5), 5000; M=1.0)
+display(fig26)
