@@ -291,13 +291,13 @@ function NonInt_LyapInf(
         for l in 1:options.opt_max_iter
             # Optimize for the P matrix
             P, Jzubov = optimize_P(X, Xdot, Q, options; Pi=Pi)
-            λ_P = eigen(P).values
+            λ_P = eigvals(P)
             λ_P_real = real.(λ_P) 
             Pi = P 
 
             # Optimize for the Q matrix
             Q, _ = optimize_Q(X, Xdot, P, options; Qi=Qi)
-            λ_Q = eigen(Q).values
+            λ_Q = eigvals(Q)
             λ_Q_real = real.(λ_Q)
             Qi = Q
 
@@ -308,16 +308,8 @@ function NonInt_LyapInf(
             diff_P = norm(P - P', 2)
             diff_Q = norm(Q - Q', 2)
 
-            # Save the best one
-            if all(λ_P_real .> 0) && all(λ_Q_real .> 0) # && (Zerr < Zerrbest)
-                Pbest = P
-                Qbest = Q
-                ∇Jzubovbest = ∇Jzubov
-            end
-
-            # Zubov Equation Error:                $(Zerr)
             # Logging
-            @info """[NonInt_LyapInf Iteration $l: Optimize P then Q]
+            @info """[NonInt_LyapInf Iteration $l: Alternating Optimization of P and Q]
             Objective value:                     $(Jzubov)
             Gradient of Objective value:         $(∇Jzubov)
             ||P - P'||_F:                        $(diff_P)
@@ -331,11 +323,36 @@ function NonInt_LyapInf(
             β:                                   $(options.β)
             """
 
+            # Save the best one and adjust the P and Q if needed for negative eigenvalues
+            if all(λ_P_real .> 0) && all(λ_Q_real .> 0)
+                Pbest = P
+                Qbest = Q
+                ∇Jzubovbest = ∇Jzubov
+            elseif all(λ_P_real .> 0)
+                @info "Negative eigenvalues in Q. Adjusting Q."
+                tmp = λ_Q_real[λ_Q_real .< 0]
+                λneg = minimum(tmp)
+                Q += eps(10^(1.1*log10(abs(λneg)/eps())))*I
+            elseif all(λ_Q_real .> 0)
+                @info "Negative eigenvalues in P. Adjusting P."
+                tmp = λ_P_real[λ_P_real .< 0]
+                λneg = minimum(tmp)
+                P += eps(10^(1.1*log10(abs(λneg)/eps())))*I
+            else
+                @info "Negative eigenvalues in both P and Q. Adjusting both."
+                tmp = λ_Q_real[λ_Q_real .< 0]
+                λneg = minimum(tmp)
+                Q += eps(10^(1.1*log10(abs(λneg)/eps())))*I
+
+                tmp = λ_P_real[λ_P_real .< 0]
+                λneg = minimum(tmp)
+                P += eps(10^(1.1*log10(abs(λneg)/eps())))*I
+            end
+
             # Check if the resulting P satisfies the tolerance
             if diff_P < options.δS && diff_Q < options.δS && all(λ_P_real .> 0) && all(λ_Q_real .> 0) && ∇Jzubov < options.δJ
                 check += 1
                 if check == options.extra_iter
-                    # return P, Q, Zerr, ∇Jzubov
                     return P, Q, Jzubov, ∇Jzubov
                 end
             else
@@ -345,9 +362,10 @@ function NonInt_LyapInf(
             # If the optimization did not end before the maximum iteration assign what we have best for now
             if l == options.opt_max_iter
                 if (@isdefined Pbest)
-                    # return Pbest, Qbest, Zerrbest, ∇Jzubovbest
+                    @info "Maximum iteration reached. Returning the best result so far."
                     return Pbest, Qbest, Jzubov, ∇Jzubovbest
                 else
+                    @info "Maximum iteration reached. Returning the last result."
                     return P, Q, Jzubov, ∇Jzubov
                 end
             end
@@ -393,7 +411,6 @@ function NonInt_LyapInf(
         α:                                   $(options.α)
         β:                                   $(options.β)
         """
-
         return P, Q, Jzubov, Jzubov
     end
 end
