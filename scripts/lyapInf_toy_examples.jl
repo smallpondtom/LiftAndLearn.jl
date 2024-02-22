@@ -32,10 +32,10 @@ function lvpp_example(; method="P", type="I", x0_bnds=(-1.8, 1.8))
     F = LnL.H2F(H)
 
     # Generate the data
-    num_ic = 100  # number of initial conditions
+    num_ic = 20  # number of initial conditions
     tf = 10.0
     dt = 0.001
-    DS = 1  # down-sampling
+    DS = 100  # down-sampling
 
     X = []
     Xdot = []
@@ -173,8 +173,11 @@ function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange
     data = [Vdot([x,y]) for x=xpoints, y=ypoints]
     hm = heatmap!(ax2, xpoints, ypoints, data, colorrange=(heatmap_lb,0), alpha=0.7, highclip=:transparent)
     Colorbar(fig2[:, end+1], hm, label=L"\dot{V}(x) \leq 0")
+    rowsize!(fig2.layout, 1, ax2.scene.px_area[].widths[2])
+
     # Scatter plot of Monte Carlo samples
     scatter!(ax2, x_sample[1,:], x_sample[2,:], color=:red, alpha=0.6)
+
     # Plot the Lyapunov function ellipse
     α = range(0, 2π, length=1000)
     Λ, V = eigen(P)
@@ -182,10 +185,12 @@ function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange
     xα = (α) -> sqrt(c_star/Λ[1])*cos(θ)*cos.(α) .+ sqrt(c_star/Λ[2])*sin(θ)*sin.(α)
     yα = (α) -> -sqrt(c_star/Λ[1])*sin(θ)*cos.(α) .+ sqrt(c_star/Λ[2])*cos(θ)*sin.(α)
     lines!(ax2, xα(α), yα(α), label="", color=:black, linewidth=2)
+
     # Plot the Minimal DoA with single radius
     xβ = (β) -> sqrt(c_star/maximum(Λ))*cos.(β)
     yβ = (β) -> sqrt(c_star/maximum(Λ))*sin.(β)
     lines!(ax2, xβ(α), yβ(α), label="", color=:blue, linestyle=:dash, linewidth=3)
+
     # Vector field of state trajectories
     f(x) = Point2f( (A*x + F*(x ⊘ x)) )
     streamplot!(ax2, f, xi..xf, yi..yf, arrow_size=10, colormap=:gray1)
@@ -301,7 +306,6 @@ function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1
     px = ρ_nonint * cos.(range(0, 2π, length=1000))
     py = ρ_nonint * sin.(range(0, 2π, length=1000))
     lines!(ax, px, py, color=:orange, linestyle=:dash, linewidth=3, label="")
-    # text!(ax2, domain[1]+0.5, domain[1]+0.5, text=L"\hat{ρ} = %$(round(ρ_est,digits=4))", color=:black, fontsize=20)
 
     # Legend 
     elem1 = MarkerElement(color=:green3, markersize=10, marker=:circle, strokewidth=0)
