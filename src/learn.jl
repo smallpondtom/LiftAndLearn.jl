@@ -306,10 +306,14 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     if options.system.is_lin
         Ahat = O[:, TD+1:n]
         TD += n
+    else
+        Ahat = 0
     end
     if options.system.has_control
         Bhat = O[:, TD+1:TD+p]
         TD += p
+    else
+        Bhat = 0
     end
     # Ahat = options.system.is_lin ? O[:, 1:n] : 0
     # Bhat = options.system.has_control ? O[:, n+1:n+p] : 0
