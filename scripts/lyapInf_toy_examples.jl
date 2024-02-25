@@ -1,4 +1,6 @@
+##############
 ## Packages
+##############
 using Kronecker
 using LinearAlgebra
 using CairoMakie
@@ -6,12 +8,18 @@ import Random: rand, rand!
 import DifferentialEquations: solve, ODEProblem, RK4
 import HSL_jll
 
+
+################
 ## My modules
+################
 using LiftAndLearn
 const LnL = LiftAndLearn
 const LFI = LyapInf
 
+
+################################
 ## Functions for the examples
+################################
 function lin_quad_model!(xdot, x, p, t)
     A, F = p[1], p[2]
     xdot .= A * x + F * (x ⊘ x)
@@ -142,7 +150,9 @@ function vpo_example(; method="P", type="I", x0_bnds=(-1.5, 1.5))
 end
 
 
+#########################
 ## Plotting functions
+#########################
 # Plot the DoA result for a single Lyapunov function
 function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange;
          heatmap_lb=-100, meshsize=1e-3, ax2title="Domain of Attraction Estimate")
@@ -340,7 +350,10 @@ function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1
 end
 
 
-## Example 1: Lotka-Volterra Predator-Prey ############################################################
+
+#################################################
+## Example 1: Lotka-Volterra Predator-Prey 
+#################################################
 P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = lvpp_example(method="P", type="I", x0_bnds=(-1.5, 1.5))
 ##
 V1 = (x) -> x' * P1 * x
@@ -397,7 +410,9 @@ display(fig16)
 
 
 
-## Example 2: Van der Pol Oscillator #################################################################
+#################################################
+## Example 2: Van der Pol Oscillator 
+#################################################
 P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = vpo_example(method="P", type="I")
 ##
 V1 = (x) -> x' * P1 * x

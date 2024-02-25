@@ -360,7 +360,8 @@ function semiImplicitEuler(ops, tdata, IC)
 
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        state2 = vech(state[:, j-1] * state[:, j-1]')
+        # state2 = vech(state[:, j-1] * state[:, j-1]')
+        state2 = state[:, j-1] ⊘ state[:, j-1]
         state[:, j] = (1.0I(Xdim) - Δt * A) \ (state[:, j-1] + F * state2 * Δt)
     end
     return state

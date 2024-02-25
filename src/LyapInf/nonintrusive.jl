@@ -282,6 +282,11 @@ function NonInt_LyapInf(
     Jzubov_lm1 = 0  # Jzubov(l-1)
     check = 0    # run a few extra iterations to make sure the error is decreasing
 
+    # Initialize the best return
+    Pbest = nothing
+    Qbest = nothing
+    ∇Jzubovbest = nothing
+
     # Initialize P and Q
     N = size(X,1)
     Q = isnothing(Qi) ? 1.0I(N) : Qi
@@ -301,12 +306,12 @@ function NonInt_LyapInf(
             λ_Q_real = real.(λ_Q)
             Qi = Q
 
-            ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
-            Jzubov_lm1 = Jzubov 
-
             # Compute some metrics to check the convergence
             diff_P = norm(P - P', 2)
             diff_Q = norm(Q - Q', 2)
+            
+            # Compute the gradient of the objective function
+            ∇Jzubov = abs(Jzubov - Jzubov_lm1) 
 
             # Logging
             @info """[NonInt_LyapInf Iteration $l: Alternating Optimization of P and Q]
@@ -325,9 +330,11 @@ function NonInt_LyapInf(
 
             # Save the best one and adjust the P and Q if needed for negative eigenvalues
             if all(λ_P_real .> 0) && all(λ_Q_real .> 0)
-                Pbest = P
-                Qbest = Q
-                ∇Jzubovbest = ∇Jzubov
+                if Jzubov < Jzubov_lm1
+                    Pbest = P
+                    Qbest = Q
+                    ∇Jzubovbest = ∇Jzubov
+                end
             elseif all(λ_P_real .> 0)
                 @info "Negative eigenvalues in Q. Adjusting Q."
                 tmp = λ_Q_real[λ_Q_real .< 0]
@@ -348,6 +355,9 @@ function NonInt_LyapInf(
                 λneg = minimum(tmp)
                 P += eps(10^(1.1*log10(abs(λneg)/eps())))*I
             end
+            
+            # Update the convergence metric
+            Jzubov_lm1 = Jzubov 
 
             # Check if the resulting P satisfies the tolerance
             if diff_P < options.δS && diff_Q < options.δS && all(λ_P_real .> 0) && all(λ_Q_real .> 0) && ∇Jzubov < options.δJ
