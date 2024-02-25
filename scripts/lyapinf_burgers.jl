@@ -1,21 +1,28 @@
+#############
 ## Packages
+#############
 using CairoMakie
 using Distributions: Uniform
 using LinearAlgebra
 import HSL_jll
 
+###############
 ## My modules
+###############
 using LiftAndLearn
 const LnL = LiftAndLearn
 const LFI = LyapInf
 
+###############
+## Setup 
+###############
 ## First order Burger's equation setup
 burgers = LnL.burgers(
     [0.0, 1.0], [0.0, 1.0], [0.10, 0.10],
     2^(-7), 1e-4, 1, "periodic"
 )
 
-## Settings
+## Reduced dimensions and OpInf options
 rmin = 1  # min dimension
 rmax = 10  # max dimension
 
@@ -55,7 +62,10 @@ IC = Dict(
 IC[:n] = Int(length(IC[:a])*length(IC[:b])*length(IC[:c]))
 IC[:f] = (a,b,c) -> exp.(-a * cos.(π .* burgers.x .+ b).^2) .+ c
 
+
+################################
 ## Generate the training data
+################################
 A, F = burgers.generateEPmatrix(burgers, burgers.μs[1])
 op_fom = LnL.operators(A=A, F=F)
     
@@ -78,10 +88,14 @@ R = reduce(hcat, Xdotall)
 # Compute the POD basis from the training data
 Vrmax = svd(X).U[:, 1:rmax]
 
+#####################################
 ## Compute the intrusive POD model
+#####################################
 op_int = LnL.intrusiveMR(op_fom, Vrmax, opinf_options)
 
+#####################################
 ## Compute the OpInf model
+#####################################
 op_inf = LnL.inferOp(X, zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vrmax, Vrmax' * R, opinf_options)
 
 ## Create a batch of training data
@@ -90,36 +104,44 @@ op_inf = LnL.inferOp(X, zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vrmax, Vrmax' * R, o
 #     X[:, cols]
 # end
 
+#####################################
 ## Intrusive LyapInf for POD model
+#####################################
 ds2= 1  # another downsampling for lyapinf
 int_lyapinf_options = LFI.Int_LyapInf_options(
     extra_iter=3,
     optimizer="Ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
-    optimize_PandQ="both",
+    optimize_PandQ="P",
     opt_max_iter=10,
     HSL_lib_path=HSL_jll.libhsl_path,
 )
 P_int, Q_int, cost, ∇cost = LFI.Int_LyapInf(op_int, Vrmax' * X[:,1:ds2:end], int_lyapinf_options)
 
+#####################################
 ## Intrusive LyapInf for OpInf model
+#####################################
 P_inf, Q_inf, cost, ∇cost = LFI.Int_LyapInf(op_inf, Vrmax' * X[:,1:ds2:end], int_lyapinf_options)
 
+#####################################
 ## Non-intrusive LyapInf
+#####################################
 nonint_lyapinf_options = LFI.NonInt_LyapInf_options(
     extra_iter=3,
     optimizer="Ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
-    optimize_PandQ="both",
+    optimize_PandQ="P",
     opt_max_iter=10,
     HSL_lib_path=HSL_jll.libhsl_path,
 )
-P_star, Qstar, cost, ∇cost = LFI.NonInt_LyapInf(Vrmax' * X[:,1:ds2:end], Vrmax' * R[:,1:ds2:end], nonint_lyapinf_options)
+P_star, Q_star, cost, ∇cost = LFI.NonInt_LyapInf(Vrmax' * X[:,1:ds2:end], Vrmax' * R[:,1:ds2:end], nonint_lyapinf_options)
 
 
-## Sample the correct level surface (for r = 10)
+################################################
+## Sample the max level surface (for r = 10)
+################################################
 # POD
 V = (x) -> x' * P_int * x
 Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.F * (x ⊘ x)
@@ -173,7 +195,58 @@ c_star3 = LFI.doa_sampling(
 ρskp3 = LFI.skp_stability_rad(op_int.A, op_int.H, Q_star)
 println("Non-intrusive: c* = $c_star3, ρmin = $ρmin3, ρstar = $ρstar3, ρskp = $ρskp3")
 
+
+
+##############################################
 ## Plot the DoA for all reduced dimensions
+##############################################
+function interpolate_extrapolate_column(v)
+    # Find valid (non-NaN and non-zero) indices and corresponding values
+    valid_indices = findall(x -> !isnan(x) && x != 0, v)
+    valid_values = v[valid_indices]
+
+    if isempty(valid_indices)
+        return v  # Return original if no valid points
+    end
+
+    # Extrapolate at the beginning if needed
+    if isnan(v[1]) || iszero(v[1])
+        if length(valid_indices) > 1
+            slope = (valid_values[2] - valid_values[1]) / (valid_indices[2] - valid_indices[1])
+            v[1] = valid_values[1] - slope * (valid_indices[1] - 1)
+        else
+            v[1] = valid_values[1]  # Use the single valid value if only one exists
+        end
+    end
+
+    # Interpolate missing values
+    for i in 2:length(v) - 1
+        if isnan(v[i]) || v[i] == 0
+            lower_index = findlast(j -> j < i, valid_indices)
+            upper_index = findfirst(j -> j > i, valid_indices)
+            if isnothing(lower_index) || isnothing(upper_index)
+                continue  # Skip if there's no surrounding valid values
+            end
+            # Linear interpolation
+            v[i] = ((valid_values[lower_index] * (valid_indices[upper_index] - i) +
+                     valid_values[upper_index] * (i - valid_indices[lower_index])) /
+                    (valid_indices[upper_index] - valid_indices[lower_index]))
+        end
+    end
+
+    # Extrapolate at the end if needed
+    if isnan(v[end]) || iszero(v[end])
+        if length(valid_indices) > 1
+            slope = (valid_values[end] - valid_values[end - 1]) / (valid_indices[end] - valid_indices[end - 1])
+            v[end] = valid_values[end] + slope * (length(v) - valid_indices[end])
+        else
+            v[end] = valid_values[end]  # Use the single valid value if only one exists
+        end
+    end
+
+    return v
+end
+##
 ρ_all = zeros(rmax,3)
 ρskp_all = zeros(rmax,2)
 fig2 = Figure(size=(900,600), fontsize=20)
@@ -231,6 +304,8 @@ for (i,r) in enumerate(rmin:rmax)
     )
     ρ_all[i,3] = sqrt(c_star/maximum(eigvals(P)))
 end
+ρ_all_save = copy(ρ_all)
+ρ_all = mapslices(interpolate_extrapolate_column, ρ_all; dims=1)
 scatterlines!(ax, rmin:rmax, ρ_all[:,1], label="POD")
 scatterlines!(ax, rmin:rmax, ρ_all[:,2], label="OpInf")
 scatterlines!(ax, rmin:rmax, ρ_all[:,3], label="Non-intrusive")
@@ -240,74 +315,119 @@ fig2[1,2] = Legend(fig2, ax)
 display(fig2)
 
 
+
+##################
 ## Verify DoA
+##################
+## Function
 function verify_DoA(
-    op, Vr, ic_param_bnd, ic_func; 
-    max_iter=500, xticks=false, xlim=false, legend_loc=:top, ρ_factor=10
+    op, ic_param_bnd, ic_func; 
+    Vr=nothing, max_iter=500, full=true, xticks=false, xlim=false, legend_loc=:top
 )
     fig = Figure(size=(900,600), fontsize=20)
-    ax = Axis(fig[1,1],
-        ylabel=L"\max\Vert\mathbf{x}(t)\Vert_2",
-        xlabel=L"\Vert\mathbf{x}_0\Vert_2",
-    )
+    if full
+        ax = Axis(fig[1,1],
+            ylabel=L"\log\left(\frac{\max\Vert\mathbf{x}(t)\Vert_2}{\Vert\mathbf{x}_0\Vert_2}\right)",
+            xlabel=L"\Vert\mathbf{x}_0\Vert_2",
+        )
+    else
+        ax = Axis(fig[1,1],
+            ylabel=L"\log\left(\frac{\max\Vert\hat{\mathbf{x}}(t)\Vert_2}{\Vert\hat{\mathbf{x}}_0\Vert_2}\right)",
+            xlabel=L"\Vert\hat{\mathbf{x}}_0\Vert_2",
+        )
+    end        
 
     A, F = op.A, op.F
     N = length(ic_param_bnd)
-    est_DoA_line_max = 0
-    for iter in 1:max_iter
+    ρ_true = Inf
+    for _ in 1:max_iter
         foo = zeros(N)
         for (i, p) in enumerate(ic_param_bnd)
             foo[i] = rand(Uniform(p[1], p[2]), 1, 1)[1]
         end        
         ic_ = ic_func(foo...)
         ic_norm = norm(ic_)
-        
-        # Check if the initial condition is within the (DoA) * 3
-        # if not skip the rest of the loop
-        if ic_norm > ρ * ρ_factor
-            continue
-        end
 
-        # Store the max ic_norm value to draw the y = x line
-        est_DoA_line_max = est_DoA_line_max < ic_norm ? ic_norm : est_DoA_line_max
-
-        states = burgers.semiImplicitEuler(A, F, burgers.t, Vr' * ic_)
-        state_norms = norm.(eachcol(states), 2)
-        max_norm = maximum(state_norms)
-        
-        # Store the data for later use
-        # store_norms[iter, 1] = ic_norm
-        # store_norms[iter, 2] = max_norm
-        
-        # Check if the maximum norm throughout the trajectory stays within the domain of attraction
-        if ic_norm < ρ && max_norm < ρ
-            scatter!(plt, [ic_norm], [max_norm], marker=(:circle, 4), color=:green3, label="")
-        elseif ic_norm > ρ &&  max_norm < ρ
-            scatter!(plt, [ic_norm], [max_norm], marker=(:circle, 4), color=:blue, label="")
-        elseif ic_norm < ρ &&  max_norm > ρ
-            scatter!(plt, [ic_norm], [max_norm], marker=(:circle, 4), color=:orange, label="")
+        if full
+            states = burgers.semiImplicitEuler(A, F, burgers.t, ic_)
         else
-            scatter!(plt, [ic_norm], [max_norm], marker=(:circle, 4), color=:red, label="")
+            states = burgers.semiImplicitEuler(A, F, burgers.t, Vr' * ic_)
+        end
+
+        if any(isnan.(states)) || any(isinf.(states))
+            scatter!(ax, ic_norm, 0, color=:black, label="", marker=:x, markersize=15)
+
+            # Update the estimated true DoA
+            if ρ_true > ic_norm
+                ρ_true = ic_norm
+            end
+        else
+            state_norms = norm.(eachcol(states), 2)
+            max_norm = maximum(state_norms)
+            
+            # Check if the maximum norm throughout the trajectory stays within the domain of attraction
+            if max_norm <= ic_norm
+                scatter!(ax, ic_norm, log.(max_norm ./ ic_norm), color=:green3, strokewidth=0, label="")
+            else
+                scatter!(ax, ic_norm, log.(max_norm ./ ic_norm), color=:red, strokewidth=0, label="")
+
+                # Update the estimated true DoA
+                if ρ_true > ic_norm
+                    ρ_true = ic_norm
+                end
+            end
         end
     end
-    vline!(plt, [ρ], color=:black, linestyle=:dash, linewidth=2, label=L"ρ_{\mathcal{A}}")
-    hline!(plt, [ρ], color=:black, linestyle=:dash, linewidth=2, label="")
-    plot!(plt, [0, est_DoA_line_max], [0, est_DoA_line_max], color=:lightcoral, linestyle=:dashdot, linewidth=2, label="")
-    xlabel!(L"||\hat{x}_0||_{L^2}")
-    ylabel!(L"\mathrm{max}||\hat{x}_i||_{L^2}")
-    if xticks != false
-        xticks!(plt, xticks)
-    end
-    if xlim != false
-        xlims!(plt, xlim...)
-    else
-        xlims!(plt, 0, est_DoA_line_max)
-    end
-    ylims!(plt, 0, est_DoA_line_max)
-    plot!(majorgrid=true, minorgrid=true, legend=legend_loc, legendfontsize=14, guidefontsize=14, tickfontsize=10, 
-            fg_legend = :transparent, background_color_legend = :transparent)
-    title!(latexstring("\$\\mathrm{Verify~Domain~of~Attraction}~(r=$r)\$"), textsize=4)
-
-    return plt
+    return ρ_true, fig
 end
-;
+
+# Initial Condition: exp.(-a * cos.(π .* x .+ b).^2) .+ c
+## full
+ρ_true1, fig3 = verify_DoA(
+    op_fom, ([0.001, 300], [-100, 100], [-100, 100]), IC[:f];
+    max_iter=1e3,
+)
+display(fig3)
+
+## POD-Intrusive model
+ρ_true2, fig4 = verify_DoA(
+    op_int, ([0.001, 200], [-80, 80], [-80, 80]), IC[:f];
+    max_iter=1e3, full=false, Vr=Vrmax
+)
+display(fig4)
+
+# Initial Condition: a*exp.(-b * cos.(π .* x .+ c).^2) .- d
+## POD-Intrusive model
+ic_params = (
+    [-20, 20],
+    [0, 200],
+    [-80, 80],
+    [-80, 80]
+)
+ic_func = (a,b,c,d) -> a*exp.(-b * cos.(π .* burgers.x .+ c).^2) .- d
+ρ_true3, fig5 = verify_DoA(
+    op_int, ic_params, ic_func;
+    max_iter=1e3, full=false, Vr=Vrmax
+)
+display(fig5)
+
+# Initial Condition: a * exp.(-b * cos.(π .* x).^2 .+ c .* sin.(4*π .* x .+ π/3).^2 .- d .* cos.(3*π .* x).^2)
+## POD-Intrusive model
+ic_params = (
+    [-5, 5],
+    [-2, 1],
+    [-1, 2],
+    [-1, 2],
+)
+# ic_params = (
+#     [-200, 200],
+#     [0.01, 100],
+#     [-100, 100],
+# )
+# ic_func = init_wave = (A,a,b) -> A .* sin.(2 * pi * ceil(a) * burgers.x .+ b) 
+ic_func = (a,b,c,d) -> a * exp.(-b * cos.(π .* burgers.x).^2 .+ c .* sin.(4*π .* burgers.x .+ π/3).^2 .- d .* cos.(3*π .* burgers.x).^2) 
+ρ_true4, fig6 = verify_DoA(
+    op_int, ic_params, ic_func;
+    max_iter=5e3, full=false, Vr=Vrmax
+)
+display(fig6)
