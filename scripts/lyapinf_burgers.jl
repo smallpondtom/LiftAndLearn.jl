@@ -148,7 +148,7 @@ Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.F * (x ⊘ x)
 c_star1, c_all1, x_sample1 = LFI.doa_sampling(
     V,
     Vdot,
-    1e6, rmax, Tuple(burgers.Omega);
+    1e6, rmax, (-25,25);
     method="memory", history=true, uniform_state_space=true
 )
 ρmin1 = sqrt(1/maximum(eigvals(P_int)))
@@ -170,16 +170,27 @@ display(fig1)
 ## OpInf
 V = (x) -> x' * P_inf * x
 Vdot = (x) -> x' * P_inf * op_inf.A * x + x' * P_inf * op_inf.F * (x ⊘ x)
-c_star2 = LFI.doa_sampling(
+c_star2, c_all2, _ = LFI.doa_sampling(
     V,
     Vdot,
-    1e6, rmax, Tuple(burgers.Omega);
-    method="memory", history=false, uniform_state_space=true
+    1e7, rmax, (-50,50);
+    method="memory", history=true, uniform_state_space=true
 )
 ρmin2 = sqrt(1/maximum(eigvals(P_inf)))
 ρstar2 = sqrt(c_star2/maximum(eigvals(P_inf)))
 ρskp2 = LFI.skp_stability_rad(op_inf.A, op_inf.H, Q_inf)
 println("OpInf: c* = $c_star2, ρmin = $ρmin2, ρstar = $ρstar2, ρskp = $ρskp2")
+
+##
+fig1 = Figure(fontsize=20)
+ax1 = Axis(fig1[1,1],
+    title="Level Convergence",
+    ylabel=L"c_*",
+    xlabel="Sample Number",
+    xticks=0:2500000:length(c_all2),
+)
+lines!(ax1, 1:length(c_all2), c_all2)
+display(fig1)
 
 ## Non-intrusive
 V = (x) -> x' * P_star * x
@@ -187,7 +198,7 @@ Vdot = (x) -> x' * P_star * op_int.A * x + x' * P_star * op_int.F * (x ⊘ x)
 c_star3 = LFI.doa_sampling(
     V,
     Vdot,
-    1e6, rmax, Tuple(burgers.Omega);
+    1e7, rmax, (-25,25);
     method="memory", history=false, uniform_state_space=true
 )
 ρmin3 = sqrt(1/maximum(eigvals(P_star)))
@@ -267,7 +278,7 @@ for (i,r) in enumerate(rmin:rmax)
     c_star = LFI.doa_sampling(
         V,
         Vdot,
-        1e6, r, (-10,10);
+        1e6, r, (-25,25);
         method="memory", history=false, uniform_state_space=true
     )
     ρ_all[i,1] = sqrt(c_star/maximum(eigvals(P)))
@@ -345,13 +356,16 @@ function verify_DoA(
         for (i, p) in enumerate(ic_param_bnd)
             foo[i] = rand(Uniform(p[1], p[2]), 1, 1)[1]
         end        
-        ic_ = ic_func(foo...)
-        ic_norm = norm(ic_)
 
         if full
+            ic_ = ic_func(foo...)
+            ic_norm = norm(ic_)
             states = burgers.semiImplicitEuler(A, F, burgers.t, ic_)
         else
-            states = burgers.semiImplicitEuler(A, F, burgers.t, Vr' * ic_)
+            ic_ = ic_func(foo...)
+            ic_ = Vr' * ic_  # Project the initial condition to the reduced space
+            ic_norm = norm(ic_)
+            states = burgers.semiImplicitEuler(A, F, burgers.t, ic_)
         end
 
         if any(isnan.(states)) || any(isinf.(states))
@@ -378,6 +392,22 @@ function verify_DoA(
             end
         end
     end
+    vlines!(ax, ρ_true, color=:blue3, linestyle=:dash, label="")
+
+    # Legend
+    elem1 = MarkerElement(color=:green3, markersize=10, marker=:circle, strokewidth=0)
+    elem2 = MarkerElement(color=:red, markersize=10, marker=:circle, strokewidth=0)
+    elem3 = MarkerElement(color=:black, markersize=15, marker=:x)
+    elem4 = LineElement(color=:blue3, linestyle=:dash, linewidth=3)
+    Legend(fig[1,2],
+        [elem1, elem2, elem3, elem4], 
+        [
+            L"$\max\Vert\textbf{x}(t)\Vert_2 ~\leq~\Vert\textbf{x}_0\Vert_2$", 
+            L"$\max\Vert\textbf{x}(t)\Vert_2 ~>~\Vert\textbf{x}_0\Vert_2$",
+            L"Unstable: NaN or Inf detected $$",
+            L"True DoA: %$(round(ρ_true,digits=4)) $$",
+        ], rowgap = 8
+    )
     return ρ_true, fig
 end
 
@@ -419,15 +449,24 @@ ic_params = (
     [-1, 2],
     [-1, 2],
 )
-# ic_params = (
-#     [-200, 200],
-#     [0.01, 100],
-#     [-100, 100],
-# )
-# ic_func = init_wave = (A,a,b) -> A .* sin.(2 * pi * ceil(a) * burgers.x .+ b) 
 ic_func = (a,b,c,d) -> a * exp.(-b * cos.(π .* burgers.x).^2 .+ c .* sin.(4*π .* burgers.x .+ π/3).^2 .- d .* cos.(3*π .* burgers.x).^2) 
 ρ_true4, fig6 = verify_DoA(
     op_int, ic_params, ic_func;
     max_iter=5e3, full=false, Vr=Vrmax
 )
 display(fig6)
+
+
+# Initial Condition: A * sin(2 * π * ceil(a) * x .+ b)
+## POD-Intrusive model
+ic_params = (
+    [-200, 200],
+    [0.01, 100],
+    [-100, 100],
+)
+ic_func = init_wave = (A,a,b) -> A .* sin.(2 * pi * ceil(a) * burgers.x .+ b) 
+ρ_true5, fig7 = verify_DoA(
+    op_int, ic_params, ic_func;
+    max_iter=5e3, full=false, Vr=Vrmax
+)
+display(fig7)
