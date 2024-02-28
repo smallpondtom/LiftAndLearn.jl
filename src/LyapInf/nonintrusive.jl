@@ -283,9 +283,9 @@ function NonInt_LyapInf(
     check = 0    # run a few extra iterations to make sure the error is decreasing
 
     # Initialize the best return
-    Pbest = nothing
-    Qbest = nothing
-    ∇Jzubovbest = nothing
+    # Pbest = nothing
+    # Qbest = nothing
+    # ∇Jzubovbest = nothing
 
     # Initialize P and Q
     N = size(X,1)
@@ -330,11 +330,11 @@ function NonInt_LyapInf(
 
             # Save the best one and adjust the P and Q if needed for negative eigenvalues
             if all(λ_P_real .> 0) && all(λ_Q_real .> 0)
-                if Jzubov < Jzubov_lm1
-                    Pbest = P
-                    Qbest = Q
-                    ∇Jzubovbest = ∇Jzubov
-                end
+                # if Jzubov < Jzubov_lm1
+                #     Pbest = P
+                #     Qbest = Q
+                #     ∇Jzubovbest = ∇Jzubov
+                # end
             elseif all(λ_P_real .> 0)
                 @info "Negative eigenvalues in Q. Adjusting Q."
                 tmp = λ_Q_real[λ_Q_real .< 0]
@@ -371,13 +371,15 @@ function NonInt_LyapInf(
             
             # If the optimization did not end before the maximum iteration assign what we have best for now
             if l == options.opt_max_iter
-                if (@isdefined Pbest)
-                    @info "Maximum iteration reached. Returning the best result so far."
-                    return Pbest, Qbest, Jzubov, ∇Jzubovbest
-                else
-                    @info "Maximum iteration reached. Returning the last result."
-                    return P, Q, Jzubov, ∇Jzubov
-                end
+                # if (@isdefined Pbest)
+                #     @info "Maximum iteration reached. Returning the best result so far."
+                #     return Pbest, Qbest, Jzubov, ∇Jzubovbest
+                # else
+                #     @info "Maximum iteration reached. Returning the last result."
+                #     return P, Q, Jzubov, ∇Jzubov
+                # end
+                @info "Maximum iteration reached. Returning the last result."
+                return P, Q, Jzubov, ∇Jzubov
             end
         end
     elseif options.optimize_PandQ == "P"

@@ -16,7 +16,7 @@ const LFI = LyapInf
 ###############
 ## Setup 
 ###############
-## First order Burger's equation setup
+# First order Burger's equation setup
 burgers = LnL.burgers(
     [0.0, 1.0], [0.0, 1.0], [0.10, 0.10],
     2^(-7), 1e-4, 1, "periodic"
@@ -113,8 +113,9 @@ int_lyapinf_options = LFI.Int_LyapInf_options(
     optimizer="Ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
-    optimize_PandQ="P",
-    opt_max_iter=10,
+    optimize_PandQ="both",
+    opt_max_iter=500,
+    δJ=1e-5,
     HSL_lib_path=HSL_jll.libhsl_path,
 )
 P_int, Q_int, cost, ∇cost = LFI.Int_LyapInf(op_int, Vrmax' * X[:,1:ds2:end], int_lyapinf_options)
@@ -132,8 +133,9 @@ nonint_lyapinf_options = LFI.NonInt_LyapInf_options(
     optimizer="Ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
-    optimize_PandQ="P",
-    opt_max_iter=10,
+    optimize_PandQ="both",
+    opt_max_iter=500,
+    δJ=1e-5,
     HSL_lib_path=HSL_jll.libhsl_path,
 )
 P_star, Q_star, cost, ∇cost = LFI.NonInt_LyapInf(Vrmax' * X[:,1:ds2:end], Vrmax' * R[:,1:ds2:end], nonint_lyapinf_options)
@@ -148,7 +150,7 @@ Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.F * (x ⊘ x)
 c_star1, c_all1, x_sample1 = LFI.doa_sampling(
     V,
     Vdot,
-    1e6, rmax, (-25,25);
+    1e6, rmax, (-100,100);
     method="memory", history=true, uniform_state_space=true
 )
 ρmin1 = sqrt(1/maximum(eigvals(P_int)))
@@ -162,7 +164,7 @@ ax1 = Axis(fig1[1,1],
     title="Level Convergence",
     ylabel=L"c_*",
     xlabel="Sample Number",
-    xticks=0:250000:length(c_all1),
+    xticks=0:2.5e5:length(c_all1),
 )
 lines!(ax1, 1:length(c_all1), c_all1)
 display(fig1)
@@ -173,7 +175,7 @@ Vdot = (x) -> x' * P_inf * op_inf.A * x + x' * P_inf * op_inf.F * (x ⊘ x)
 c_star2, c_all2, _ = LFI.doa_sampling(
     V,
     Vdot,
-    1e7, rmax, (-50,50);
+    1e6, rmax, (-200,200);
     method="memory", history=true, uniform_state_space=true
 )
 ρmin2 = sqrt(1/maximum(eigvals(P_inf)))
@@ -187,7 +189,7 @@ ax1 = Axis(fig1[1,1],
     title="Level Convergence",
     ylabel=L"c_*",
     xlabel="Sample Number",
-    xticks=0:2500000:length(c_all2),
+    xticks=0:2.5e6:length(c_all2),
 )
 lines!(ax1, 1:length(c_all2), c_all2)
 display(fig1)
@@ -198,8 +200,8 @@ Vdot = (x) -> x' * P_star * op_int.A * x + x' * P_star * op_int.F * (x ⊘ x)
 c_star3 = LFI.doa_sampling(
     V,
     Vdot,
-    1e7, rmax, (-25,25);
-    method="memory", history=false, uniform_state_space=true
+    1e7, rmax, [(-350,350) for _ in 1:rmax]; 
+    method="enhanced", history=false, uniform_state_space=true, gp=burgers.Xdim
 )
 ρmin3 = sqrt(1/maximum(eigvals(P_star)))
 ρstar3 = sqrt(c_star3/maximum(eigvals(P_star)))
