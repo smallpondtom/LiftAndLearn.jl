@@ -150,8 +150,8 @@ Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.F * (x ⊘ x)
 c_star1, c_all1, x_sample1 = LFI.doa_sampling(
     V,
     Vdot,
-    1e6, rmax, (-100,100);
-    method="memory", history=true, uniform_state_space=true
+    1e5, rmax, [(-500,500) for _ in 1:rmax];
+    method="enhanced", history=true, uniform_state_space=false, gp=burgers.Xdim
 )
 ρmin1 = sqrt(1/maximum(eigvals(P_int)))
 ρstar1 = sqrt(c_star1/maximum(eigvals(P_int)))
@@ -164,7 +164,7 @@ ax1 = Axis(fig1[1,1],
     title="Level Convergence",
     ylabel=L"c_*",
     xlabel="Sample Number",
-    xticks=0:2.5e5:length(c_all1),
+    xticks=0:2.5e7:length(c_all1),
 )
 lines!(ax1, 1:length(c_all1), c_all1)
 display(fig1)
@@ -175,8 +175,8 @@ Vdot = (x) -> x' * P_inf * op_inf.A * x + x' * P_inf * op_inf.F * (x ⊘ x)
 c_star2, c_all2, _ = LFI.doa_sampling(
     V,
     Vdot,
-    1e6, rmax, (-200,200);
-    method="memory", history=true, uniform_state_space=true
+    1e5, rmax, [(0,76.999) for _ in 1:rmax];
+    method="enhanced", history=true, uniform_state_space=true, gp=burgers.Xdim
 )
 ρmin2 = sqrt(1/maximum(eigvals(P_inf)))
 ρstar2 = sqrt(c_star2/maximum(eigvals(P_inf)))
@@ -200,7 +200,7 @@ Vdot = (x) -> x' * P_star * op_int.A * x + x' * P_star * op_int.F * (x ⊘ x)
 c_star3 = LFI.doa_sampling(
     V,
     Vdot,
-    1e7, rmax, [(-350,350) for _ in 1:rmax]; 
+    1e5, rmax, [(-350,350) for _ in 1:rmax]; 
     method="enhanced", history=false, uniform_state_space=true, gp=burgers.Xdim
 )
 ρmin3 = sqrt(1/maximum(eigvals(P_star)))
@@ -280,7 +280,7 @@ for (i,r) in enumerate(rmin:rmax)
     c_star = LFI.doa_sampling(
         V,
         Vdot,
-        1e6, r, (-25,25);
+        1e6, r, (-100,100);
         method="memory", history=false, uniform_state_space=true
     )
     ρ_all[i,1] = sqrt(c_star/maximum(eigvals(P)))
@@ -296,7 +296,7 @@ for (i,r) in enumerate(rmin:rmax)
     c_star = LFI.doa_sampling(
         V,
         Vdot,
-        1e6, r, (-10,10);
+        1e6, r, (-100,100);
         method="memory", history=false, uniform_state_space=true
     )
     ρ_all[i,2] = sqrt(c_star/maximum(eigvals(P)))
@@ -312,7 +312,7 @@ for (i,r) in enumerate(rmin:rmax)
     c_star = LFI.doa_sampling(
         V,
         Vdot,
-        1e6, r, (-10,10);
+        1e6, r, (-100,100);
         method="memory", history=false, uniform_state_space=true
     )
     ρ_all[i,3] = sqrt(c_star/maximum(eigvals(P)))
