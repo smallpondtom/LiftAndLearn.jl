@@ -140,6 +140,7 @@ Standard Operator Inference.
     with_tol::Bool = false  # This options makes it way slower
     with_reg::Bool = false  # tikhonov regularization
     pinv_tol::Real = 1e-6
+    streaming::Bool = false  # streaming operator inference 
 end
 
 
