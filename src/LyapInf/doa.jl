@@ -57,17 +57,17 @@ function skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, Q::Ab
 end
 
 
-function sampling_memoryless(V::Function, Vdot::Function, ns::Int, N::Int, 
+function sampling_memoryless(V::Function, Vdot::Function, ns::Real, N::Int, 
         state_space::Union{Array,Tuple}; uniform_state_space::Bool=true, history=false)
     c_hat_star = Inf
-
     xi = zeros(N)
     if history
         chistory = zeros(Int(ns))
         xi_all = zeros(N,Int(ns))
     end
+    is_array = typeof(state_space) <: Array
     for j = 1:Int(ns)
-        if uniform_state_space
+        if uniform_state_space && is_array
             rand!(Uniform(state_space[1], state_space[2]), xi)
         else
             @inbounds for i = 1:N
@@ -105,8 +105,9 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Real, N::Int, Nl::
         chistory = zeros(Int(ns))
         xi_all = zeros(N,Int(ns))
     end
+    is_array = typeof(state_space) <: Array
     for j = 1:Int(ns)
-        if uniform_state_space
+        if uniform_state_space && is_array
             rand!(Uniform(state_space[1], state_space[2]), xi)
             xi_lift = vec(lifter.map(xi, gp))
         else
@@ -147,8 +148,9 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Real, N::Int,
         chistory = zeros(Int(ns))
         xi_all = zeros(N,Int(ns))
     end
+    is_array = typeof(state_space) <: Array
     for j = 1:Int(ns)
-        if uniform_state_space
+        if uniform_state_space && is_array
             rand!(Uniform(state_space[1], state_space[2]), xi)
         else
             @inbounds for i = 1:N
@@ -196,8 +198,9 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Real, N::Int, Nl:
         chistory = zeros(Int(ns))
         xi_all = zeros(N,Int(ns))
     end
+    is_array = typeof(state_space) <: Array
     for j = 1:Int(ns)
-        if uniform_state_space
+        if uniform_state_space && is_array
             rand!(Uniform(state_space[1], state_space[2]), xi)
             xi_lift = vec(lifter.map(xi, gp))
         else
@@ -304,10 +307,15 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
     xi = Vector{Float64}(undef, N)
     sample_per_stratum = div(Int(ns), n_strata)
     ct = 1
-    for k in 1:n_strata
-        lb = strata_lb[k,:]
-        ub = strata_ub[k,:]
 
+    # Shuffle the strata (experimental)
+    strata_indices = shuffle(1:n_strata)
+    for k in 1:n_strata
+        # lb = strata_lb[k,:]
+        # ub = strata_ub[k,:]
+
+        lb = strata_lb[strata_indices[k],:]
+        ub = strata_ub[strata_indices[k],:]
         sobol = Sobol.SobolSeq(lb, ub)
         for i = 1:sample_per_stratum
             # Quasi-Monte Carlo sampling within the current stratum
