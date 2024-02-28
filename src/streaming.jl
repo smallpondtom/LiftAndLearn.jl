@@ -25,8 +25,6 @@ mutable struct Streaming_InferOp
 end
 
 function Streaming_InferOp(options::Abstract_Option)
-    @assert options.streaming "Streaming should be enabled."
-
     dims = Dict(
         :n => 0, :m => 0, :p => 0, :q => 0, 
         :s => 0, :v => 0, :s3 => 0, :v3 => 0,
