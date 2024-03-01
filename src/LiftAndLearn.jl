@@ -45,6 +45,7 @@ include("optimizer/EP_Optimize.jl")
 
 include("learn.jl")
 include("intrusiveROM.jl")
+include("streaming.jl")
 
 # [Submodule] Inferring the Lyapunov function
 include("LyapInf/LyapInf.jl")

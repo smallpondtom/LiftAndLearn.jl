@@ -27,7 +27,7 @@ $(TYPEDEF)
 - `Δx::Float64`: spatial grid size
 - `Δt::Float64`: temporal step size
 - `Ubc::Matrix{Float64}`: boundary condition (input)
-- `IC::Matrix{Float64}`: initial condition
+- `IC::Array{Float64}`: initial condition
 - `x::Vector{Float64}`: spatial grid points
 - `t::Vector{Float64}`: temporal points
 - `μs::Vector{Float64}`: parameter vector
@@ -43,7 +43,7 @@ mutable struct heat1d <: Abstract_Model
     Δx::Float64  # spatial grid size
     Δt::Float64  # temporal step size
     Ubc::Matrix{Float64}  # boundary condition (input)
-    IC::Matrix{Float64}  # initial condition
+    IC::Array{Float64}  # initial condition
     x::Vector{Float64}  # spatial grid points
     t::Vector{Float64}  # temporal points
     μs::Vector{Float64}  # parameter vector

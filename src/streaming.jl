@@ -24,22 +24,13 @@ mutable struct Streaming_InferOp
     unpack_operators::Function
 end
 
+
 function Streaming_InferOp(options::Abstract_Option)
     dims = Dict(
         :n => 0, :m => 0, :p => 0, :q => 0, 
         :s => 0, :v => 0, :s3 => 0, :v3 => 0,
         :w => 0
     ) 
-
-    # System (input-state)
-    K, n = size(D_k)
-    @assert K > n "Should be a tall matrix for an overdetermined least squares problem."
-    Q_k = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k
-    Q_k_inv = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k \ I
-
-    P_k = (D_k' * Q_k_inv * D_k) \ I
-    O_k = P_k * D_k' * Q_k_inv * R_k
-    K_k = nothing
 
     O_k = nothing
     P_k = nothing
@@ -96,7 +87,7 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray, U_k::AbstractArray
 
     ## System (input-state)
     Q_k = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k
-    Q_k_inv = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k \ I
+    Q_k_inv = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k \ Matrix(1.0I, K, K)
 
     # Construct the data matrix
     D_k = getDataMatrix(X_k, transpose(X_k), U_k, stream.dims, stream.options)
