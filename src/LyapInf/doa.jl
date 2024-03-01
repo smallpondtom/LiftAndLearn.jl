@@ -67,7 +67,7 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Real, N::Int,
     end
     is_array = typeof(state_space) <: Array
     for j = 1:Int(ns)
-        if uniform_state_space && is_array
+        if uniform_state_space && !is_array
             rand!(Uniform(state_space[1], state_space[2]), xi)
         else
             @inbounds for i = 1:N
@@ -107,7 +107,7 @@ function sampling_memoryless(V::Function, Vdot::Function, ns::Real, N::Int, Nl::
     end
     is_array = typeof(state_space) <: Array
     for j = 1:Int(ns)
-        if uniform_state_space && is_array
+        if uniform_state_space && !is_array
             rand!(Uniform(state_space[1], state_space[2]), xi)
             xi_lift = vec(lifter.map(xi, gp))
         else
@@ -150,7 +150,7 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Real, N::Int,
     end
     is_array = typeof(state_space) <: Array
     for j = 1:Int(ns)
-        if uniform_state_space && is_array
+        if uniform_state_space && !is_array
             rand!(Uniform(state_space[1], state_space[2]), xi)
         else
             @inbounds for i = 1:N
@@ -200,7 +200,7 @@ function sampling_with_memory(V::Function, Vdot::Function, ns::Real, N::Int, Nl:
     end
     is_array = typeof(state_space) <: Array
     for j = 1:Int(ns)
-        if uniform_state_space && is_array
+        if uniform_state_space && !is_array
             rand!(Uniform(state_space[1], state_space[2]), xi)
             xi_lift = vec(lifter.map(xi, gp))
         else
@@ -248,7 +248,15 @@ use
   ensure a more uniform coverage of the space, which can lead to faster convergence in higher dimensions.
 """
 function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N::Int, 
-        state_space::Array, n_strata::Int; history=false)
+        state_space::Array, n_strata::Int; history=false, sampler="sobol")
+    
+    @assert (sampler in ["sobol", "faure", "halton", "golden"]) "Invalid sampler."
+    sampler_dict = Dict(
+        "sobol" => QuasiMonteCarlo.SobolSample(),
+        "faure" => QuasiMonteCarlo.FaureSample(),
+        "halton" => QuasiMonteCarlo.HaltonSample(),
+        "golden" => QuasiMonteCarlo.GoldenSample()
+    )
 
     function stratify_state_space(state_space, n_strata)
         num_dims = length(state_space)
@@ -316,10 +324,12 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
 
         lb = strata_lb[strata_indices[k],:]
         ub = strata_ub[strata_indices[k],:]
-        sobol = Sobol.SobolSeq(lb, ub)
+        # sobol = Sobol.SobolSeq(lb, ub)
+        samples = QuasiMonteCarlo.sample(sample_per_stratum, lb, ub, sampler_dict[sampler])
         for i = 1:sample_per_stratum
             # Quasi-Monte Carlo sampling within the current stratum
-            Sobol.next!(sobol, xi)
+            # Sobol.next!(sobol, xi)
+            xi = samples[:,i]
             
             if V_dot(xi) < 0 && V(xi) < c_bar_star
                 push!(E, V(xi))
@@ -359,7 +369,15 @@ end
 
 
 function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N::Int, Nl::Int,
-        gp::Int, state_space::Array, n_strata::Int, lifter::lifting; history=false)
+        gp::Int, state_space::Array, n_strata::Int, lifter::lifting; history=false, sampler="sobol")
+
+    @assert (sampler in ["sobol", "faure", "halton", "golden"]) "Invalid sampler."
+    sampler_dict = Dict(
+        "sobol" => QuasiMonteCarlo.SobolSample(),
+        "faure" => QuasiMonteCarlo.FaureSample(),
+        "halton" => QuasiMonteCarlo.HaltonSample(),
+        "golden" => QuasiMonteCarlo.GoldenSample(),
+    )
 
     function stratify_state_space(state_space, n_strata)
         num_dims = length(state_space)
@@ -423,10 +441,12 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
         lb = strata_lb[k,:]
         ub = strata_ub[k,:]
 
-        sobol = Sobol.SobolSeq(lb, ub)
+        # sobol = Sobol.SobolSeq(lb, ub)
+        samples = QuasiMonteCarlo.sample(sample_per_stratum, lb, ub, sampler_dict[sampler])
         for i = 1:sample_per_stratum
             # Quasi-Monte Carlo sampling within the current stratum
-            Sobol.next!(sobol, xi)
+            # Sobol.next!(sobol, xi)
+            xi = samples[:,i]
             xi_lift = vec(lifter.map(xi, gp))
 
             if V_dot(xi_lift) < 0 && V(xi_lift) < c_bar_star
@@ -468,7 +488,7 @@ end
 
 
 function doa_sampling(V, V_dot, ns, N, state_space; Nl=0, gp=1,
-        n_strata=Int(2^N), method="memoryless", lifter=nothing, uniform_state_space=true, history=false)
+        n_strata=Int(2^N), method="memoryless", lifter=nothing, uniform_state_space=true, history=false, sampler="sobol")
     if method == "memoryless"
         if isnothing(lifter)
             return sampling_memoryless(V, V_dot, ns, N, state_space; uniform_state_space=uniform_state_space, history=history)
@@ -483,22 +503,98 @@ function doa_sampling(V, V_dot, ns, N, state_space; Nl=0, gp=1,
         end
     elseif method == "enhanced"
         if isnothing(lifter)
-            return enhanced_sampling_with_memory(V, V_dot, ns, N, state_space, n_strata; history=history)
+            return enhanced_sampling_with_memory(V, V_dot, ns, N, state_space, n_strata; history=history, sampler=sampler)
         else
-            return enhanced_sampling_with_memory(V, V_dot, ns, N, Nl, gp, state_space, n_strata, lifter; history=history)
+            return enhanced_sampling_with_memory(V, V_dot, ns, N, Nl, gp, state_space, n_strata, lifter; history=history, sampler=sampler)
         end
     else
         error("Invalid method. Options are memoryless, memory, and enhanced.")
     end
 end
 
-# function zubov_error(X, A, F, P, Q)
-#     n, m = size(X)
-#     # Construct some values used in the optimization
-#     X = n < m ? X : X'  # here we want the row to be the states and columns to be time
-#     X2 = squareMatStates(X)'
-#     X = X' # now we want the columns to be the states and rows to be time
-#     return norm(X*A'*P*X' + X2*F'*P*X' - 0.25*X*P*X'*X*Q'*X' + 0.5*X*Q'*X', 2)
-# end
+"""
+LEDOA: Largest Estimated Domain of Attraction
+"""
+function LEDOA(V::Function, V_dot::Function, N::Int; linear_solver::Union{String,Nothing}="ma57", 
+                HSL_lib_path::Union{String,Nothing}=nothing, verbose::Bool=true, 
+                ci::Real=1e2, xi::Union{AbstractArray,Nothing}=nothing, xtol::Real=1e-6)
 
+    ipopt = optimizer_with_attributes(
+        Ipopt.Optimizer, 
+        "print_level" => verbose ? 5 : 0, 
+        "linear_solver" => isnothing(linear_solver) ? "mumps" : linear_solver, 
+        "hsllib" => HSL_lib_path
+    )
+    model = Model(
+        optimizer_with_attributes(
+            Alpine.Optimizer,
+            "nlp_solver" => ipopt,
+        ),
+    )
+
+    # model = Model(
+    #     optimizer_with_attributes(
+    #         Ipopt.Optimizer, 
+    #         "print_level" => verbose ? 5 : 0, 
+    #         "linear_solver" => isnothing(linear_solver) ? "mumps" : linear_solver, 
+    #         "hsllib" => HSL_lib_path
+    #     ),
+    # )
+
+    # if !isnothing(linear_solver)
+    #     if !isnothing(HSL_lib_path)
+    #         set_optimizer_attribute(model, "hsllib", HSL_lib_path)
+    #     end
+    #     set_optimizer_attribute(model, "linear_solver", linear_solver)
+    # end
+
+    # Set up verbose or silent
+    # if verbose
+    #     unset_silent(model)
+    # else
+    #     set_silent(model)
+    # end 
+    # set_optimizer_attribute(model, "print_level", verbose ? 5 : 0)  # Adjusting print level based on verbose flag
+    set_string_names_on_creation(model, false)
+
+    register(model, :V, 1, V; autodiff=true)
+    register(model, :V_dot, 1, V_dot; autodiff=true)
+
+    @variable(model, c >= eps())
+    @variable(model, x[1:N])
+
+    # Set initial values
+    # set_start_value(c, ci)
+    # if !isnothing(xi)
+    #     set_start_value.(x, xi)
+    # end
+
+    @objective(model, Min, c)
+
+    # @expression(model, vx, V(x))
+    # @expression(model, vxdot, V_dot(x))
+
+    # @operator(model, vx, N, (x...) -> V(collect(x)))
+    # @operator(model, vxdot, N, (x...) -> V_dot(collect(x)))
+    # @constraint(model, vx(x...) .== c)
+    # @constraint(model, vxdot(x...) .== 0)
+
+    @NLconstraint(model, V(x...) == c)
+    @NLconstraint(model, V_dot(x...) == 0)
+
+    @constraint(model, [i = 1:N], xtol <= x[i])
+    # @objective(model, Min, vx(x...))
+    optimize!(model)
+    # status = termination_status(model)
+    # if status == MOI.OPTIMAL
+    #     return value(c), value.(x)
+    # else
+    #     @info """Optimization failed: 
+    #     $(status)
+    #     """
+    #     return nothing, nothing
+    # end
+    # x_star = value.(x)
+    return value(c), value.(x)
+end
 

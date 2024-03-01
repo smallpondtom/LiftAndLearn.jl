@@ -6,14 +6,14 @@ module LyapInf
 
 using DocStringExtensions
 using JuMP
-using Ipopt, SCS
+using Ipopt, SCS, Alpine
 using LinearAlgebra
 using Parameters
 
 import Distributions: Uniform
 import MatrixEquations: lyapc
-import Random: rand, rand!
-import Sobol
+import Random: rand, rand!, shuffle
+import QuasiMonteCarlo
 import ..LiftAndLearn: operators, lifting, squareMatStates
 
 include("doa.jl")

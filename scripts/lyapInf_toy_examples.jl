@@ -16,6 +16,10 @@ using LiftAndLearn
 const LnL = LiftAndLearn
 const LFI = LyapInf
 
+##########
+## CONSTS
+##########
+SAMPLE = false
 
 ################################
 ## Functions for the examples
@@ -87,7 +91,7 @@ function lvpp_example(; method="P", type="I", x0_bnds=(-1.8, 1.8))
     end
     ρ_min, ρ_max = LFI.DoA(P)
     ρ_est = LFI.skp_stability_rad(A, H, Q)
-    return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F
+    return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H
 end
 
 
@@ -146,7 +150,7 @@ function vpo_example(; method="P", type="I", x0_bnds=(-1.5, 1.5))
     end
     ρ_min, ρ_max = LFI.DoA(P)
     ρ_est = LFI.skp_stability_rad(A, H, Q)
-    return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F
+    return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H
 end
 
 
@@ -154,17 +158,21 @@ end
 ## Plotting functions
 #########################
 # Plot the DoA result for a single Lyapunov function
-function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange;
-         heatmap_lb=-100, meshsize=1e-3, ax2title="Domain of Attraction Estimate")
+function plot_cstar_convergence(c_all)
     fig1 = Figure(fontsize=20)
     ax1 = Axis(fig1[1,1],
         title="Level Convergence",
         ylabel=L"c_*",
         xlabel="Sample Number",
-        xticks=0:100:length(c_all),
+        xticks=0:(length(c_all)÷10):length(c_all),
     )
     lines!(ax1, 1:length(c_all), c_all)
+    return fig1
+end
 
+
+function plot_doa_results(A, F, c_star, x_sample, P, Vdot, xrange, yrange;
+         heatmap_lb=-100, meshsize=1e-3, ax2title="Domain of Attraction Estimate")
     fig2 = Figure(size=(800,800), fontsize=20)
     ax2 = Axis(fig2[1,1],
         title=ax2title,
@@ -186,7 +194,9 @@ function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange
     rowsize!(fig2.layout, 1, ax2.scene.px_area[].widths[2])
 
     # Scatter plot of Monte Carlo samples
-    scatter!(ax2, x_sample[1,:], x_sample[2,:], color=:red, alpha=0.6)
+    if !isnothing(x_sample)
+        scatter!(ax2, x_sample[1,:], x_sample[2,:], color=:red, alpha=0.6)
+    end
 
     # Plot the Lyapunov function ellipse
     α = range(0, 2π, length=1000)
@@ -205,7 +215,7 @@ function plot_doa_results(A, F, c_all, c_star, x_sample, P, Vdot, xrange, yrange
     f(x) = Point2f( (A*x + F*(x ⊘ x)) )
     streamplot!(ax2, f, xi..xf, yi..yf, arrow_size=10, colormap=:gray1)
 
-    return fig1, fig2
+    return fig2
 end
 
 # Plot the DoA comparison for the intrusive and non-intrusive results 
@@ -237,25 +247,27 @@ function plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot
     # Plot the Lyapunov function ellipse of intrusive
     α = range(0, 2π, length=1000)
     Λ, V = eigen(P1)
-    θ = acos(dot(V[:,1], [1,0]) / (norm(V[:,1])))
-    xα = (α) -> sqrt(c_star1/Λ[1])*cos(θ)*cos.(α) .+ sqrt(c_star1/Λ[2])*sin(θ)*sin.(α)
-    yα = (α) -> -sqrt(c_star1/Λ[1])*sin(θ)*cos.(α) .+ sqrt(c_star1/Λ[2])*cos(θ)*sin.(α)
-    lines!(ax2, xα(α), yα(α), label="Intrusive", color=:blue, linewidth=2)
-    # # Plot the Minimal DoA with single radius
-    # xβ = (β) -> sqrt(c_star1/maximum(Λ))*cos.(β)
-    # yβ = (β) -> sqrt(c_star1/maximum(Λ))*sin.(β)
-    # lines!(ax2, xβ(α), yβ(α), label="", color=:black, linestyle=:dash, linewidth=3)
+    # θ = acos(dot(V[:,1], [1,0]) / (norm(V[:,1])))
+    # xα = (α) -> sqrt(c_star1/Λ[1])*cos(θ)*cos.(α) .+ sqrt(c_star1/Λ[2])*sin(θ)*sin.(α)
+    # yα = (α) -> -sqrt(c_star1/Λ[1])*sin(θ)*cos.(α) .+ sqrt(c_star1/Λ[2])*cos(θ)*sin.(α)
+    # lines!(ax2, xα(α), yα(α), label="Intrusive", color=:blue, linewidth=2)
+
+    # Plot the Minimal DoA with single radius
+    xβ = (β) -> sqrt(c_star1/maximum(Λ))*cos.(β)
+    yβ = (β) -> sqrt(c_star1/maximum(Λ))*sin.(β)
+    lines!(ax2, xβ(α), yβ(α), label="Intrusive", color=:black, linestyle=:dash, linewidth=3)
 
     # Plot the Lyapunov function ellipse of non-intrusive
     Λ, V = eigen(P2)
-    θ = acos(dot(V[:,1], [1,0]) / (norm(V[:,1])))
-    xα = (α) -> sqrt(c_star2/Λ[1])*cos(θ)*cos.(α) .+ sqrt(c_star2/Λ[2])*sin(θ)*sin.(α)
-    yα = (α) -> -sqrt(c_star2/Λ[1])*sin(θ)*cos.(α) .+ sqrt(c_star2/Λ[2])*cos(θ)*sin.(α)
-    lines!(ax2, xα(α), yα(α), label="Non-Intrusive", color=:red, linewidth=2)
-    # # Plot the Minimal DoA with single radius
-    # xβ = (β) -> sqrt(c_star2/maximum(Λ))*cos.(β)
-    # yβ = (β) -> sqrt(c_star2/maximum(Λ))*sin.(β)
-    # lines!(ax2, xβ(α), yβ(α), label="", color=:red, linestyle=:dash, linewidth=3)
+    # θ = acos(dot(V[:,1], [1,0]) / (norm(V[:,1])))
+    # xα = (α) -> sqrt(c_star2/Λ[1])*cos(θ)*cos.(α) .+ sqrt(c_star2/Λ[2])*sin(θ)*sin.(α)
+    # yα = (α) -> -sqrt(c_star2/Λ[1])*sin(θ)*cos.(α) .+ sqrt(c_star2/Λ[2])*cos(θ)*sin.(α)
+    # lines!(ax2, xα(α), yα(α), label="Non-Intrusive", color=:red, linewidth=2)
+
+    # Plot the Minimal DoA with single radius
+    xβ = (β) -> sqrt(c_star2/maximum(Λ))*cos.(β)
+    yβ = (β) -> sqrt(c_star2/maximum(Λ))*sin.(β)
+    lines!(ax2, xβ(α), yβ(α), label="Non-Intrusive", color=:red, linestyle=:dash, linewidth=3)
 
     # Plot the estimated stability radius
     xγ = (γ) -> ρest*cos.(γ)
@@ -354,16 +366,25 @@ end
 #################################################
 ## Example 1: Lotka-Volterra Predator-Prey 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = lvpp_example(method="P", type="I", x0_bnds=(-1.5, 1.5))
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="I", x0_bnds=(-1.5, 1.5))
 ##
-V1 = (x) -> x' * P1 * x
-Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
-c_star1, c_all, x_sample = LFI.doa_sampling(
-    V1,
-    Vdot1,
-    1000, 2, (-5,5);
-    method="memory", history=true, n_strata=8, uniform_state_space=true
-)
+c_star1, c_all, x_sample = nothing, nothing, nothing
+if SAMPLE
+    V1(x) = x' * P1 * x
+    Vdot1(x) = x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
+    c_star1, c_all, x_sample = LFI.doa_sampling(
+        V1,
+        Vdot1,
+        1000, 2, (-5,5);
+        method="memory", history=true, n_strata=128, uniform_state_space=true
+    )
+else
+    V1(x) = (x' * P1 * x)[1]
+    Vdot1(x) = x' * P1 * A * x + x' * P1 * H * kron(x, x)
+    c_star1, _ = LFI.LEDOA(V1, Vdot1, 2; linear_solver="ma86", verbose=true, HSL_lib_path=HSL_jll.libhsl_path,
+                                ci=1e2, xi=[10,10])
+end
+##
 ρ_star1 = sqrt(c_star1) * ρ_min
 println("c_star1 = ", c_star1)
 println("ρ_est = ", ρ_est)
@@ -371,13 +392,15 @@ println("ρ_min = ", ρ_min)
 println("ρ_star = ", ρ_star1)
 
 ## Plot Only for Intrusive
-fig11, fig12 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-5,5), (-5,5);
-                                 heatmap_lb=-5, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA")
+fig11 = plot_cstar_convergence(c_all)
 display(fig11)
+##
+fig12 = plot_doa_results(A, F, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-5,5), (-5,5);
+                                 heatmap_lb=-5, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA")
 display(fig12)
 
 ## Non-Intrusive
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = lvpp_example(method="P", type="NI", x0_bnds=(-1.5, 1.5))
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="NI", x0_bnds=(-1.5, 1.5))
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> x' * P2 * A * x + x' * P2 * F * (x ⊘ x)
@@ -394,7 +417,8 @@ println("ρ_min = ", ρ_min)
 println("ρ_star = ", ρ_star2)
 
 ## Plot Only for Non-Intrusive
-fig13, fig14 = plot_doa_results(A, F, c_all, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-5,5), (-5,5);
+fig13 = plot_cstar_convergence(c_all)
+fig14 = plot_doa_results(A, F, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-5,5), (-5,5);
                                  heatmap_lb=-5, meshsize=1e-2, ax2title="Non-Intrusive LyapInf: DoA")
 display(fig13)
 display(fig14)
@@ -413,7 +437,7 @@ display(fig16)
 #################################################
 ## Example 2: Van der Pol Oscillator 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = vpo_example(method="P", type="I")
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = vpo_example(method="P", type="I")
 ##
 V1 = (x) -> x' * P1 * x
 Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
@@ -436,7 +460,7 @@ display(fig21)
 display(fig22)
 
 ## Non-Intrusive
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F = vpo_example(method="P",type="NI")
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = vpo_example(method="P",type="NI")
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> x' * P2 * A * x + x' * P2 * F * (x ⊘ x)
