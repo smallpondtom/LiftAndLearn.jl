@@ -8,13 +8,13 @@ using BlockDiagonals
 using Distributions: Uniform
 using Kronecker
 using Parameters
-using Sobol: SobolSeq, next!
+using QuasiMonteCarlo
 using SparseArrays
 using StatsBase: countmap
 using MatrixEquations: lyapc
-using Random: rand, rand!
+using Random: rand, rand!, shuffle
 using JuMP
-using Ipopt, SCS
+using Ipopt, SCS, Alpine
 using FFTW
 using DocStringExtensions
 
