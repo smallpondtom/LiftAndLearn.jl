@@ -8,13 +8,13 @@ Streaming Operator Inference/Lift And Learn
 """
 mutable struct Streaming_InferOp
     # State and input
-    O_k::Union{AbstractArray{Real,2}, Nothing}   # operator matrix
-    P_k::Union{AbstractArray{Real,2}, Nothing}   # projection matrix
-    K_k::Union{AbstractArray{Real,2}, Nothing}   # gain matrix
+    O_k::Union{AbstractArray{Float64,2}, Nothing}   # operator matrix
+    P_k::Union{AbstractArray{Float64,2}, Nothing}   # projection matrix
+    K_k::Union{AbstractArray{Float64,2}, Nothing}   # gain matrix
     # Output
-    C_k::Union{AbstractArray{Real,2}, Nothing}  # output matrix
-    Py_k::Union{AbstractArray{Real,2}, Nothing}  # projection matrix
-    Ky_k::Union{AbstractArray{Real,2}, Nothing}  # gain matrix
+    C_k::Union{AbstractArray{Float64,2}, Nothing}  # output matrix
+    Py_k::Union{AbstractArray{Float64,2}, Nothing}  # projection matrix
+    Ky_k::Union{AbstractArray{Float64,2}, Nothing}  # gain matrix
 
     dims::Dict{Symbol,Int}                       # dimensions
     options::Abstract_Option                     # options
@@ -45,8 +45,8 @@ function Streaming_InferOp(options::Abstract_Option)
 end
 
 
-function init!(stream::Streaming_InferOp, X_k::AbstractArray, U_k::AbstractArray,
-                R_k::AbstractArray, Q_k::Union{AbstractArray, Nothing}=nothing)
+function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractArray{T},
+                R_k::AbstractArray{T}, Q_k::Union{AbstractArray{T}, Nothing}=nothing) where T<:Real
 
     # Obtain the dimensions
     stream.dims[:n], stream.dims[:m] = size(X_k)
@@ -61,7 +61,7 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray, U_k::AbstractArray
     Q_k_inv = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k \ Matrix(1.0I, K, K)
 
     # Construct the data matrix
-    D_k = getDataMatrix(X_k, transpose(X_k), U_k, stream.dims, stream.options)
+    D_k = getDataMat(X_k, transpose(X_k), U_k, stream.dims, stream.options)
 
     # Aggregated data matrix and Operator matrix
     stream.P_k = (D_k' * Q_k_inv * D_k) \ I
@@ -71,8 +71,9 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray, U_k::AbstractArray
 end 
 
 
-function init!(stream::Streaming_InferOp, X_k::AbstractArray, U_k::AbstractArray, Y_k::AbstractArray,
-                R_k::AbstractArray, Q_k::Union{AbstractArray, Nothing}=nothing, Z_k::Union{AbstractArray, Nothing}=nothing)
+function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractArray{T}, Y_k::AbstractArray{T},
+                R_k::AbstractArray{T}, Q_k::Union{AbstractArray{T}, Nothing}=nothing, 
+                Z_k::Union{AbstractArray{T}, Nothing}=nothing) where T<:Real
 
     # Obtain the dimensions
     n, K = size(X_k)
@@ -90,20 +91,20 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray, U_k::AbstractArray
     Q_k_inv = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k \ Matrix(1.0I, K, K)
 
     # Construct the data matrix
-    D_k = getDataMatrix(X_k, transpose(X_k), U_k, stream.dims, stream.options)
+    D_k = getDataMat(X_k, transpose(X_k), U_k, stream.dims, stream.options)
 
     # Aggregated data matrix and Operator matrix
     stream.P_k = (D_k' * Q_k_inv * D_k) \ I
-    stream.O_k = P_k * D_k' * Q_k_inv * R_k
+    stream.O_k = stream.P_k * D_k' * Q_k_inv * R_k
 
     ## Output (state-output)
     Z_k = isnothing(Z_k) ? sparse(Matrix(1.0I, K, K)) : Z_k
-    Z_k_inv = isnothing(Z_k) ? sparse(Matrix(1.0I, K, K)) : Z_k \ I
+    Z_k_inv = isnothing(Z_k) ? sparse(Matrix(1.0I, K, K)) : Z_k \ Matrix(1.0I, K, K)
 
     # Aggregated data matrix and Output matrix
     Xt_k = transpose(X_k)
     stream.Py_k = (Xt_k' * Z_k_inv * Xt_k) \ I
-    stream.C_k = Py_k * Xt_k' * Z_k_inv * Y_k
+    stream.C_k = stream.Py_k * Xt_k' * Z_k_inv * Y_k
 
     return D_k
 end 
@@ -115,8 +116,8 @@ $(SIGNATURES)
 
 Update the streaming operator inference with new data.
 """
-function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray, U_kp1::AbstractArray,
-                        R_kp1::AbstractArray, Q_kp1::Union{AbstractArray, Nothing}=nothing)
+function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, U_kp1::AbstractArray{T},
+                        R_kp1::AbstractArray{T}, Q_kp1::Union{AbstractArray{T}, Nothing}=nothing) where T<:Real
 
     K = size(X_kp1,2)
     if stream.dims[:m] != K
@@ -124,17 +125,15 @@ function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray, U_kp1::Abstrac
     end
 
     # Construct the data matrix
-    D_kp1 = getDataMatrix(X_kp1, transpose(X_kp1), U_kp1, stream.dims, stream.options)
+    D_kp1 = getDataMat(X_kp1, transpose(X_kp1), U_kp1, stream.dims, stream.options)
 
     if !isnothing(Q_kp1)
         Q_k_inv = Q_kp1 \ I
-        P_k = stream.P_k
-        stream.P_k -= P_k * D_kp1' * (Q_kp1 + D_kp1 * P_k * D_kp1') \ D_kp1 * P_k
+        stream.P_k -= stream.P_k * D_kp1' * ((Q_kp1 + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
         stream.K_k = stream.P_k * D_kp1' * Q_k_inv
         stream.O_k += stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
     else
-        P_k = stream.P_k
-        stream.P_k -= P_k * D_kp1' * (I + D_kp1 * P_k * D_kp1') \ D_kp1 * P_k
+        stream.P_k -= stream.P_k * D_kp1' * ((1.0I(K) + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
         stream.K_k = stream.P_k * D_kp1'
         stream.O_k += stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
     end
@@ -146,8 +145,8 @@ $(SIGNATURES)
 
 Update the streaming operator inference with new data for multiple batches of data matrices.
 """
-function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{AbstractArray}, U_kp1::AbstractArray{AbstractArray},
-                    R_kp1::AbstractArray{AbstractArray}, Q_kp1::Union{AbstractArray{AbstractArray}, Nothing}=nothing)
+function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{<:AbstractArray{T}}, U_kp1::AbstractArray{<:AbstractArray{T}},
+                    R_kp1::AbstractArray{<:AbstractArray{T}}, Q_kp1::Union{AbstractArray{<:AbstractArray{T}}, Nothing}=nothing) where T<:Real
     N = length(X_kp1)
     if !isnothing(Q_kp1)
         for i in 1:N
@@ -161,9 +160,9 @@ function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{AbstractArray},
 end
 
 
-function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray, Y_kp1::AbstractArray, 
-                            Z_kp1::Union{AbstractArray, Nothing}=nothing)
-    q, K = size(Y_kp1)
+function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, Y_kp1::AbstractArray{T}, 
+                            Z_kp1::Union{AbstractArray{T}, Nothing}=nothing) where T<:Real
+    K, q = size(Y_kp1)
     @assert K == size(X_kp1, 2) "The number of data points should be the same."
     Xt_kp1 = transpose(X_kp1)
 
@@ -177,21 +176,19 @@ function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray, Y_kp1::
 
     if !isnothing(Z_kp1)
         Z_k_inv = Z_kp1 \ I
-        Py_k = stream.Py_k
-        stream.Py_k -= Py_k * Xt_kp1' * (Z_kp1 + Xt_kp1 * Py_k * Xt_kp1') \ Xt_kp1 * Py_k
+        stream.Py_k -= stream.Py_k * Xt_kp1' * ((Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
         stream.Ky_k = stream.Py_k * Xt_kp1' * Z_k_inv
-        stream.C_k += stream.Ky_k * (R_kp1 - Xt_kp1 * stream.C_k)
+        stream.C_k += stream.Ky_k * (Y_kp1 - Xt_kp1 * stream.C_k)
     else
-        Py_k = stream.Py_k
-        stream.Py_k -= Py_k * Xt_kp1' * (I + Xt_kp1 * Py_k * Xt_kp1') \ Xt_kp1 * Py_k
+        stream.Py_k -= stream.Py_k * Xt_kp1' * ((1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
         stream.Ky_k = stream.Py_k * Xt_kp1'
-        stream.C_k += stream.Ky_k * (R_kp1 - Xt_kp1 * stream.C_k)
+        stream.C_k += stream.Ky_k * (Y_kp1 - Xt_kp1 * stream.C_k)
     end
 end
 
 
-function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray{AbstractArray}, Y_kp1::AbstractArray{AbstractArray},
-                            Z_kp1::Union{AbstractArray{AbstractArray}, Nothing}=nothing)
+function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray{<:AbstractArray{T}}, Y_kp1::AbstractArray{<:AbstractArray{T}},
+                            Z_kp1::Union{AbstractArray{<:AbstractArray{T}}, Nothing}=nothing) where T<:Real
     N = length(X_kp1)
     if !isnothing(Z_kp1)
         for i in 1:N
