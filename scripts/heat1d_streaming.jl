@@ -80,13 +80,13 @@ Y = C * X
 ######################
 ## Plot Data to Check
 ######################
-fig = Figure(fontsize=20, size=(1300,500))
-ax1 = Axis3(fig[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-surface!(ax1, heat1d.x, heat1d.t, X)
-ax2 = Axis(fig[1, 2], xlabel="x", ylabel="t")
-hm = heatmap!(ax2, heat1d.x, heat1d.t, X)
-Colorbar(fig[1, 3], hm)
-display(fig)
+# fig = Figure(fontsize=20, size=(1300,500))
+# ax1 = Axis3(fig[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
+# surface!(ax1, heat1d.x, heat1d.t, X)
+# ax2 = Axis(fig[1, 2], xlabel="x", ylabel="t")
+# hm = heatmap!(ax2, heat1d.x, heat1d.t, X)
+# Colorbar(fig[1, 3], hm)
+# display(fig)
 
 #############
 ## Intrusive
@@ -110,15 +110,19 @@ op_inf = LnL.inferOp(X, U, Y, Vr, R, options)
 ###################
 # Construct batches of the training data
 batchsize = 200
-X_batch = batchify(X, batchsize)
+Xhat_batch = batchify(Vr' * X, batchsize)
 U_batch = batchify(U, batchsize)
-Y_batch = batchify(Y, batchsize)
-R_batch = batchify(R, batchsize)
+Y_batch = batchify(Y', batchsize)
+R_batch = batchify(R', batchsize)
 
 ## Initialize the stream
+# INFO: Remember to make data matrices a tall matrix except X matrix
 stream = LnL.Streaming_InferOp(options)
-D_k = stream.init!(stream, X_batch[1], U_batch[1], Y_batch[1], R_batch[1])
+D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1], R_batch[1])
 
 ## Stream the data (second batch)
-stream.stream!(stream, X_batch[2], U_batch[2], R_batch[2])
-stream.stream_output!(stream, X_batch[2], Y_batch[2])
+stream.stream!(stream, Xhat_batch[2], U_batch[2], R_batch[2])
+stream.stream_output!(stream, Xhat_batch[2], Y_batch[2])
+
+##
+stream.stream!(stream, Xhat_batch, U_batch, R_batch)
