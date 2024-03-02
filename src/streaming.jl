@@ -58,7 +58,7 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray, U_k::AbstractArray
     stream.dims[:w] = stream.options.system.is_bilin ? Int(n * p) : 0
 
     Q_k = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k
-    Q_k_inv = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k \ I
+    Q_k_inv = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k \ Matrix(1.0I, K, K)
 
     # Construct the data matrix
     D_k = getDataMatrix(X_k, transpose(X_k), U_k, stream.dims, stream.options)

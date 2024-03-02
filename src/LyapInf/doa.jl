@@ -517,29 +517,29 @@ LEDOA: Largest Estimated Domain of Attraction
 """
 function LEDOA(V::Function, V_dot::Function, N::Int; linear_solver::Union{String,Nothing}="ma57", 
                 HSL_lib_path::Union{String,Nothing}=nothing, verbose::Bool=true, 
-                ci::Real=1e2, xi::Union{AbstractArray,Nothing}=nothing, xtol::Real=1e-6)
+                ci::Real=1e2, xi::Union{AbstractArray,Nothing}=nothing, δ::Real=1.0)
 
-    ipopt = optimizer_with_attributes(
-        Ipopt.Optimizer, 
-        "print_level" => verbose ? 5 : 0, 
-        "linear_solver" => isnothing(linear_solver) ? "mumps" : linear_solver, 
-        "hsllib" => HSL_lib_path
-    )
-    model = Model(
-        optimizer_with_attributes(
-            Alpine.Optimizer,
-            "nlp_solver" => ipopt,
-        ),
-    )
-
+    # ipopt = optimizer_with_attributes(
+    #     Ipopt.Optimizer, 
+    #     "print_level" => verbose ? 5 : 0, 
+    #     "linear_solver" => isnothing(linear_solver) ? "mumps" : linear_solver, 
+    #     "hsllib" => HSL_lib_path
+    # )
     # model = Model(
     #     optimizer_with_attributes(
-    #         Ipopt.Optimizer, 
-    #         "print_level" => verbose ? 5 : 0, 
-    #         "linear_solver" => isnothing(linear_solver) ? "mumps" : linear_solver, 
-    #         "hsllib" => HSL_lib_path
+    #         Alpine.Optimizer,
+    #         "nlp_solver" => ipopt,
     #     ),
     # )
+
+    model = Model(
+        optimizer_with_attributes(
+            Ipopt.Optimizer, 
+            "print_level" => verbose ? 5 : 0, 
+            "linear_solver" => isnothing(linear_solver) ? "mumps" : linear_solver, 
+            "hsllib" => HSL_lib_path
+        ),
+    )
 
     # if !isnothing(linear_solver)
     #     if !isnothing(HSL_lib_path)
@@ -557,8 +557,8 @@ function LEDOA(V::Function, V_dot::Function, N::Int; linear_solver::Union{String
     # set_optimizer_attribute(model, "print_level", verbose ? 5 : 0)  # Adjusting print level based on verbose flag
     set_string_names_on_creation(model, false)
 
-    register(model, :V, 1, V; autodiff=true)
-    register(model, :V_dot, 1, V_dot; autodiff=true)
+    # register(model, :V, 1, V; autodiff=true)
+    # register(model, :V_dot, 1, V_dot; autodiff=true)
 
     @variable(model, c >= eps())
     @variable(model, x[1:N])
@@ -569,21 +569,22 @@ function LEDOA(V::Function, V_dot::Function, N::Int; linear_solver::Union{String
     #     set_start_value.(x, xi)
     # end
 
-    @objective(model, Min, c)
 
     # @expression(model, vx, V(x))
     # @expression(model, vxdot, V_dot(x))
 
-    # @operator(model, vx, N, (x...) -> V(collect(x)))
-    # @operator(model, vxdot, N, (x...) -> V_dot(collect(x)))
-    # @constraint(model, vx(x...) .== c)
-    # @constraint(model, vxdot(x...) .== 0)
+    @operator(model, vx, N, (x...) -> V(collect(x)))
+    @operator(model, vxdot, N, (x...) -> V_dot(collect(x)))
+    @constraint(model, vx(x...) == c)
+    @constraint(model, vxdot(x...) >= 0)
+    @constraint(model, δ^2 <= sum(x[i]^2 for i = 1:N))
 
-    @NLconstraint(model, V(x...) == c)
-    @NLconstraint(model, V_dot(x...) == 0)
+    # @NLconstraint(model, V(x...) == c)
+    # @NLconstraint(model, V_dot(x...) >= 0)
 
-    @constraint(model, [i = 1:N], xtol <= x[i])
+    # @constraint(model, [i = 1:N], xtol <= x[i])
     # @objective(model, Min, vx(x...))
+    @objective(model, Min, c)
     optimize!(model)
     # status = termination_status(model)
     # if status == MOI.OPTIMAL
@@ -595,6 +596,9 @@ function LEDOA(V::Function, V_dot::Function, N::Int; linear_solver::Union{String
     #     return nothing, nothing
     # end
     # x_star = value.(x)
+
+    # @assert is_solved_and_feasible(model)
+
     return value(c), value.(x)
 end
 

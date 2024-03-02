@@ -371,7 +371,7 @@ P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P",
 c_star1, c_all, x_sample = nothing, nothing, nothing
 if SAMPLE
     V1(x) = x' * P1 * x
-    Vdot1(x) = x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
+    Vdot1(x) = 2*x' * P1 * A * x + 2*x' * P1 * F * (x ⊘ x)
     c_star1, c_all, x_sample = LFI.doa_sampling(
         V1,
         Vdot1,
@@ -379,10 +379,10 @@ if SAMPLE
         method="memory", history=true, n_strata=128, uniform_state_space=true
     )
 else
-    V1(x) = (x' * P1 * x)[1]
-    Vdot1(x) = x' * P1 * A * x + x' * P1 * H * kron(x, x)
+    V1(x) = x' * P1 * x
+    Vdot1(x) = 2*x' * P1 * A * x + 2*x' * P1 * F * (x ⊘ x)
     c_star1, _ = LFI.LEDOA(V1, Vdot1, 2; linear_solver="ma86", verbose=true, HSL_lib_path=HSL_jll.libhsl_path,
-                                ci=1e2, xi=[10,10])
+                                ci=1e2, xi=[10,10], δ=1)
 end
 ##
 ρ_star1 = sqrt(c_star1) * ρ_min
@@ -403,7 +403,7 @@ display(fig12)
 P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="NI", x0_bnds=(-1.5, 1.5))
 ##
 V2 = (x) -> x' * P2 * x
-Vdot2 = (x) -> x' * P2 * A * x + x' * P2 * F * (x ⊘ x)
+Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * F * (x ⊘ x)
 c_star2, c_all, x_sample = LFI.doa_sampling(
     V2,
     Vdot2,
@@ -440,7 +440,7 @@ display(fig16)
 P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = vpo_example(method="P", type="I")
 ##
 V1 = (x) -> x' * P1 * x
-Vdot1 = (x) -> x' * P1 * A * x + x' * P1 * F * (x ⊘ x)
+Vdot1 = (x) -> 2*x' * P1 * A * x + 2*x' * P1 * F * (x ⊘ x)
 c_star1, c_all, x_sample = LFI.doa_sampling(
     V1,
     Vdot1,
@@ -463,7 +463,7 @@ display(fig22)
 P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = vpo_example(method="P",type="NI")
 ##
 V2 = (x) -> x' * P2 * x
-Vdot2 = (x) -> x' * P2 * A * x + x' * P2 * F * (x ⊘ x)
+Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * F * (x ⊘ x)
 c_star2, c_all, x_sample = LFI.doa_sampling(
     V2,
     Vdot2,
