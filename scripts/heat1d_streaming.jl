@@ -124,5 +124,5 @@ D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1], R_batch[1])
 stream.stream!(stream, Xhat_batch[2], U_batch[2], R_batch[2])
 stream.stream_output!(stream, Xhat_batch[2], Y_batch[2])
 
-##
-stream.stream!(stream, Xhat_batch, U_batch, R_batch)
+## Stream all at once
+stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch[2:end])
