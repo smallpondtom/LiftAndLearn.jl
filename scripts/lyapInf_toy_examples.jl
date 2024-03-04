@@ -19,7 +19,7 @@ const LFI = LyapInf
 ##########
 ## CONSTS
 ##########
-SAMPLE = false
+SAMPLE = true
 
 ################################
 ## Functions for the examples
