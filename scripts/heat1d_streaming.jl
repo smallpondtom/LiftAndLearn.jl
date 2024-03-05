@@ -3,7 +3,7 @@
 #############
 using CairoMakie
 using LinearAlgebra
-using Random: randn
+using Random: randn, seed!
 using Statistics: cov
 
 ###############
@@ -232,26 +232,35 @@ display(fig3)
 ## Streaming-OpInf with noise
 ##############################
 # Construct batches of the training data
-batchsize = 250
+batchsize = 500
 Xhat_batch = batchify(Vr' * X, batchsize)
 U_batch = batchify(U, batchsize)
 Y_batch = batchify(Y', batchsize)
 R_batch = batchify(R', batchsize)
 
 # Define the noise with zero mean and variance
-σ = 1e-1
-WN(v,sz) = sqrt(v) * randn(sz)
+σ = 1e-2
+Random.seed!(1234)
+WN(v,sz) = sqrt(v) * Random.randn(sz...)
 covmat(e) = cov(e * e')
 
 ## Initialize the stream
-# INFO: Remember to make data matrices a tall matrix except X matrix
 stream = LnL.Streaming_InferOp(options)
-D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1], R_batch[1], 
-                    covmat(WN(σ, size(Xhat_batch[1],2))), covmat(WN(σ, size(Y_batch[1],1))))
+noise = WN(σ, size(R_batch[1]))
+noise_output = WN(σ, size(Y_batch[1]))
+# WARNING: Don't forget to add noise to your data matrix
+D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1] + noise_output, R_batch[1] + noise, 
+                    covmat(noise), covmat(noise_output))
 
 ## Stream all at once
-stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch[2:end], [covmat(WN(σ, batchsize)) for i in 2:length(Xhat_batch)])
-stream.stream_output!(stream, Xhat_batch[2:end], Y_batch[2:end], [covmat(WN(σ, batchsize)) for i in 2:length(Y_batch)])
+# WARNING: Don't forget to add noise to your data matrix
+noise = [WN(σ, size(R_batch[i])) for i in 2:length(Xhat_batch)]
+noise_output = [WN(σ, size(Y_batch[i])) for i in 2:length(Y_batch)]
+R_batch_noisy = [R_batch[i] + noise[i-1] for i in 2:length(Xhat_batch)]
+Y_batch_noisy = [Y_batch[i] + noise_output[i-1] for i in 2:length(Y_batch)]
+
+stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch_noisy, [covmat(n) for n in noise])
+stream.stream_output!(stream, Xhat_batch[2:end], Y_batch_noisy, [covmat(n) for n in noise_output])
 
 ##
 op_stream = stream.unpack_operators(stream)
