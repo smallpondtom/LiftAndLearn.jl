@@ -208,9 +208,9 @@ function unpack_operators(stream::Streaming_InferOp)
     options = stream.options
 
     # Dimensions
-    n = dims[:n]; p = dims[:p]; q = dims[:q]
-    s = dims[:s]; v = dims[:v]; w = dims[:w]
-    s3 = dims[:s3]; v3 = dims[:v3]
+    n = stream.dims[:n]; p = stream.dims[:p]; q = stream.dims[:q]
+    s = stream.dims[:s]; v = stream.dims[:v]; w = stream.dims[:w]
+    s3 = stream.dims[:s3]; v3 = stream.dims[:v3]
 
     TD = 0  # initialize this dummy variable for total dimension (TD)
     if options.system.is_lin
@@ -279,7 +279,7 @@ function unpack_operators(stream::Streaming_InferOp)
     Khat = options.system.has_const ? Matrix(O[:, TD+1:end]) : 0
 
     # Output matrix
-    Chat = options.has_output ? transpose(stream.C_k) : 0
+    Chat = options.system.has_output ? Matrix(transpose(stream.C_k)) : 0
 
     return operators(
         A=Ahat, B=Bhat, C=Chat, F=Fhat, H=Hhat, E=Ehat, G=Ghat, N=Nhat, K=Khat
