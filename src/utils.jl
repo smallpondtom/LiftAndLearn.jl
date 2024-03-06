@@ -24,17 +24,17 @@ supported are up to second order.
 - `f`: nonlinear function operator f(x,u)
 """
 Base.@kwdef mutable struct operators
-    A::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # linear
-    B::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # control
-    C::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # output
-    H::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # quadratic redundant
-    F::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # quadratic non-redundant
-    Q::Union{AbstractArray,Real} = 0   # quadratic -- array of 2-dim square matrices
-    G::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # cubic redundant
-    E::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Real} = 0  # cubic non-redundant
-    K::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Real} = 0  # constant
-    N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Real} = 0  # bilinear
-    f::Function = x -> x  # nonlinear function
+    A::Union{AbstractArray{<:Number},Real} = 0                                           # linear
+    B::Union{AbstractArray{<:Number},Real} = 0                                           # control
+    C::Union{AbstractArray{<:Number},Real} = 0                                           # output
+    H::Union{AbstractArray{<:Number},Real} = 0                                           # quadratic redundant
+    F::Union{AbstractArray{<:Number},Real} = 0                                           # quadratic non-redundant
+    Q::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0  # quadratic (array of 2D square matrices)
+    G::Union{AbstractArray{<:Number},Real} = 0                                           # cubic redundant
+    E::Union{AbstractArray{<:Number},Real} = 0                                           # cubic non-redundant
+    K::Union{AbstractArray{<:Number},Real} = 0                                           # constant
+    N::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0  # bilinear
+    f::Function = x -> x                                                                 # nonlinear function
 end
 
 
