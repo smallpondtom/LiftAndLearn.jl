@@ -42,20 +42,26 @@ N. Sawant, B. Kramer, and B. Peherstorfer, “Physics-informed regularization an
 preservation for learning stable reduced models from data with operator inference.” arXiv, Jul. 
 06, 2021. Accessed: Jan. 29, 2023. [Online]. Available: http://arxiv.org/abs/2107.02597
 """
-function skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, Q::AbstractArray{T}; 
-        div_by_2::Bool=false) where T
+# function skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, Q::AbstractArray{T}; 
+#         div_by_2::Bool=false) where T
 
-    if div_by_2
-        P = lyapc(Ahat', 0.5*Q)
-    else
-        P = lyapc(Ahat', Q)
-    end
+#     if div_by_2
+#         P = lyapc(Ahat', 0.5*Q)
+#     else
+#         P = lyapc(Ahat', Q)
+#     end
+#     L = cholesky(Q).L
+#     σmin = minimum(svd(L).S)
+#     ρhat = σmin^2 / sqrt(norm(P,2)) / norm(Hhat,2) / 2
+#     return ρhat
+# end
+function skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, P::AbstractArray{T}) where T
+    Q = -(Ahat' * P + P * Ahat)
     L = cholesky(Q).L
     σmin = minimum(svd(L).S)
     ρhat = σmin^2 / sqrt(norm(P,2)) / norm(Hhat,2) / 2
     return ρhat
 end
-
 
 function sampling_memoryless(V::Function, Vdot::Function, ns::Real, N::Int, 
         state_space::Union{Array,Tuple}; uniform_state_space::Bool=true, history=false)
