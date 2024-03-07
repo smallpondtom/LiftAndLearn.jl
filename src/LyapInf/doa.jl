@@ -563,14 +563,14 @@ function LEDOA(V::Function, V_dot::Function, N::Int; linear_solver::Union{String
     #     ),
     # )
 
-    model = Model(
-        optimizer_with_attributes(
-            Ipopt.Optimizer, 
-            "print_level" => verbose ? 5 : 0, 
-            "linear_solver" => isnothing(linear_solver) ? "mumps" : linear_solver, 
-            "hsllib" => HSL_lib_path
-        ),
-    )
+    # model = Model(
+    #     optimizer_with_attributes(
+    #         Ipopt.Optimizer, 
+    #         "print_level" => verbose ? 5 : 0, 
+    #         "linear_solver" => isnothing(linear_solver) ? "mumps" : linear_solver, 
+    #         "hsllib" => HSL_lib_path
+    #     ),
+    # )
 
     # if !isnothing(linear_solver)
     #     if !isnothing(HSL_lib_path)
@@ -586,6 +586,10 @@ function LEDOA(V::Function, V_dot::Function, N::Int; linear_solver::Union{String
     #     set_silent(model)
     # end 
     # set_optimizer_attribute(model, "print_level", verbose ? 5 : 0)  # Adjusting print level based on verbose flag
+
+    model = Model(SCS.Optimizer)
+    # Set up verbose or silent
+
     set_string_names_on_creation(model, false)
 
     # register(model, :V, 1, V; autodiff=true)
