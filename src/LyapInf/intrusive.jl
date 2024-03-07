@@ -19,7 +19,10 @@
     verbose::Bool               = false    # Enable verbose output for the optimization
     optimize_PandQ::String      = "P"      # Optimize both P and Q 
     HSL_lib_path::String        = "none"   # Path to the HSL library
+    is_quad::Bool               = true     # If the system is quadratic
+    is_cubic::Bool              = false    # If the system is cubic
 
+    @assert (is_quad || is_cubic) "The system must be either quadratic, cubic, or both."
     @assert (optimize_PandQ in ["P", "both", "together"]) "Optimize P and Q options are: P, both, and together."
     @assert (optimizer in ["ipopt", "Ipopt", "SCS"]) "Optimizer options are: Ipopt and SCS."
     @assert !(optimizer == "SCS" && optimize_PandQ in ["both","together"]) "SCS does not support optimizing P and Q together or both."
@@ -30,13 +33,15 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         options::Int_LyapInf_options; Pi=nothing) where {T<:Real}
     n, K = size(X)
     @assert n < K "The number of states must be less than the number of time steps."
-    X2 = squareMatStates(X)
+    X2 = options.is_quad ? squareMatStates(X) : 0.0
+    X3 = options.is_cubic ? cubeMatStates(X) : 0.0
     # X2t = squareMatStates(X)'
     # Xt = X' # now we want the columns to be the states and rows to be time
 
     # Unpack operators
     A = op.A 
     F = op.F
+    E = op.E
 
     if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
         model = Model(Ipopt.Optimizer)
@@ -71,13 +76,23 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         # end
 
         @variable(model, Z[1:n, 1:K])
-        @constraint(
-            model, 
-            # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
-            # Z .== Xt*A'*P .+ X2t*F'*P .- 0.25 .* Xt*P*Xt'*Xt*Q .+ 0.5 .* Xt*Q
-            # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
-            Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+  Q*X
-        )
+        if options.is_quad && options.is_cubic
+            @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
+        elseif options.is_quad
+            @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X)
+        elseif options.is_cubic
+            @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
+        else
+            @error "The system must be either quadratic, cubic, or both."
+        end
+        # @constraint(
+        #     model, 
+        #     # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
+        #     # Z .== Xt*A'*P .+ X2t*F'*P .- 0.25 .* Xt*P*Xt'*Xt*Q .+ 0.5 .* Xt*Q
+        #     # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
+        #     # Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+  Q*X
+        #     # Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+  Q*X
+        # )
         @objective(model, Min, sum(Z.^2))
 
         # Add constraints for positive definiteness:
@@ -100,13 +115,22 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         if !isnothing(Pi)
             set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
         end
-        @expression(
-            model, 
-            inside_norm, 
-            # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
-            # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
-            sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
-        )  
+        if options.is_quad && options.is_cubic
+            @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
+        elseif options.is_quad
+            @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2))
+        elseif options.is_cubic
+            @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
+        else
+            @error "The system must be either quadratic, cubic, or both."
+        end
+        # @expression(
+        #     model, 
+        #     inside_norm, 
+        #     # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
+        #     # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
+        #     sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
+        # )  
         @objective(model, Min, inside_norm)
 
         # Add a constraint to make positive definite
@@ -126,13 +150,15 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
         options::Int_LyapInf_options; Qi=nothing) where {T<:Real}
     n, K = size(X)
     @assert n < K "The number of states must be less than the number of time steps."
-    X2 = squareMatStates(X)
+    X2 = options.is_quad ? squareMatStates(X) : 0.0
+    X3 = options.is_cubic ? cubeMatStates(X) : 0.0
     # X2t = squareMatStates(X)'
     # Xt = X' # now we want the columns to be the states and rows to be time
 
     # Unpack operators
     A = op.A
     F = op.F
+    E = op.E
     
     # if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
 
@@ -158,12 +184,22 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
     end
 
     @variable(model, Z[1:n, 1:K])
-    @constraint(
-        model, 
-        # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
-        # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
-        Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
-    )
+    if options.is_quad && options.is_cubic
+        @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
+    elseif options.is_quad
+        @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X)
+    elseif options.is_cubic
+        @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
+    else
+        @error "The system must be either quadratic, cubic, or both."
+    end
+    # @constraint(
+    #     model, 
+    #     # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
+    #     # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
+    #     # Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
+    #     Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X
+    # )
     @objective(model, Min, sum(Z.^2))
 
     # Add constraints for positive definiteness:
@@ -215,11 +251,13 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
         Pi=nothing, Qi=nothing) where {T<:Real}
     n, K = size(X)
     @assert n < K "The number of states must be less than the number of time steps."
-    X2 = squareMatStates(X)
+    X2 = options.is_quad ? squareMatStates(X) : 0.0
+    X3 = options.is_cubic ? cubeMatStates(X) : 0.0
 
     # Unpack operators
     A = op.A 
     F = op.F
+    E = op.E
 
     # if options.optimizer in ["ipopt", "Ipopt"]  # Ipopt prefers constraints
 
@@ -255,10 +293,20 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
 
     # Objective
     @variable(model, Z[1:n, 1:K])
-    @constraint(
-        model, 
-        Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
-    )
+    if options.is_quad && options.is_cubic
+        @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
+    elseif options.is_quad
+        @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X)
+    elseif options.is_cubic
+        @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
+    else
+        @error "The system must be either quadratic, cubic, or both."
+    end
+    # @constraint(
+    #     model, 
+    #     # Z .== 2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X
+    #     Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X
+    # )
     @objective(model, Min, sum(Z.^2))
 
     # Add constraints for positive definiteness:
