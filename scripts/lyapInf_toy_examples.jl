@@ -49,7 +49,7 @@ function integrate_model(ops, x0, ti, tf, dt, type)
 end
 
 # Lotka-Volterra Predator-Prey (LVPP) Example
-function lvpp_example(; method="P", type="I", x0_bnds=(-4.0, 4.0))
+function lvpp_example(; method="P", type="I", x0_bnds=(-4.0, 4.0), optimizer="SCS")
     A = [-2.0 0.0; 0.0 -1.0]
     H = LnL.makeQuadOp(2, [(1,2,1), (1,2,2)], [1.0, 1.0])
     F = LnL.H2F(H)
@@ -84,7 +84,7 @@ function lvpp_example(; method="P", type="I", x0_bnds=(-4.0, 4.0))
         ## Compute the Lyapunov Function using the intrusive method
         lyapinf_options = LFI.Int_LyapInf_options(
             extra_iter=3,
-            optimizer="SCS",
+            optimizer=optimizer,
             ipopt_linear_solver="ma86",
             verbose=true,
             optimize_PandQ=method,
@@ -97,7 +97,7 @@ function lvpp_example(; method="P", type="I", x0_bnds=(-4.0, 4.0))
         ## Compute the Lyapunov Function using the intrusive method
         lyapinf_options = LFI.NonInt_LyapInf_options(
             extra_iter=3,
-            optimizer="Ipopt",
+            optimizer=optimizer,
             ipopt_linear_solver="ma86",
             verbose=true,
             optimize_PandQ=method,
@@ -115,7 +115,7 @@ end
 
 
 # Van der Pol Oscillator (VPO) Example
-function vpo_example(; method="P", type="I", x0_bnds=(-4.0, 4.0), μ=1.0)
+function vpo_example(; method="P", type="I", optimizer="SCS", x0_bnds=(-4.0, 4.0), μ=1.0)
     A = zeros(2,2)
     A[1,2] = -1.0
     A[2,1] = 1.0
@@ -127,8 +127,8 @@ function vpo_example(; method="P", type="I", x0_bnds=(-4.0, 4.0), μ=1.0)
     E = LnL.G2E(G)
 
     # Generate the data
-    num_ic = 10  # number of initial conditions
-    tf = 3.0
+    num_ic = 20  # number of initial conditions
+    tf = 5.0
     dt = 0.001
     DS = 100  # down-sampling
 
@@ -138,10 +138,11 @@ function vpo_example(; method="P", type="I", x0_bnds=(-4.0, 4.0), μ=1.0)
     ct = 0
     while ct < num_ic
         x0 = (ub - lb) * rand(2) .+ lb
-        rest = (x1,x2) -> (1.5*x1^2 - x1*x2 + x2^2) / (1 - 0.2362*x1^2 + 0.31747*x1*x2 - 0.1091*x2^2)
-        if rest(x0...) > 5
-            continue
-        end
+
+        # rest = (x1,x2) -> (1.5*x1^2 - x1*x2 + x2^2) / (1 - 0.2362*x1^2 + 0.31747*x1*x2 - 0.1091*x2^2)
+        # if rest(x0...) > 5
+        #     continue
+        # end
 
         data, ddata, retcode = integrate_model([A,E],x0,0.0,tf,dt,"C")
         if retcode in (:Unstable, :Terminated, :Failure)
@@ -162,14 +163,13 @@ function vpo_example(; method="P", type="I", x0_bnds=(-4.0, 4.0), μ=1.0)
         ## Compute the Lyapunov Function using the intrusive method
         lyapinf_options = LFI.Int_LyapInf_options(
             extra_iter=3,
-            optimizer="SCS",
+            optimizer=optimizer,
             ipopt_linear_solver="ma86",
             verbose=true,
             optimize_PandQ=method,
             HSL_lib_path=HSL_jll.libhsl_path,
             is_quad=false,
             is_cubic=true,
-            opt_max_iter=2,
         )
         op = LnL.operators(A=A, G=G, E=E)
         P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options; Qi=5.0I(2))
@@ -177,7 +177,7 @@ function vpo_example(; method="P", type="I", x0_bnds=(-4.0, 4.0), μ=1.0)
         ## Compute the Lyapunov Function using the non-intrusive method
         lyapinf_options = LFI.NonInt_LyapInf_options(
             extra_iter=3,
-            optimizer="Ipopt",
+            optimizer=optimizer,
             ipopt_linear_solver="ma86",
             verbose=true,
             optimize_PandQ=method,
@@ -189,68 +189,9 @@ function vpo_example(; method="P", type="I", x0_bnds=(-4.0, 4.0), μ=1.0)
     end
     ρ_min, ρ_max = LFI.DoA(P)
     ρ_est = 1.0
-    # ρ_est = LFI.skp_stability_rad(P, A, nothing, G; dims=(1,3))
+    ρ_est = LFI.skp_stability_rad(P, A, nothing, G; dims=(1,3))
     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G
 end
-
-
-# Modified quadratic Van Der Pol
-# function vpo_example(; method="P", type="I", x0_bnds=(-1.5, 1.5))
-#     A = zeros(2,2)
-#     A[1,2] = 1.0
-#     A[2,1] = -1.0
-#     A[2,2] = -0.5
-#     H = LnL.makeQuadOp(2, [(1,2,2), (2,2,2)], [-0.5, -0.1])
-#     F = LnL.H2F(H)
-
-#     # Generate the data
-#     num_ic = 20  # number of initial conditions
-#     tf = 10.0
-#     dt = 0.001
-#     DS = 100  # down-sampling
-
-#     X = []
-#     Xdot = []
-#     lb, ub = x0_bnds
-#     for i in 1:num_ic
-#         x0 = (ub - lb) * rand(2) .+ lb
-#         data, ddata = integrate_model(A,F,x0,0.0,tf,dt)
-#         push!(X, data[:,1:DS:end])
-#         push!(Xdot, ddata[:,1:DS:end])
-#     end
-#     X = reduce(hcat, X)
-#     Xdot = reduce(hcat, Xdot)
-
-#     if type == "I"
-#         ## Compute the Lyapunov Function using the intrusive method
-#         lyapinf_options = LFI.Int_LyapInf_options(
-#             extra_iter=3,
-#             optimizer="Ipopt",
-#             ipopt_linear_solver="ma86",
-#             verbose=true,
-#             optimize_PandQ=method,
-#             HSL_lib_path=HSL_jll.libhsl_path,
-#         )
-#         op = LnL.operators(A=A, H=H, F=F)
-#         P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
-#     elseif type == "NI"
-#         ## Compute the Lyapunov Function using the non-intrusive method
-#         lyapinf_options = LFI.NonInt_LyapInf_options(
-#             extra_iter=3,
-#             optimizer="Ipopt",
-#             ipopt_linear_solver="ma86",
-#             verbose=true,
-#             optimize_PandQ=method,
-#             HSL_lib_path=HSL_jll.libhsl_path,
-#         )
-#         P, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options)
-#     else
-#         error("Invalid type")
-#     end
-#     ρ_min, ρ_max = LFI.DoA(P)
-#     ρ_est = LFI.skp_stability_rad(A, H, Q)
-#     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H
-# end
 
 
 #########################
@@ -464,7 +405,7 @@ end
 #################################################
 ## Example 1: Lotka-Volterra Predator-Prey 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="I", x0_bnds=(-1.5, 1.5))
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="both", type="I", x0_bnds=(-1.5, 1.5))
 ##
 c_star1, c_all, x_sample = nothing, nothing, nothing
 if SAMPLE
@@ -491,14 +432,13 @@ println("ρ_star = ", ρ_star1)
 
 ## Plot Only for Intrusive
 fig11 = plot_cstar_convergence(c_all)
-display(fig11)
-##
 fig12 = plot_doa_results(A, F, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-5,5), (-5,5);
                                  heatmap_lb=-5, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA")
+display(fig11)
 display(fig12)
 
 ## Non-Intrusive
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="NI", x0_bnds=(-1.5, 1.5))
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="both", type="NI", x0_bnds=(-1.5, 1.5))
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * F * (x ⊘ x)
@@ -535,14 +475,14 @@ display(fig16)
 #################################################
 ## Example 2: Van der Pol Oscillator 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P", type="I")
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P", type="I", μ=4.0)
 ##
-V1 = (x) -> x' * P1 * x
-Vdot1 = (x) -> 2*x' * P1 * A * x + 2*x' * P1 * E * ⊘(x,x,x)
+V1(x) = x' * P1 * x
+Vdot1(x) = 2*x' * P1 * A * x + 2*x' * P1 * E * ⊘(x,x,x)
 c_star1, c_all, x_sample = LFI.doa_sampling(
     V1,
     Vdot1,
-    3000, 2, (-4,4);
+    1000, 2, (-3.0,3.0);
     method="memory", history=true
 )
 ρ_star1 = sqrt(c_star1) * ρ_min
@@ -553,20 +493,20 @@ println("ρ_star = ", ρ_star1)
 
 ## Plot
 fig21 = plot_cstar_convergence(c_all)
-fig22 = plot_doa_results(A, E, c_star1, x_sample, P1, Vdot1, (-4,4), (-4,4);
-                                 heatmap_lb=-1e-1, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA", dims=3)
+fig22 = plot_doa_results(A, E, c_star1, x_sample, P1, Vdot1, (-3.0,3.0), (-3.0,3.0);
+                                 heatmap_lb=-5e-2, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA", dims=3)
 display(fig21)
 display(fig22)
 
 ## Non-Intrusive
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P",type="NI")
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P",type="NI", μ=4.0)
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * E * ⊘(x,x,x)
 c_star2, c_all, x_sample = LFI.doa_sampling(
     V2,
     Vdot2,
-    1000, 2, (-4,4);
+    1000, 2, (-3.0,3.0);
     method="memory", history=true
 )
 ρ_star2 = sqrt(c_star2) * ρ_min
@@ -577,8 +517,8 @@ println("ρ_star = ", ρ_star2)
 
 ## Plot
 fig23 = plot_cstar_convergence(c_all)
-fig24 = plot_doa_results(A, E, c_star2, x_sample, P2, Vdot2, (-4,4), (-4,4);
-                            heatmap_lb=-1e-1, meshsize=1e-2, ax2title="Non-Intrusive LyapInf: DoA", dims=3)
+fig24 = plot_doa_results(A, E, c_star2, x_sample, P2, Vdot2, (-3.0,3.0), (-3.0,3.0);
+                            heatmap_lb=-5e-2, meshsize=1e-2, ax2title="Non-Intrusive LyapInf: DoA", dims=3)
 display(fig23)
 display(fig24)
 
@@ -588,5 +528,68 @@ fig25 = plot_doa_comparison_results(A, E, c_star1, c_star2, P1, P2, Vdot1, Vdot2
 display(fig25)
 
 ## Verify the DoA
-ρ_mc, fig26 = verify_doa(ρ_star1, ρ_star2, ([A, E], 0.0, 10.0, 0.001, "C"), (-4.0,4.0), 5000; M=1.0)
+ρ_mc, fig26 = verify_doa(ρ_star1, ρ_star2, ([A, E], 0.0, 10.0, 0.001, "C"), (-3.0,3.0), 5000; M=1.0)
 display(fig26)
+
+
+
+
+# ########################################################################################
+# Modified quadratic Van Der Pol
+# function vpo_example(; method="P", type="I", x0_bnds=(-1.5, 1.5))
+#     A = zeros(2,2)
+#     A[1,2] = 1.0
+#     A[2,1] = -1.0
+#     A[2,2] = -0.5
+#     H = LnL.makeQuadOp(2, [(1,2,2), (2,2,2)], [-0.5, -0.1])
+#     F = LnL.H2F(H)
+
+#     # Generate the data
+#     num_ic = 20  # number of initial conditions
+#     tf = 10.0
+#     dt = 0.001
+#     DS = 100  # down-sampling
+
+#     X = []
+#     Xdot = []
+#     lb, ub = x0_bnds
+#     for i in 1:num_ic
+#         x0 = (ub - lb) * rand(2) .+ lb
+#         data, ddata = integrate_model(A,F,x0,0.0,tf,dt)
+#         push!(X, data[:,1:DS:end])
+#         push!(Xdot, ddata[:,1:DS:end])
+#     end
+#     X = reduce(hcat, X)
+#     Xdot = reduce(hcat, Xdot)
+
+#     if type == "I"
+#         ## Compute the Lyapunov Function using the intrusive method
+#         lyapinf_options = LFI.Int_LyapInf_options(
+#             extra_iter=3,
+#             optimizer="Ipopt",
+#             ipopt_linear_solver="ma86",
+#             verbose=true,
+#             optimize_PandQ=method,
+#             HSL_lib_path=HSL_jll.libhsl_path,
+#         )
+#         op = LnL.operators(A=A, H=H, F=F)
+#         P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+#     elseif type == "NI"
+#         ## Compute the Lyapunov Function using the non-intrusive method
+#         lyapinf_options = LFI.NonInt_LyapInf_options(
+#             extra_iter=3,
+#             optimizer="Ipopt",
+#             ipopt_linear_solver="ma86",
+#             verbose=true,
+#             optimize_PandQ=method,
+#             HSL_lib_path=HSL_jll.libhsl_path,
+#         )
+#         P, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options)
+#     else
+#         error("Invalid type")
+#     end
+#     ρ_min, ρ_max = LFI.DoA(P)
+#     ρ_est = LFI.skp_stability_rad(A, H, Q)
+#     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H
+# end
+
