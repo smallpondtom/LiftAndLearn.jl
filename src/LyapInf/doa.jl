@@ -38,9 +38,9 @@ Sawant, Kramer, and Peherstorfer (SKP).
 * `ρhat::Float64`: estimated stability radius
 
 ## References
-N. Sawant, B. Kramer, and B. Peherstorfer, “Physics-informed regularization and structure 
-preservation for learning stable reduced models from data with operator inference.” arXiv, Jul. 
-06, 2021. Accessed: Jan. 29, 2023. [Online]. Available: http://arxiv.org/abs/2107.02597
+N. Sawant, B. Kramer, and B. Peherstorfer, “Physics-informed regularization and structure preservation
+for learning stable reduced models from data with operator inference,” Computer Methods in Applied 
+Mechanics and Engineering, vol. 404, p. 115836, Feb. 2023, doi: 10.1016/j.cma.2022.115836.
 """
 # function skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, Q::AbstractArray{T}; 
 #         div_by_2::Bool=false) where T
@@ -55,13 +55,38 @@ preservation for learning stable reduced models from data with operator inferenc
 #     ρhat = σmin^2 / sqrt(norm(P,2)) / norm(Hhat,2) / 2
 #     return ρhat
 # end
-function skp_stability_rad(Ahat::AbstractArray{T}, Hhat::AbstractArray{T}, P::AbstractArray{T}) where T
-    Q = -(Ahat' * P + P * Ahat)
-    L = cholesky(Q).L
-    σmin = minimum(svd(L).S)
-    ρhat = σmin^2 / sqrt(norm(P,2)) / norm(Hhat,2) / 2
+function skp_stability_rad(P::AbstractArray{T}, Ahat::AbstractArray{T}, Hhat::Union{AbstractArray{T},Nothing}=nothing,
+                            Ghat::Union{AbstractArray{T},Nothing}=nothing; dims::Tuple=(1,2)) where T<:Real
+    if (2 in dims) && (3 in dims)
+        @assert !isnothing(Hhat) && !isnothing(Ghat) "Hhat and Ghat must be provided for quadratic-cubic systems."
+        Q = -(Ahat' * P + P * Ahat)
+        L = cholesky(Q).L
+        σmin = minimum(svd(L).S)
+
+        part1 = sqrt(norm(P,2) * norm(Hhat,2) + 2*σmin^2 * norm(Ghat,2)) / 2 / norm(Ghat,2)
+        part2 = sqrt(norm(P,2)) * norm(H,2) / 2 / norm(Ghat,2)
+        ρhat = part1 - part2 
+
+    elseif (2 in dims) && !(3 in dims)
+        @assert !isnothing(Hhat) "Hhat must be provided for quadratic systems."
+        Q = -(Ahat' * P + P * Ahat)
+        L = cholesky(Q).L
+        σmin = minimum(svd(L).S)
+        ρhat = σmin^2 / sqrt(norm(P,2)) / norm(Hhat,2) / 2
+
+    elseif !(2 in dims) && (3 in dims)
+        @assert !isnothing(Ghat) "Ghat must be provided for cubic systems."
+        Q = -(Ahat' * P + P * Ahat)
+        L = cholesky(Q).L
+        σmin = minimum(svd(L).S)
+        ρhat = σmin / sqrt(2 * norm(Ghat,2))
+
+    else
+        error("Invalid dimensions. Support only for quadratic and cubic systems.")
+    end
     return ρhat
 end
+
 
 function sampling_memoryless(V::Function, Vdot::Function, ns::Real, N::Int, 
         state_space::Union{Array,Tuple}; uniform_state_space::Bool=true, history=false)

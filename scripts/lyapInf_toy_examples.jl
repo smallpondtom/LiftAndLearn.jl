@@ -29,16 +29,27 @@ function lin_quad_model!(xdot, x, p, t)
     xdot .= A * x + F * (x ⊘ x)
 end
 
-function integrate_model(A, F, x0, ti, tf, dt)
-    prob = ODEProblem(lin_quad_model!, x0, (ti, tf), [A, F])
+function lin_cubic_model!(xdot, x, p, t)
+    A, E = p[1], p[2]
+    xdot .= A * x + E * ⊘(x,x,x)
+end
+
+function integrate_model(ops, x0, ti, tf, dt, type)
+    if type == "Q"
+        prob = ODEProblem(lin_quad_model!, x0, (ti, tf), ops)
+    elseif type == "C"
+        prob = ODEProblem(lin_cubic_model!, x0, (ti, tf), ops)
+    else
+        error("Invalid type")
+    end
     sol = solve(prob, RK4(); dt=dt, adaptive=false)
     data = sol[1:2,:]
     ddata = sol(ti:dt:tf, Val{1})[1:2,:]
-    return data, ddata
+    return data, ddata, Symbol(sol.retcode)
 end
 
 # Lotka-Volterra Predator-Prey (LVPP) Example
-function lvpp_example(; method="P", type="I", x0_bnds=(-1.8, 1.8))
+function lvpp_example(; method="P", type="I", x0_bnds=(-4.0, 4.0))
     A = [-2.0 0.0; 0.0 -1.0]
     H = LnL.makeQuadOp(2, [(1,2,1), (1,2,2)], [1.0, 1.0])
     F = LnL.H2F(H)
@@ -52,9 +63,17 @@ function lvpp_example(; method="P", type="I", x0_bnds=(-1.8, 1.8))
     X = []
     Xdot = []
     lb, ub = x0_bnds
-    for i in 1:num_ic
+    ct = 0
+    while ct < num_ic
         x0 = (ub - lb)*rand(2) .+ lb
-        data, ddata = integrate_model(A, F, x0,0.0,tf,dt)
+        data, ddata, retcode = integrate_model([A, F], x0,0.0,tf,dt,"Q")
+        if retcode in (:Unstable, :Terminated, :Failure)
+            continue
+        elseif retcode == :Success
+            ct += 1
+        else
+            error("Invalid retcode: $retcode")
+        end
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
     end
@@ -65,7 +84,7 @@ function lvpp_example(; method="P", type="I", x0_bnds=(-1.8, 1.8))
         ## Compute the Lyapunov Function using the intrusive method
         lyapinf_options = LFI.Int_LyapInf_options(
             extra_iter=3,
-            optimizer="Ipopt",
+            optimizer="SCS",
             ipopt_linear_solver="ma86",
             verbose=true,
             optimize_PandQ=method,
@@ -90,50 +109,70 @@ function lvpp_example(; method="P", type="I", x0_bnds=(-1.8, 1.8))
         error("Invalid type")
     end
     ρ_min, ρ_max = LFI.DoA(P)
-    ρ_est = LFI.skp_stability_rad(A, H, Q)
+    ρ_est = LFI.skp_stability_rad(P, A, H; dims=(1,2))
     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H
 end
 
 
 # Van der Pol Oscillator (VPO) Example
-function vpo_example(; method="P", type="I", x0_bnds=(-1.5, 1.5))
+function vpo_example(; method="P", type="I", x0_bnds=(-4.0, 4.0), μ=1.0)
     A = zeros(2,2)
-    A[1,2] = 1.0
-    A[2,1] = -1.0
-    A[2,2] = -0.5
-    H = LnL.makeQuadOp(2, [(1,2,2), (2,2,2)], [-0.5, -0.1])
-    F = LnL.H2F(H)
+    A[1,2] = -1.0
+    A[2,1] = 1.0
+    A[2,2] = -μ
+    G = zeros(2,8)
+    G[2,2] = μ/3
+    G[2,3] = μ/3
+    G[2,5] = μ/3
+    E = LnL.G2E(G)
 
     # Generate the data
-    num_ic = 20  # number of initial conditions
-    tf = 10.0
+    num_ic = 10  # number of initial conditions
+    tf = 3.0
     dt = 0.001
     DS = 100  # down-sampling
 
     X = []
     Xdot = []
     lb, ub = x0_bnds
-    for i in 1:num_ic
+    ct = 0
+    while ct < num_ic
         x0 = (ub - lb) * rand(2) .+ lb
-        data, ddata = integrate_model(A,F,x0,0.0,tf,dt)
+        rest = (x1,x2) -> (1.5*x1^2 - x1*x2 + x2^2) / (1 - 0.2362*x1^2 + 0.31747*x1*x2 - 0.1091*x2^2)
+        if rest(x0...) > 5
+            continue
+        end
+
+        data, ddata, retcode = integrate_model([A,E],x0,0.0,tf,dt,"C")
+        if retcode in (:Unstable, :Terminated, :Failure)
+            continue
+        elseif retcode == :Success
+            ct += 1
+        else
+            error("Invalid retcode: $retcode")
+        end
         push!(X, data[:,1:DS:end])
         push!(Xdot, ddata[:,1:DS:end])
     end
     X = reduce(hcat, X)
+    println(size(X))
     Xdot = reduce(hcat, Xdot)
 
     if type == "I"
         ## Compute the Lyapunov Function using the intrusive method
         lyapinf_options = LFI.Int_LyapInf_options(
             extra_iter=3,
-            optimizer="Ipopt",
+            optimizer="SCS",
             ipopt_linear_solver="ma86",
             verbose=true,
             optimize_PandQ=method,
             HSL_lib_path=HSL_jll.libhsl_path,
+            is_quad=false,
+            is_cubic=true,
+            opt_max_iter=2,
         )
-        op = LnL.operators(A=A, H=H, F=F)
-        P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+        op = LnL.operators(A=A, G=G, E=E)
+        P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options; Qi=5.0I(2))
     elseif type == "NI"
         ## Compute the Lyapunov Function using the non-intrusive method
         lyapinf_options = LFI.NonInt_LyapInf_options(
@@ -149,9 +188,69 @@ function vpo_example(; method="P", type="I", x0_bnds=(-1.5, 1.5))
         error("Invalid type")
     end
     ρ_min, ρ_max = LFI.DoA(P)
-    ρ_est = LFI.skp_stability_rad(A, H, Q)
-    return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H
+    ρ_est = 1.0
+    # ρ_est = LFI.skp_stability_rad(P, A, nothing, G; dims=(1,3))
+    return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G
 end
+
+
+# Modified quadratic Van Der Pol
+# function vpo_example(; method="P", type="I", x0_bnds=(-1.5, 1.5))
+#     A = zeros(2,2)
+#     A[1,2] = 1.0
+#     A[2,1] = -1.0
+#     A[2,2] = -0.5
+#     H = LnL.makeQuadOp(2, [(1,2,2), (2,2,2)], [-0.5, -0.1])
+#     F = LnL.H2F(H)
+
+#     # Generate the data
+#     num_ic = 20  # number of initial conditions
+#     tf = 10.0
+#     dt = 0.001
+#     DS = 100  # down-sampling
+
+#     X = []
+#     Xdot = []
+#     lb, ub = x0_bnds
+#     for i in 1:num_ic
+#         x0 = (ub - lb) * rand(2) .+ lb
+#         data, ddata = integrate_model(A,F,x0,0.0,tf,dt)
+#         push!(X, data[:,1:DS:end])
+#         push!(Xdot, ddata[:,1:DS:end])
+#     end
+#     X = reduce(hcat, X)
+#     Xdot = reduce(hcat, Xdot)
+
+#     if type == "I"
+#         ## Compute the Lyapunov Function using the intrusive method
+#         lyapinf_options = LFI.Int_LyapInf_options(
+#             extra_iter=3,
+#             optimizer="Ipopt",
+#             ipopt_linear_solver="ma86",
+#             verbose=true,
+#             optimize_PandQ=method,
+#             HSL_lib_path=HSL_jll.libhsl_path,
+#         )
+#         op = LnL.operators(A=A, H=H, F=F)
+#         P, Q, cost, ∇cost = LFI.Int_LyapInf(op, X, lyapinf_options)
+#     elseif type == "NI"
+#         ## Compute the Lyapunov Function using the non-intrusive method
+#         lyapinf_options = LFI.NonInt_LyapInf_options(
+#             extra_iter=3,
+#             optimizer="Ipopt",
+#             ipopt_linear_solver="ma86",
+#             verbose=true,
+#             optimize_PandQ=method,
+#             HSL_lib_path=HSL_jll.libhsl_path,
+#         )
+#         P, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options)
+#     else
+#         error("Invalid type")
+#     end
+#     ρ_min, ρ_max = LFI.DoA(P)
+#     ρ_est = LFI.skp_stability_rad(A, H, Q)
+#     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H
+# end
 
 
 #########################
@@ -172,7 +271,7 @@ end
 
 
 function plot_doa_results(A, F, c_star, x_sample, P, Vdot, xrange, yrange;
-         heatmap_lb=-100, meshsize=1e-3, ax2title="Domain of Attraction Estimate")
+         heatmap_lb=-100, meshsize=1e-3, ax2title="Domain of Attraction Estimate", dims=2)
     fig2 = Figure(size=(800,800), fontsize=20)
     ax2 = Axis(fig2[1,1],
         title=ax2title,
@@ -212,7 +311,7 @@ function plot_doa_results(A, F, c_star, x_sample, P, Vdot, xrange, yrange;
     lines!(ax2, xβ(α), yβ(α), label="", color=:blue, linestyle=:dash, linewidth=3)
 
     # Vector field of state trajectories
-    f(x) = Point2f( (A*x + F*(x ⊘ x)) )
+    f(x) = dims == 2 ? Point2f( (A*x + F*(x ⊘ x)) ) : Point2f( (A*x + F*⊘(x,x,x)) )
     streamplot!(ax2, f, xi..xf, yi..yf, arrow_size=10, colormap=:gray1)
 
     return fig2
@@ -220,7 +319,7 @@ end
 
 # Plot the DoA comparison for the intrusive and non-intrusive results 
 function plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, xrange, yrange, ρest; 
-        heatmap_lb=-1000, meshsize=1e-3)
+        heatmap_lb=-1000, meshsize=1e-3, dims=2)
     fig = Figure(size=(800,800), fontsize=20)
     ax2 = Axis(fig[1,1],
         title="Comparison of DoA",
@@ -275,7 +374,7 @@ function plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot
     lines!(ax2, xγ(α), yγ(α), label="SKP", color=:yellow, linewidth=3)
 
     # Vector field of state trajectories
-    f(x) = Point2f( (A*x + F*(x ⊘ x)) )
+    f(x) = dims == 2 ? Point2f( (A*x + F*(x ⊘ x)) ) : Point2f( (A*x + F*⊘(x,x,x)) )
     streamplot!(ax2, f, xi..xf, yi..yf, arrow_size=10, colormap=:bone)
 
     axislegend(position = :lb)
@@ -297,12 +396,12 @@ function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1
     )
     colsize!(fig.layout, 1, Aspect(1, 1.0))
 
-    A, F, ti, tf, dt = integration_params
+    ops, ti, tf, dt, type = integration_params
     ρ_est = Inf  # initialize the estimated DoA
     for _ in 1:max_iter
         lb, ub = domain
         x0 = (ub .- lb) .* rand(length(domain)) .+ lb
-        data, _ = integrate_model(A, F, x0, ti, tf, dt)
+        data, _, _ = integrate_model(ops, x0, ti, tf, dt, type)
         δ = norm(data[:,1], 2)
         ϵ = maximum(norm.(eachcol(data), 2))
         η = ϵ / δ
@@ -339,8 +438,8 @@ function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1
         Legend(fig[2,4:5],
             [elem1, elem2, elem3, elem4, elem5], 
             [
-                L"Stable: $\max\Vert\textbf{x}(t)\Vert_2 ~\leq $ %$(M)$\Vert\textbf{x}_0\Vert_2$", 
-                L"Unstable: $\max\Vert\textbf{x}(t)\Vert_2 ~>$ %$(M)$\Vert\textbf{x}_0\Vert_2$",
+                L"$\max\Vert\textbf{x}(t)\Vert_2 ~\leq $ %$(M)$\Vert\textbf{x}_0\Vert_2$", 
+                L"$\max\Vert\textbf{x}(t)\Vert_2 ~>$ %$(M)$\Vert\textbf{x}_0\Vert_2$",
                 L"True DoA: %$(round(ρ_est,digits=4)) $$",
                 L"Intrusive LyapInf DoA: %$(round(ρ_int,digits=4)) $$",
                 L"Non-Intrusive LyapInf DoA: %$(round(ρ_nonint,digits=4)) $$"
@@ -350,8 +449,8 @@ function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1
         Legend(fig[2,4:5],
             [elem1, elem2, elem3, elem4, elem5], 
             [
-                L"Stable: $\max\Vert\textbf{x}(t)\Vert_2 ~\leq~\Vert\textbf{x}_0\Vert_2$", 
-                L"Unstable: $\max\Vert\textbf{x}(t)\Vert_2 ~>~\Vert\textbf{x}_0\Vert_2$",
+                L"$\max\Vert\textbf{x}(t)\Vert_2 ~\leq~\Vert\textbf{x}_0\Vert_2$", 
+                L"$\max\Vert\textbf{x}(t)\Vert_2 ~>~\Vert\textbf{x}_0\Vert_2$",
                 L"True DoA: %$(round(ρ_est,digits=4)) $$",
                 L"Intrusive LyapInf DoA: %$(round(ρ_int,digits=4)) $$",
                 L"Non-Intrusive LyapInf DoA: %$(round(ρ_nonint,digits=4)) $$"
@@ -360,7 +459,6 @@ function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1
     end
     return ρ_est, fig
 end
-
 
 
 #################################################
@@ -429,7 +527,7 @@ fig15 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2
 display(fig15)
 
 ## Verify the DoA
-ρ_mc, fig16 = verify_doa(ρ_star1, ρ_star2, (A, F, 0.0, 10.0, 0.001), (-5,5), 5000)
+ρ_mc, fig16 = verify_doa(ρ_star1, ρ_star2, ([A, F], 0.0, 10.0, 0.001, "Q"), (-5,5), 5000)
 display(fig16)
 
 
@@ -437,14 +535,14 @@ display(fig16)
 #################################################
 ## Example 2: Van der Pol Oscillator 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = vpo_example(method="P", type="I")
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P", type="I")
 ##
 V1 = (x) -> x' * P1 * x
-Vdot1 = (x) -> 2*x' * P1 * A * x + 2*x' * P1 * F * (x ⊘ x)
+Vdot1 = (x) -> 2*x' * P1 * A * x + 2*x' * P1 * E * ⊘(x,x,x)
 c_star1, c_all, x_sample = LFI.doa_sampling(
     V1,
     Vdot1,
-    1000, 2, (-2,2);
+    3000, 2, (-4,4);
     method="memory", history=true
 )
 ρ_star1 = sqrt(c_star1) * ρ_min
@@ -454,20 +552,21 @@ println("ρ_min = ", ρ_min)
 println("ρ_star = ", ρ_star1)
 
 ## Plot
-fig21, fig22 = plot_doa_results(A, F, c_all, c_star1, x_sample, P1[1:2,1:2], Vdot1, (-2,2), (-2,2);
-                                 heatmap_lb=-1e-1, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA")
+fig21 = plot_cstar_convergence(c_all)
+fig22 = plot_doa_results(A, E, c_star1, x_sample, P1, Vdot1, (-4,4), (-4,4);
+                                 heatmap_lb=-1e-1, meshsize=1e-2, ax2title="Intrusive LyapInf: DoA", dims=3)
 display(fig21)
 display(fig22)
 
 ## Non-Intrusive
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = vpo_example(method="P",type="NI")
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P",type="NI")
 ##
 V2 = (x) -> x' * P2 * x
-Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * F * (x ⊘ x)
+Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * E * ⊘(x,x,x)
 c_star2, c_all, x_sample = LFI.doa_sampling(
     V2,
     Vdot2,
-    1000, 2, (-2,2);
+    1000, 2, (-4,4);
     method="memory", history=true
 )
 ρ_star2 = sqrt(c_star2) * ρ_min
@@ -477,16 +576,17 @@ println("ρ_min = ", ρ_min)
 println("ρ_star = ", ρ_star2)
 
 ## Plot
-fig23, fig24 = plot_doa_results(A, F, c_all, c_star2, x_sample, P2[1:2,1:2], Vdot2, (-2,2), (-2,2);
-                                 heatmap_lb=-1e-1, meshsize=1e-2, ax2title="Non-Intrusive LyapInf: DoA")
+fig23 = plot_cstar_convergence(c_all)
+fig24 = plot_doa_results(A, E, c_star2, x_sample, P2, Vdot2, (-4,4), (-4,4);
+                            heatmap_lb=-1e-1, meshsize=1e-2, ax2title="Non-Intrusive LyapInf: DoA", dims=3)
 display(fig23)
 display(fig24)
 
 ## Plot the comparison
-fig25 = plot_doa_comparison_results(A, F, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-2,2), (-2,2), ρ_est; 
-        meshsize=1e-2)
+fig25 = plot_doa_comparison_results(A, E, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-4,4), (-4,4), ρ_est; 
+        meshsize=1e-2, dims=3)
 display(fig25)
 
 ## Verify the DoA
-ρ_mc, fig26 = verify_doa(ρ_star1, ρ_star2, (A, F, 0.0, 10.0, 0.001), (-2.5,2.5), 5000; M=1.0)
+ρ_mc, fig26 = verify_doa(ρ_star1, ρ_star2, ([A, E], 0.0, 10.0, 0.001, "C"), (-4.0,4.0), 5000; M=1.0)
 display(fig26)
