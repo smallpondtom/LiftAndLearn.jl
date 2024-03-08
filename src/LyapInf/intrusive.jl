@@ -9,8 +9,6 @@
     β::Real                     = 1e-4     # Eigenvalue shift parameter for Q
     δS::Real                    = 1e-5     # Symmetricity tolerance for P
     δJ::Real                    = 1e-3     # Objective value tolerance for the optimization
-    # η_p::Real                   = 1        # Weighting parameter for the Ptilde term
-    # η_q::Real                   = 1        # Weighting parameter for the Qtilde term
     max_iter::Int               = 100000   # Maximum number of iterations for the optimization
     opt_max_iter::Int           = 100      # Maximum number of iterations for the solving for both P and Q in loop
     extra_iter::Int             = 3        # Number of extra iterations to run after the optimization has converged
