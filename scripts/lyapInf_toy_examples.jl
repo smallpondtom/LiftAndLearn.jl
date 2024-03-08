@@ -156,7 +156,6 @@ function vpo_example(; method="P", type="I", optimizer="SCS", x0_bnds=(-4.0, 4.0
         push!(Xdot, ddata[:,1:DS:end])
     end
     X = reduce(hcat, X)
-    println(size(X))
     Xdot = reduce(hcat, Xdot)
 
     if type == "I"
@@ -405,7 +404,7 @@ end
 #################################################
 ## Example 1: Lotka-Volterra Predator-Prey 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="both", type="I", x0_bnds=(-1.5, 1.5))
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="I", x0_bnds=(-2.0, 2.0))
 ##
 c_star1, c_all, x_sample = nothing, nothing, nothing
 if SAMPLE
@@ -438,7 +437,7 @@ display(fig11)
 display(fig12)
 
 ## Non-Intrusive
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="both", type="NI", x0_bnds=(-1.5, 1.5))
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="NI", x0_bnds=(-2.0, 2.0))
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * F * (x ⊘ x)
