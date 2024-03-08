@@ -65,26 +65,28 @@ function skp_stability_rad(P::AbstractArray{T}, Ahat::AbstractArray{T}, Hhat::Un
 
         part1 = sqrt(norm(P,2) * norm(Hhat,2) + 2*σmin^2 * norm(Ghat,2)) / 2 / norm(Ghat,2)
         part2 = sqrt(norm(P,2)) * norm(H,2) / 2 / norm(Ghat,2)
-        ρhat = part1 - part2 
+        c_skp = part1 - part2 
 
     elseif (2 in dims) && !(3 in dims)
         @assert !isnothing(Hhat) "Hhat must be provided for quadratic systems."
         Q = -(Ahat' * P + P * Ahat)
         L = cholesky(Q).L
         σmin = minimum(svd(L).S)
-        ρhat = σmin^2 / sqrt(norm(P,2)) / norm(Hhat,2) / 2
+        c_skp = σmin^2 / sqrt(norm(P,2)) / norm(Hhat,2) / 2
 
     elseif !(2 in dims) && (3 in dims)
         @assert !isnothing(Ghat) "Ghat must be provided for cubic systems."
         Q = -(Ahat' * P + P * Ahat)
         L = cholesky(Q).L
         σmin = minimum(svd(L).S)
-        ρhat = σmin / sqrt(2 * norm(Ghat,2))
+        c_skp = σmin / sqrt(2 * norm(Ghat,2))
 
     else
         error("Invalid dimensions. Support only for quadratic and cubic systems.")
     end
-    return ρhat
+    λmax_P = maximum(eigvals(P))
+    ρ_skp = c_skp / sqrt(λmax_P)
+    return ρ_skp
 end
 
 
