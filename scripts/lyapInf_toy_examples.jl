@@ -522,7 +522,7 @@ display(fig23)
 display(fig24)
 
 ## Plot the comparison
-fig25 = plot_doa_comparison_results(A, E, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-4,4), (-4,4), ρ_est; 
+fig25 = plot_doa_comparison_results(A, E, c_star1, c_star2, P1, P2, Vdot1, Vdot2, (-3,3), (-3,3), ρ_est; 
         meshsize=1e-2, dims=3)
 display(fig25)
 
