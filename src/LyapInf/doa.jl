@@ -325,12 +325,6 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
         return lb, ub
     end
 
-    function low_discrepancy_sequence(dim, n)
-        sobol = Sobol.SobolSeq(dim)
-        points = [Sobol.next!(sobol) for _ in 1:n]
-        return points
-    end
-
     c_underbar_star = 0
     c_bar_star = Inf
     E = [0.0]
@@ -444,12 +438,6 @@ function enhanced_sampling_with_memory(V::Function, V_dot::Function, ns::Real, N
         end
 
         return lb, ub
-    end
-
-    function low_discrepancy_sequence(dim, n)
-        sobol = Sobol.SobolSeq(dim)
-        points = [Sobol.next!(sobol) for _ in 1:n]
-        return points
     end
 
     c_underbar_star = 0
