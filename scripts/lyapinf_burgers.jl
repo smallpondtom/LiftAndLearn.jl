@@ -111,13 +111,15 @@ op_inf = LnL.inferOp(X, zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vrmax, Vrmax' * R, o
 ds2= 1  # another downsampling for lyapinf
 int_lyapinf_options = LFI.Int_LyapInf_options(
     extra_iter=3,
-    optimizer="Ipopt",
+    optimizer="SCS",
     ipopt_linear_solver="ma86",
     verbose=true,
     optimize_PandQ="P",
     opt_max_iter=500,
     δJ=1e-5,
     HSL_lib_path=HSL_jll.libhsl_path,
+    α=1e-6,
+    β=1e-6
 )
 P_int, Q_int, cost, ∇cost = LFI.Int_LyapInf(op_int, Vrmax' * X[:,1:ds2:end], int_lyapinf_options)
 
@@ -131,13 +133,14 @@ P_inf, Q_inf, cost, ∇cost = LFI.Int_LyapInf(op_inf, Vrmax' * X[:,1:ds2:end], i
 #####################################
 nonint_lyapinf_options = LFI.NonInt_LyapInf_options(
     extra_iter=3,
-    optimizer="Ipopt",
+    optimizer="SCS",
     ipopt_linear_solver="ma86",
     verbose=true,
     optimize_PandQ="P",
     opt_max_iter=500,
     δJ=1e-5,
     HSL_lib_path=HSL_jll.libhsl_path,
+    α=1e-6,
 )
 P_star, Q_star, cost, ∇cost = LFI.NonInt_LyapInf(Vrmax' * X[:,1:ds2:end], Vrmax' * R[:,1:ds2:end], nonint_lyapinf_options)
 
@@ -145,26 +148,27 @@ P_star, Q_star, cost, ∇cost = LFI.NonInt_LyapInf(Vrmax' * X[:,1:ds2:end], Vrma
 ################################################
 ## Sample the max level surface (for r = 10)
 ################################################
-sampling = false
+sampling = true
 ##
 # POD
 V = (x) -> (x' * P_int * x)[1]
-# Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.F * (x ⊘ x)
-Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.H * kron(x, x)
+Vdot = (x) -> x' * P_int * op_int.A * x + x' * P_int * op_int.F * (x ⊘ x)
 
 if sampling
     c_star1, c_all1, _ = LFI.doa_sampling(
         V,
         Vdot,
-        1e7, rmax, [(-50,50) for _ in 1:rmax]; n_strata=2^3,
-        method="memory", history=true, uniform_state_space=false, gp=burgers.Xdim
+        1e6, rmax, [(-4.4,4.4) for _ in 1:rmax]; n_strata=2^4,
+        method="enhanced", history=true, uniform_state_space=true, gp=burgers.Xdim,
+        sampler="sobol"
     )
 else
     c_star1, _ = LFI.LEDOA(V, Vdot, rmax; linear_solver="ma86", verbose=true, HSL_lib_path=HSL_jll.libhsl_path)
 end
 ρmin1 = sqrt(1/maximum(eigvals(P_int)))
 ρstar1 = sqrt(c_star1/maximum(eigvals(P_int)))
-ρskp1 = LFI.skp_stability_rad(op_int.A, op_int.H, Q_int)
+# ρskp1 = LFI.skp_stability_rad(P_int, op_int.A, op_int.H)
+ρskp1 = 1.0
 println("POD: c* = $c_star1, ρ = $ρmin1, ρstar = $ρstar1, ρskp = $ρskp1")
 
 ##
@@ -184,12 +188,13 @@ Vdot = (x) -> x' * P_inf * op_inf.A * x + x' * P_inf * op_inf.F * (x ⊘ x)
 c_star2, c_all2, _ = LFI.doa_sampling(
     V,
     Vdot,
-    1e7, rmax, [(-50,50) for _ in 1:rmax];
-    method="memory", history=true, uniform_state_space=false, gp=burgers.Xdim
+    1e6, rmax, [(-40,40) for _ in 1:rmax]; n_strata=2^4,
+    method="enhanced", history=true, uniform_state_space=false, gp=burgers.Xdim
 )
 ρmin2 = sqrt(1/maximum(eigvals(P_inf)))
 ρstar2 = sqrt(c_star2/maximum(eigvals(P_inf)))
-ρskp2 = LFI.skp_stability_rad(op_inf.A, op_inf.H, Q_inf)
+# ρskp2 = LFI.skp_stability_rad(P_inf, op_inf.A, op_inf.H)
+ρskp2 = 1.0
 println("OpInf: c* = $c_star2, ρmin = $ρmin2, ρstar = $ρstar2, ρskp = $ρskp2")
 
 ##
@@ -209,12 +214,13 @@ Vdot = (x) -> x' * P_star * op_int.A * x + x' * P_star * op_int.F * (x ⊘ x)
 c_star3 = LFI.doa_sampling(
     V,
     Vdot,
-    1e7, rmax, [(-50,50) for _ in 1:rmax]; 
+    1e6, rmax, [(-4.4,4.4) for _ in 1:rmax]; n_strata=2^4,
     method="enhanced", history=false, uniform_state_space=true, gp=burgers.Xdim
 )
 ρmin3 = sqrt(1/maximum(eigvals(P_star)))
 ρstar3 = sqrt(c_star3/maximum(eigvals(P_star)))
-ρskp3 = LFI.skp_stability_rad(op_int.A, op_int.H, Q_star)
+# ρskp3 = LFI.skp_stability_rad(P_star, op_int.A, op_int.H)
+ρskp3 = 1.0
 println("Non-intrusive: c* = $c_star3, ρmin = $ρmin3, ρstar = $ρstar3, ρskp = $ρskp3")
 
 

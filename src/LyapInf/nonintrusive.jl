@@ -11,7 +11,7 @@
     max_iter::Int               = 100000   # Maximum number of iterations for the optimization
     opt_max_iter::Int           = 100      # Maximum number of iterations for the solving for both P and Q in loop
     extra_iter::Int             = 3        # Number of extra iterations to run after the optimization has converged
-    optimizer::String           = "ipopt"  # Optimizer to use for the optimization
+    optimizer::String           = "SCS"    # Optimizer to use for the optimization
     ipopt_linear_solver::String = "none"   # Linear solver for Ipopt
     verbose::Bool               = false    # Enable verbose output for the optimization
     optimize_PandQ::String      = "P"      # Optimize both P and Q 

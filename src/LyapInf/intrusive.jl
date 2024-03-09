@@ -12,7 +12,7 @@
     max_iter::Int               = 100000   # Maximum number of iterations for the optimization
     opt_max_iter::Int           = 100      # Maximum number of iterations for the solving for both P and Q in loop
     extra_iter::Int             = 3        # Number of extra iterations to run after the optimization has converged
-    optimizer::String           = "ipopt"  # Optimizer to use for the optimization
+    optimizer::String           = "SCS"    # Optimizer to use for the optimization
     ipopt_linear_solver::String = "none"   # Linear solver for Ipopt
     verbose::Bool               = false    # Enable verbose output for the optimization
     optimize_PandQ::String      = "P"      # Optimize both P and Q 
@@ -57,7 +57,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         set_string_names_on_creation(model, false)
 
         @variable(model, P[1:n, 1:n], Symmetric)
-        @variable(model, Ld[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+        @variable(model, Ld[1:n, 1:n] >= eps(), Symmetric)  # Lower triangular matrix
         L = LinearAlgebra.LowerTriangular(Ld)
         if !isnothing(Pi)
             set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
@@ -100,6 +100,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
                 @constraint(model, P[i, j] == sum(L[i, k] * L[j, k] for k in 1:min(i, j)))
             end
         end
+
     else   # SCS is okay with large objective
         model = Model(SCS.Optimizer)
         set_optimizer_attribute(model, "max_iters", options.max_iter)
@@ -175,7 +176,7 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
         set_string_names_on_creation(model, false)
 
         @variable(model, Q[1:n, 1:n], Symmetric)
-        @variable(model, Rd[1:n, 1:n] >= 0, Symmetric)  # Lower triangular matrix
+        @variable(model, Rd[1:n, 1:n] >= eps(), Symmetric)  # Lower triangular matrix
         R = LinearAlgebra.LowerTriangular(Rd)
         if !isnothing(Qi)
             set_start_value.(Q, Qi)  # set initial guess for the quadratic P matrix
