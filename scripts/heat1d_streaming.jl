@@ -12,6 +12,21 @@ using Statistics: cov
 using LiftAndLearn
 const LnL = LiftAndLearn
 
+##################
+## Plotting Theme
+##################
+ace_light = Merge(Theme(
+    fontsize = 20,
+    backgroundcolor = "#F2F2F2",
+    Axis = (
+        backgroundcolor = "#F2F2F2",
+        xlabelsize = 20, xlabelpaddingg=-5,
+        xgridstyle = :dash, ygridstyle = :dash,
+        xtickalign = 1, ytickalign = 1,
+        xticksize = 10, yticksize = 10,
+        rightspinevisible = false, topspinevisible = false,
+    ),
+), theme_latexfonts())
 
 #######################
 ## Additional function
