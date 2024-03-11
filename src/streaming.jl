@@ -137,6 +137,8 @@ function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, U_kp1::Abst
         stream.K_k = stream.P_k * D_kp1'
         stream.O_k += stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
     end
+
+    return D_kp1
 end
 
 
