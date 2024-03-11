@@ -4,7 +4,7 @@
 using CairoMakie
 using LinearAlgebra
 using Random: randn, seed!
-using Statistics: cov
+using Statistics: cov, mean
 
 ###############
 ## My modules
@@ -15,7 +15,7 @@ const LnL = LiftAndLearn
 ##################
 ## Plotting Theme
 ##################
-ace_light = Merge(Theme(
+ace_light = CairoMakie.merge(Theme(
     fontsize = 20,
     backgroundcolor = "#F2F2F2",
     Axis = (
@@ -25,6 +25,9 @@ ace_light = Merge(Theme(
         xtickalign = 1, ytickalign = 1,
         xticksize = 10, yticksize = 10,
         rightspinevisible = false, topspinevisible = false,
+    ),
+    Legend = (
+        backgroundcolor = "#F2F2F2",
     ),
 ), theme_latexfonts())
 
@@ -131,7 +134,7 @@ op_inf = LnL.inferOp(X, U, Y, Vr, R, options)
 ## Streaming-OpInf
 ###################
 # Construct batches of the training data
-batchsize = 250
+batchsize = 500
 Xhat_batch = batchify(Vr' * X, batchsize)
 U_batch = batchify(U, batchsize)
 Y_batch = batchify(Y', batchsize)
@@ -182,19 +185,20 @@ for i = 1:r
 end
 
 ## Plot
-fig2 = Figure(fontsize=20, size=(1200,600))
-ax1 = Axis(fig2[1, 1], xlabel="r", ylabel="Relative Error", title="Relative State Error", yscale=log10)
-scatterlines!(ax1, 1:r, rel_state_err[:, 1], label="Intrusive")
-scatterlines!(ax1, 1:r, rel_state_err[:, 2], label="OpInf")
-scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="Streaming-OpInf")
-ax2 = Axis(fig2[1, 2], xlabel="r", ylabel="Relative Error", title="Relative Output Error", yscale=log10)
-l1 = scatterlines!(ax2, 1:r, rel_output_err[:, 1], label="Intrusive")
-l2 = scatterlines!(ax2, 1:r, rel_output_err[:, 2], label="OpInf")
-l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="Streaming-OpInf")
-Legend(fig2[2, 1:2], [l1, l2, l3], ["Intrusive", "OpInf", "Streaming-OpInf"],
-        orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
-display(fig2)
-
+with_theme(ace_light) do
+    fig2 = Figure(fontsize=20, size=(1200,600))
+    ax1 = Axis(fig2[1, 1], xlabel="r", ylabel="Relative Error", title="Relative State Error", yscale=log10)
+    scatterlines!(ax1, 1:r, rel_state_err[:, 1], label="Intrusive")
+    scatterlines!(ax1, 1:r, rel_state_err[:, 2], label="OpInf")
+    scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="Streaming-OpInf")
+    ax2 = Axis(fig2[1, 2], xlabel="r", ylabel="Relative Error", title="Relative Output Error", yscale=log10)
+    l1 = scatterlines!(ax2, 1:r, rel_output_err[:, 1], label="Intrusive")
+    l2 = scatterlines!(ax2, 1:r, rel_output_err[:, 2], label="OpInf")
+    l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="Streaming-OpInf")
+    Legend(fig2[2, 1:2], [l1, l2, l3], ["Intrusive", "OpInf", "Streaming-OpInf"],
+            orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
+    display(fig2)
+end
 
 ###########################
 ## Error per stream update
@@ -204,6 +208,10 @@ M = size(X,2)÷batchsize
 r_select = [5, 10, 15]
 rel_state_err_stream = zeros(M, length(r_select))
 rel_output_err_stream = zeros(M, length(r_select))
+err_state_acc_stream = zeros(M,2)
+err_output_acc_stream = zeros(M,2)
+err_state_acc_stream[1,:] .= 1.0  # Iteration 0 is 1
+err_output_acc_stream[1,:] .= 1.0  # Iteration 0 is 1
 
 stream = LnL.Streaming_InferOp(options)
 for (j,ri) in enumerate(r_select)
@@ -211,8 +219,17 @@ for (j,ri) in enumerate(r_select)
         if i == 1
             D_k = stream.init!(stream, Xhat_batch[i], U_batch[i], Y_batch[i], R_batch[i])
         else 
-            stream.stream!(stream, Xhat_batch[i], U_batch[i], R_batch[i])
+            D_k = stream.stream!(stream, Xhat_batch[i], U_batch[i], R_batch[i])
             stream.stream_output!(stream, Xhat_batch[i], Y_batch[i])
+            
+            if j == length(r_select)
+                # Store the error factor ||I - K_k * D_k||_2
+                err_state_acc_stream[i,1] = opnorm(I - stream.K_k * D_k, 2)
+                err_output_acc_stream[i,1] = opnorm(I - stream.Ky_k * Xhat_batch[i]', 2)
+
+                err_state_acc_stream[i,2] = minimum(svd(I - stream.K_k * D_k).S)
+                err_output_acc_stream[i,2] = minimum(svd(I - stream.Ky_k * Xhat_batch[i]').S)
+            end
         end
         op_stream = stream.unpack_operators(stream)
 
@@ -228,19 +245,42 @@ for (j,ri) in enumerate(r_select)
     end
 end
 ## Plot
-fig3 = Figure(fontsize=20, size=(1200,600))
-ax1 = Axis(fig3[1, 1], xlabel="Stream Update", ylabel="Relative Error", title="Relative State Error", yscale=log10, xticks=1:M)
-ax2 = Axis(fig3[1, 2], xlabel="Stream Update", ylabel="Relative Error", title="Relative Output Error", yscale=log10, xticks=1:M)
-lines_ = []
-labels_ = []
-for (j,ri) in enumerate(r_select)
-    scatterlines!(ax1, 1:M, rel_state_err_stream[:,j])
-    l = scatterlines!(ax2, 1:M, rel_output_err_stream[:,j])
-    push!(lines_, l)
-    push!(labels_, "r = $ri")
+with_theme(ace_light) do
+    fig3 = Figure(fontsize=20, size=(1200,600))
+    ax1 = Axis(fig3[1, 1], xlabel="Stream Update", ylabel="Relative Error", title="Relative State Error", yscale=log10, xticks=1:M)
+    ax2 = Axis(fig3[1, 2], xlabel="Stream Update", ylabel="Relative Error", title="Relative Output Error", yscale=log10, xticks=1:M)
+    lines_ = []
+    labels_ = []
+    for (j,ri) in enumerate(r_select)
+        scatterlines!(ax1, 1:M, rel_state_err_stream[:,j])
+        l = scatterlines!(ax2, 1:M, rel_output_err_stream[:,j])
+        push!(lines_, l)
+        push!(labels_, "r = $ri")
+    end
+    Legend(fig3[2, 1:2], lines_, labels_, orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
+    display(fig3)
 end
-Legend(fig3[2, 1:2], lines_, labels_, orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
-display(fig3)
+##
+with_theme(ace_light) do
+    fig4 = Figure(size=(1200,600))
+    ax1 = Axis(fig4[1, 1], xlabel=L"Stream Update, $k$", 
+                ylabel="Factor",
+                title="State Error Factor", xticks=1:M, yscale=log10)
+    ax2 = Axis(fig4[1, 2], xlabel=L"Stream Update, $k$", 
+                ylabel="Factor",
+                title="Output Error Factor", xticks=1:M, yscale=log10)
+    scatterlines!(ax1, 1:M, err_state_acc_stream[:,1])
+    l1 = scatterlines!(ax2, 1:M, err_output_acc_stream[:,1])
+    scatterlines!(ax1, 1:M, err_state_acc_stream[:,2])
+    l2 = scatterlines!(ax2, 1:M, err_output_acc_stream[:,2])
+    scatterlines!(ax1, 1:M, 10 .^ mean(log10.(err_state_acc_stream), dims=2)[:,1], linestyle=:dash, linewidth=2)
+    l3 = scatterlines!(ax2, 1:M, 10 .^ mean(log10.(err_output_acc_stream), dims=2)[:,1], linestyle=:dash, linewidth=2)
+    Legend(fig4[2, 1:2], [l1, l2, l3], [L"Upper Bound: $\Vert \mathbf{I}-\mathbf{K}_k\mathbf{D}_k\Vert_2$", 
+            L"Lower Bound: $\sigma_{\text{min}}(\mathbf{I}-\mathbf{K}_k\mathbf{D}_k)$", "Mean"],
+            orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
+    display(fig4)
+end
+
 
 
 ##############################
@@ -248,6 +288,7 @@ display(fig3)
 ##############################
 # Construct batches of the training data
 batchsize = 500
+M = size(X,2)÷batchsize
 Xhat_batch = batchify(Vr' * X, batchsize)
 U_batch = batchify(U, batchsize)
 Y_batch = batchify(Y', batchsize)
@@ -269,10 +310,10 @@ D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1] + noise_output,
 
 ## Stream all at once
 # WARNING: Don't forget to add noise to your data matrix
-noise = [WN(σ, size(R_batch[i])) for i in 2:length(Xhat_batch)]
-noise_output = [WN(σ, size(Y_batch[i])) for i in 2:length(Y_batch)]
-R_batch_noisy = [R_batch[i] + noise[i-1] for i in 2:length(Xhat_batch)]
-Y_batch_noisy = [Y_batch[i] + noise_output[i-1] for i in 2:length(Y_batch)]
+noise = [WN(σ, size(R_batch[i])) for i in 2:M]
+noise_output = [WN(σ, size(Y_batch[i])) for i in 2:M]
+R_batch_noisy = [R_batch[i] + noise[i-1] for i in 2:M]
+Y_batch_noisy = [Y_batch[i] + noise_output[i-1] for i in 2:M]
 
 stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch_noisy, [covmat(n) for n in noise])
 stream.stream_output!(stream, Xhat_batch[2:end], Y_batch_noisy, [covmat(n) for n in noise_output])
@@ -313,18 +354,18 @@ for i = 1:r
 end
 
 ## Plot
-fig4 = Figure(fontsize=20, size=(1200,600))
-ax1 = Axis(fig4[1, 1], xlabel="r", ylabel="Relative Error", title="Relative State Error with Noise", yscale=log10)
+fig5 = Figure(fontsize=20, size=(1200,600))
+ax1 = Axis(fig5[1, 1], xlabel="r", ylabel="Relative Error", title="Relative State Error with Noise", yscale=log10)
 scatterlines!(ax1, 1:r, rel_state_err[:, 1], label="Intrusive")
 scatterlines!(ax1, 1:r, rel_state_err[:, 2], label="OpInf")
 scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="Streaming-OpInf")
-ax2 = Axis(fig4[1, 2], xlabel="r", ylabel="Relative Error", title="Relative Output Error with Noise", yscale=log10)
+ax2 = Axis(fig5[1, 2], xlabel="r", ylabel="Relative Error", title="Relative Output Error with Noise", yscale=log10)
 l1 = scatterlines!(ax2, 1:r, rel_output_err[:, 1], label="Intrusive")
 l2 = scatterlines!(ax2, 1:r, rel_output_err[:, 2], label="OpInf")
 l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="Streaming-OpInf")
-Legend(fig4[2, 1:2], [l1, l2, l3], ["Intrusive", "OpInf", "Streaming-OpInf"],
+Legend(fig5[2, 1:2], [l1, l2, l3], ["Intrusive", "OpInf", "Streaming-OpInf"],
         orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
-display(fig4)
+display(fig5)
 
 
 ###########################
@@ -361,9 +402,9 @@ for (j,ri) in enumerate(r_select)
     end
 end
 ## Plot
-fig5 = Figure(fontsize=20, size=(1200,600))
-ax1 = Axis(fig5[1, 1], xlabel="Stream Update", ylabel="Relative Error", title="Relative State Error", yscale=log10, xticks=1:M)
-ax2 = Axis(fig5[1, 2], xlabel="Stream Update", ylabel="Relative Error", title="Relative Output Error", yscale=log10, xticks=1:M)
+fig6 = Figure(fontsize=20, size=(1200,600))
+ax1 = Axis(fig6[1, 1], xlabel="Stream Update", ylabel="Relative Error", title="Relative State Error", yscale=log10, xticks=1:M)
+ax2 = Axis(fig6[1, 2], xlabel="Stream Update", ylabel="Relative Error", title="Relative Output Error", yscale=log10, xticks=1:M)
 lines_ = []
 labels_ = []
 for (j,ri) in enumerate(r_select)
@@ -372,5 +413,5 @@ for (j,ri) in enumerate(r_select)
     push!(lines_, l)
     push!(labels_, "r = $ri")
 end
-Legend(fig5[2, 1:2], lines_, labels_, orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
-display(fig5)
+Legend(fig6[2, 1:2], lines_, labels_, orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
+display(fig6)
