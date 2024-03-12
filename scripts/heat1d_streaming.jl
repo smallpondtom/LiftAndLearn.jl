@@ -12,6 +12,11 @@ using Statistics: cov, mean
 using LiftAndLearn
 const LnL = LiftAndLearn
 
+###################
+## Global Settings
+###################
+CONST_BATCH = true
+
 ##################
 ## Plotting Theme
 ##################
@@ -34,7 +39,7 @@ ace_light = CairoMakie.merge(Theme(
 #######################
 ## Additional function
 #######################
-function batchify(X, batchsize)
+function batchify(X::AbstractArray{<:Number}, batchsize::Integer)
     m, n = size(X)
     if m > n
         return map(Iterators.partition(axes(X,1), batchsize)) do cols
@@ -46,6 +51,23 @@ function batchify(X, batchsize)
         end
     end
 end
+
+function batchify(X::AbstractArray{<:Number}, batchsize::Array{<:Integer})
+    m, n = size(X)
+    cum = cumsum(batchsize)
+    if m > n
+        return [
+            i==1 ? X[1:cum[i],:] : X[1+cum[i-1]:min(cum[i],size(X,1)),:] 
+            for i in eachindex(cum)
+        ]
+    else
+        return [
+            i==1 ? X[:,1:cum[i]] : X[:,1+cum[i-1]:min(cum[i],size(X,2))] 
+            for i in eachindex(cum)
+        ]
+    end
+end
+
 
 ##########################
 ## 1D Heat equation setup
@@ -105,13 +127,15 @@ Uf = copy(U)
 ######################
 ## Plot Data to Check
 ######################
-fig1 = Figure(fontsize=20, size=(1300,500))
-ax1 = Axis3(fig1[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-surface!(ax1, heat1d.x, heat1d.t, X)
-ax2 = Axis(fig1[1, 2], xlabel="x", ylabel="t")
-hm = heatmap!(ax2, heat1d.x, heat1d.t, X)
-Colorbar(fig1[1, 3], hm)
-display(fig1)
+with_theme(theme_latexfonts()) do
+    fig1 = Figure(fontsize=20, size=(1300,500), backgroundcolor="#F2F2F2")
+    ax1 = Axis3(fig1[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
+    surface!(ax1, heat1d.x, heat1d.t, X)
+    ax2 = Axis(fig1[1, 2], xlabel="x", ylabel="t")
+    hm = heatmap!(ax2, heat1d.x, heat1d.t, X)
+    Colorbar(fig1[1, 3], hm)
+    display(fig1)
+end
 
 #############
 ## Intrusive
@@ -134,7 +158,15 @@ op_inf = LnL.inferOp(X, U, Y, Vr, R, options)
 ## Streaming-OpInf
 ###################
 # Construct batches of the training data
-batchsize = 500
+batchsize = nothing
+if CONST_BATCH
+    batchsize = 500
+else
+    # Large initial batch updated with smaller batches
+    init_batchsize = 200
+    update_size = 1
+    batchsize = vcat([init_batchsize], [update_size for _ in 1:((size(X,2)-init_batchsize)÷update_size)])
+end
 Xhat_batch = batchify(Vr' * X, batchsize)
 U_batch = batchify(U, batchsize)
 Y_batch = batchify(Y', batchsize)
@@ -149,7 +181,7 @@ D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1], R_batch[1])
 stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch[2:end])
 stream.stream_output!(stream, Xhat_batch[2:end], Y_batch[2:end])
 
-##
+## Unpack solution operators
 op_stream = stream.unpack_operators(stream)
 
 ##################
@@ -204,7 +236,7 @@ end
 ## Error per stream update
 ###########################
 # Initialize the stream
-M = size(X,2)÷batchsize
+M = CONST_BATCH ? size(X,2)÷batchsize : length(batchsize)
 r_select = [5, 10, 15]
 rel_state_err_stream = zeros(M, length(r_select))
 rel_output_err_stream = zeros(M, length(r_select))
@@ -247,8 +279,9 @@ end
 ## Plot
 with_theme(ace_light) do
     fig3 = Figure(fontsize=20, size=(1200,600))
-    ax1 = Axis(fig3[1, 1], xlabel="Stream Update", ylabel="Relative Error", title="Relative State Error", yscale=log10, xticks=1:M)
-    ax2 = Axis(fig3[1, 2], xlabel="Stream Update", ylabel="Relative Error", title="Relative Output Error", yscale=log10, xticks=1:M)
+    xtick_vals = CONST_BATCH ? (1:M) : (1:(M÷10):M)
+    ax1 = Axis(fig3[1, 1], xlabel="Stream Update", ylabel="Relative Error", title="Relative State Error", yscale=log10, xticks=xtick_vals)
+    ax2 = Axis(fig3[1, 2], xlabel="Stream Update", ylabel="Relative Error", title="Relative Output Error", yscale=log10, xticks=xtick_vals)
     lines_ = []
     labels_ = []
     for (j,ri) in enumerate(r_select)
@@ -263,12 +296,13 @@ end
 ##
 with_theme(ace_light) do
     fig4 = Figure(size=(1200,600))
+    xtick_vals = CONST_BATCH ? (1:M) : (1:(M÷10):M)
     ax1 = Axis(fig4[1, 1], xlabel=L"Stream Update, $k$", 
                 ylabel="Factor",
-                title="State Error Factor", xticks=1:M, yscale=log10)
+                title="State Error Factor", xticks=xtick_vals, yscale=log10)
     ax2 = Axis(fig4[1, 2], xlabel=L"Stream Update, $k$", 
                 ylabel="Factor",
-                title="Output Error Factor", xticks=1:M, yscale=log10)
+                title="Output Error Factor", xticks=xtick_vals, yscale=log10)
     scatterlines!(ax1, 1:M, err_state_acc_stream[:,1])
     l1 = scatterlines!(ax2, 1:M, err_output_acc_stream[:,1])
     scatterlines!(ax1, 1:M, err_state_acc_stream[:,2])
@@ -280,7 +314,6 @@ with_theme(ace_light) do
             orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
     display(fig4)
 end
-
 
 
 ##############################
