@@ -316,6 +316,50 @@ with_theme(ace_light) do
 end
 
 
+################################
+## Initial error over batchsize
+################################
+batchsizes = 100:50:1000
+initial_errs = zeros(length(batchsizes))
+initial_output_errs = zeros(length(batchsizes))
+O_star = [op_inf.A'; op_inf.B']
+for (i, batchsize) in enumerate(batchsizes)
+    Xhat_batch = batchify(Vr' * X, batchsize)
+    U_batch = batchify(U, batchsize)
+    Y_batch = batchify(Y', batchsize)
+    R_batch = batchify(R', batchsize)
+
+    # Initialize the stream
+    # INFO: Remember to make data matrices a tall matrix except X matrix
+    stream = LnL.Streaming_InferOp(options)
+    D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1], R_batch[1])
+
+    # Stream all at once
+    stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch[2:end])
+    stream.stream_output!(stream, Xhat_batch[2:end], Y_batch[2:end])
+
+    # Compute state error
+    initial_errs[i] = norm(O_star - stream.O_k, 2) / norm(O_star, 2)
+
+    # Compute output error
+    initial_output_errs[i] = norm(op_inf.C' - stream.C_k, 2) / norm(op_inf.C', 2)
+end
+## Plot
+with_theme(ace_light) do
+    fig5 = Figure(fontsize=20, size=(1200,600))
+    ax1 = Axis(fig5[1, 1], xlabel="batch-size", 
+                ylabel=L"\Vert \mathbf{O}_* - \mathbf{O}_0 \Vert_F ~/~ \Vert \mathbf{O}_* \Vert_F", 
+                title="Initial Relative Error of State", yscale=log10)
+    scatterlines!(ax1, batchsizes, initial_errs)
+    ax2 = Axis(fig5[1, 2], xlabel="batch-size", 
+                ylabel=L"\Vert \hat{\mathbf{C}}_* - \hat{\mathbf{C}}_0\Vert ~/~ \Vert \hat{\mathbf{C}}_* \Vert", 
+                title="Initial Relative Output Error", yscale=log10)
+    scatterlines!(ax2, batchsizes, initial_output_errs)
+    display(fig5)
+end
+
+
+
 ##############################
 ## Streaming-OpInf with noise
 ##############################
