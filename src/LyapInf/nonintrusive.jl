@@ -82,6 +82,7 @@ function optimize_P(X::AbstractArray{T}, Xdot::AbstractArray{T}, Q::AbstractArra
             model, 
             inside_norm, 
             sum((2.0 .*P*Xdot .- Q*X*X'*P*X .+ Q*X).^2) 
+            # sum((2.0 .*P*Xdot .+ Q*X).^2) 
         )  
         @objective(model, Min, inside_norm)
 

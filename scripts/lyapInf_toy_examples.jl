@@ -188,7 +188,7 @@ function vpo_example(; method="P", type="I", optimizer="SCS", x0_bnds=(-4.0, 4.0
     end
     ρ_min, ρ_max = LFI.DoA(P)
     ρ_est = 1.0
-    ρ_est = LFI.skp_stability_rad(P, A, nothing, G; dims=(1,3))
+    # ρ_est = LFI.skp_stability_rad(P, A, nothing, G; dims=(1,3))
     return P, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G
 end
 
@@ -474,7 +474,7 @@ display(fig16)
 #################################################
 ## Example 2: Van der Pol Oscillator 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P", type="I", μ=4.0)
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P", type="I", μ=1.0)
 ##
 V1(x) = x' * P1 * x
 Vdot1(x) = 2*x' * P1 * A * x + 2*x' * P1 * E * ⊘(x,x,x)
@@ -498,7 +498,7 @@ display(fig21)
 display(fig22)
 
 ## Non-Intrusive
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P",type="NI", μ=4.0)
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P",type="NI", μ=1.0)
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * E * ⊘(x,x,x)
