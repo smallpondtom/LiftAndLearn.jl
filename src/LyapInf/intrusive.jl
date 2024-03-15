@@ -63,6 +63,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
         end
 
+
         # INFO: Directly make P into a cholesky factorization
         #         This takes very long to solve
         # @variable(model, Ld[1:n, 1:n], Symmetric)
@@ -114,10 +115,12 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         if !isnothing(Pi)
             set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
         end
+
         if options.is_quad && options.is_cubic
             @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
         elseif options.is_quad
             @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2))
+            # @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ Q*X).^2))
         elseif options.is_cubic
             @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
         else

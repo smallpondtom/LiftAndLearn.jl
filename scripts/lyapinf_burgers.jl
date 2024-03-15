@@ -115,11 +115,11 @@ int_lyapinf_options = LFI.Int_LyapInf_options(
     ipopt_linear_solver="ma86",
     verbose=true,
     optimize_PandQ="P",
-    opt_max_iter=500,
-    δJ=1e-5,
+    opt_max_iter=20,
+    δJ=1e-3,
     HSL_lib_path=HSL_jll.libhsl_path,
-    α=1e-6,
-    β=1e-6
+    α=1e-8,
+    β=1e-8
 )
 P_int, Q_int, cost, ∇cost = LFI.Int_LyapInf(op_int, Vrmax' * X[:,1:ds2:end], int_lyapinf_options)
 
