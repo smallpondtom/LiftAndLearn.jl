@@ -79,6 +79,7 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
         elseif options.is_quad
             @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X)
+            # @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ Q*X)
         elseif options.is_cubic
             @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
         else
@@ -190,6 +191,7 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
             @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
         elseif options.is_quad
             @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X)
+            # @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ Q*X)
         elseif options.is_cubic
             @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
         else
@@ -230,6 +232,7 @@ function optimize_Q(op::operators, X::AbstractArray{T}, P::AbstractArray{T},
             @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
         elseif options.is_quad
             @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2))
+            # @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ Q*X).^2))
         elseif options.is_cubic
             @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
         else
@@ -307,6 +310,7 @@ function optimize_PQ(op::operators, X::AbstractArray{T}, options::Int_LyapInf_op
         @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
     elseif options.is_quad
         @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X)
+        # @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ Q*X)
     elseif options.is_cubic
         @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
     else
