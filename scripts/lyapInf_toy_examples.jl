@@ -404,7 +404,7 @@ end
 #################################################
 ## Example 1: Lotka-Volterra Predator-Prey 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="I", x0_bnds=(-2.0, 2.0))
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, F, H = lvpp_example(method="P", type="I", x0_bnds=(-2.0, 2.0),optimizer="ipopt")
 ##
 c_star1, c_all, x_sample = nothing, nothing, nothing
 if SAMPLE
@@ -474,7 +474,7 @@ display(fig16)
 #################################################
 ## Example 2: Van der Pol Oscillator 
 #################################################
-P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P", type="I", μ=1.0)
+P1, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P", type="I", μ=1.0, optimizer="SCS")
 ##
 V1(x) = x' * P1 * x
 Vdot1(x) = 2*x' * P1 * A * x + 2*x' * P1 * E * ⊘(x,x,x)
@@ -498,7 +498,7 @@ display(fig21)
 display(fig22)
 
 ## Non-Intrusive
-P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P",type="NI", μ=1.0)
+P2, Q, cost, ∇cost, ρ_min, ρ_max, ρ_est, A, E, G = vpo_example(method="P",type="NI", μ=1.0, optimizer="SCS")
 ##
 V2 = (x) -> x' * P2 * x
 Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * E * ⊘(x,x,x)

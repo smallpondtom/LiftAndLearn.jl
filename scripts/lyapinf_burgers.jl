@@ -111,17 +111,28 @@ op_inf = LnL.inferOp(X, zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vrmax, Vrmax' * R, o
 ds2= 1  # another downsampling for lyapinf
 int_lyapinf_options = LFI.Int_LyapInf_options(
     extra_iter=3,
-    optimizer="SCS",
+    optimizer="ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
-    optimize_PandQ="P",
-    opt_max_iter=20,
+    optimize_PandQ="together",
+    opt_max_iter=10,
     δJ=1e-3,
     HSL_lib_path=HSL_jll.libhsl_path,
     α=1e-8,
     β=1e-8
 )
 P_int, Q_int, cost, ∇cost = LFI.Int_LyapInf(op_int, Vrmax' * X[:,1:ds2:end], int_lyapinf_options)
+
+##
+R = -(op_int.A' * P_int + P_int * op_int.A)
+Red = eigen(R)
+RD = Red.values
+RV = Red.vectors
+# RD = [λ > 0 ? λ : eps() for λ in RD]
+# R_ = RV * Diagonal(RD) / RV
+
+##
+P_ = lyapc(op_int.A', R_)
 
 #####################################
 ## Intrusive LyapInf for OpInf model
