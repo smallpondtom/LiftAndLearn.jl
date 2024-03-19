@@ -2,7 +2,7 @@ export operators, dupmat, elimat, commat, symmtzrmat, vech, Unique_Kronecker, âŠ
 export dupmat3, elimat3, symmtzrmat3, G2E, E2G, E2Gs, cubeMatStates
 export F2H, H2F, F2Hs, squareMatStates, kronMatStates, extractF 
 export insert2F, insert2randF, extractH, insert2H, insert2bilin
-export invec, Q2H, H2Q
+export invec, Q2H, H2Q, makeQuadOp, makeCubicOp
 
 """
 $(TYPEDEF)
@@ -953,6 +953,77 @@ function makeQuadOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int}}, vals::Abstr
         return Q
     else
         error("The quad term must be either H, F, or Q.")
+    end
+end
+
+
+"""
+    makeCubicOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int,Int}}, vals::AbstractArray{Real}, 
+    which_cubic_term::Union{String,Char}="G") â†’ G or E
+
+Helper function to construct the cubic operator from the indices and values. The indices must
+be a 1-dimensional array of tuples of the form `(i,j,k,l)` where `i,j,k,l` are the indices of the
+cubic term. For example, for the cubic term ``2.5x_1x_2x_3`` for ``\\dot{x}_4`` would have an
+index of `(1,2,3,4)` with a value of `2.5`. The `which_cubic_term` argument specifies which cubic
+term to construct (the redundant or non-redundant operator). Note that the values must be a 
+1-dimensional array of the same length as the indices.
+
+## Arguments
+- `n::Int`: dimension of the cubic operator
+- `inds::AbstractArray{Tuple{Int,Int,Int,Int}}`: indices of the cubic term
+- `vals::AbstractArray{Real}`: values of the cubic term
+- `which_cubic_term::Union{String,Char}="G"`: which cubic term to construct "G" or "E"
+- `symmetric::Bool=true`: whether to construct the symmetric `G` matrix
+
+## Returns
+- the cubic operator
+"""
+function makeCubicOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int,Int}}, vals::AbstractArray{<:Real};
+    which_cubic_term::Union{String,Char}="G", symmetric::Bool=true)
+
+    @assert length(inds) == length(vals) "The length of indices and values must be the same."
+    S = zeros(n, n, n, n)
+    for (ind,val) in zip(inds, vals)
+        if symmetric
+            i, j, k, l = ind
+            if i == j == k
+                S[ind...] = val
+            elseif (i == j) && (j != k)
+                S[i,j,k,l] = val/3
+                S[i,k,j,l] = val/3
+                S[k,i,j,l] = val/3
+            elseif (i != j) && (j == k)
+                S[i,j,k,l] = val/3
+                S[j,i,k,l] = val/3
+                S[j,k,i,l] = val/3
+            elseif (i == k) && (j != k)
+                S[i,j,k,l] = val/3
+                S[j,i,k,l] = val/3
+                S[i,k,j,l] = val/3
+            else
+                S[i,j,k,l] = val/6
+                S[i,k,j,l] = val/6
+                S[j,i,k,l] = val/6
+                S[j,k,i,l] = val/6
+                S[k,i,j,l] = val/6
+                S[k,j,i,l] = val/6
+            end
+        else
+            S[ind...] = val
+        end
+    end
+
+    G = zeros(n, n^3)
+    for i in 1:n
+        G[i, :] = vec(S[:, :, :, i])
+    end
+
+    if which_cubic_term == "G" || which_cubic_term == 'G'
+        return G
+    elseif which_cubic_term == "E" || which_cubic_term == 'E'
+        return G2E(G)
+    else
+        error("The cubic term must be either G or E.")
     end
 end
 

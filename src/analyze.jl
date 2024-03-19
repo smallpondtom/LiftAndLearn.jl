@@ -186,3 +186,22 @@ function EPConstraintViolation(Data::AbstractArray, X::Union{Matrix, SparseMatri
     return viol
 end
 
+
+"""
+    isenergypreserving(X::Union{Matrix, SparseMatrixCSC}, which_quad="H"; tol=1e-8) → Bool
+
+Check if the matrix is energy-preserving.
+
+## Arguments
+- `X::AbstractArray`: the matrix to check if it is energy-preserving
+- `which_quad::String`: the type of the quadratic operator (H or F)
+- `tol::Real`: the tolerance
+
+## Returns
+- `Bool`: whether the matrix is energy-preserving
+"""
+function isenergypreserving(X::AbstractArray, which_quad::String="H"; tol=1e-8)
+    r = size(X, 1)
+    ϵX = EPConstraintResidual(X, r, which_quad)
+    return ϵX < tol
+end
