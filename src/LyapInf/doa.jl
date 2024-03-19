@@ -64,7 +64,7 @@ function skp_stability_rad(P::AbstractArray{T}, Ahat::AbstractArray{T}, Hhat::Un
         σmin = minimum(svd(L).S)
 
         part1 = sqrt(norm(P,2) * norm(Hhat,2) + 2*σmin^2 * norm(Ghat,2)) / 2 / norm(Ghat,2)
-        part2 = sqrt(norm(P,2)) * norm(H,2) / 2 / norm(Ghat,2)
+        part2 = sqrt(norm(P,2)) * norm(Hhat,2) / 2 / norm(Ghat,2)
         c_skp = part1 - part2 
 
     elseif (2 in dims) && !(3 in dims)
