@@ -64,7 +64,8 @@ end
 
 # Plot the DoA results for 3D
 function plot_doa_results_3D(ops, c_star, x_sample, P, Vdot, xrange, yrange, zrange;
-         meshsize=1e-3, ax2title="Domain of Attraction Estimate", dims="Q")
+         meshsize=1e-3, ax2title="Domain of Attraction Estimate", dims="Q",
+         with_streamplot=true, with_samples=true, animate=false)
     fig2 = Figure(size=(1000,900), fontsize=20)
     ax2 = Axis3(fig2[1,1],
         title=ax2title,
@@ -84,20 +85,22 @@ function plot_doa_results_3D(ops, c_star, x_sample, P, Vdot, xrange, yrange, zra
 
     data = [Vdot([x,y,z]) for x=xpoints, y=ypoints, z=zpoints]
     data = data .* (data .>= 0)
-    vol = contour!(ax2, xpoints, ypoints, zpoints, data, 
+    contour!(ax2, xpoints, ypoints, zpoints, data, 
         transparent=true,
-        alpha = 0.2, levels=40
+        alpha = 0.2, levels=35
     )
     # Colorbar(fig2[:, end+1], vol, label=L"\dot{V}(x) \leq 0")
     # rowsize!(fig2.layout, 1, ax2.scene.px_area[].widths[2])
 
     # # Scatter plot of Monte Carlo samples
-    if !isnothing(x_sample)
-        meshscatter!(ax2,
-            x_sample[1,:], x_sample[2,:], x_sample[3,:], 
-            markersize=0.025, color=:red,
-            alpha=0.5,
-        )
+    if with_samples
+        if !isnothing(x_sample)
+            meshscatter!(ax2,
+                x_sample[1,:], x_sample[2,:], x_sample[3,:], 
+                markersize=0.025, color=:red,
+                alpha=0.5,
+            )
+        end
     end
 
     # Plot the Lyapunov function ellipse
@@ -116,19 +119,30 @@ function plot_doa_results_3D(ops, c_star, x_sample, P, Vdot, xrange, yrange, zra
     # Plot the Minimal DoA with single radius
     a = maximum(Λ)
     a = sqrt(c_star/a)
-    mesh!(Sphere(Point3f(0,0,0), a), color=:green, alpha=0.5)
+    mesh!(ax2, Sphere(Point3f(0,0,0), a), color=:green, alpha=0.5)
 
     # Vector field of state trajectories
-    f(x) = dims == "Q" ? Point3f( (ops.A*x + ops.E*(x ⊘ x)) ) : (
-        (dims == "C") ? Point3f( (ops.A*x + ops.E*⊘(x,x,x)) ) : 
-        Point3f( (ops.A*x + ops.F*(x ⊘ x) + ops.E*⊘(x,x,x)) )
-    )
-    streamplot!(
-        ax2, f, xi..xf, yi..yf, zi..zf, arrow_size=0.06, colormap=:gray1,
-        gridsize=(9,9),
-    )
+    if with_streamplot
+        f(x) = dims == "Q" ? Point3f( (ops.A*x + ops.E*(x ⊘ x)) ) : (
+            (dims == "C") ? Point3f( (ops.A*x + ops.E*⊘(x,x,x)) ) : 
+            Point3f( (ops.A*x + ops.F*(x ⊘ x) + ops.E*⊘(x,x,x)) )
+        )
+        streamplot!(
+            ax2, f, xi..xf, yi..yf, zi..zf, arrow_size=0.08, colormap=:gray1,
+            gridsize=(9,9),
+        )
+    end
 
-    return fig2, data
+    if animate
+        start_angle = 0.8π
+        n_frames = 120
+        ax2.viewmode = :fit # Prevent axis from resizing during animation
+        record(fig2, "doa.gif", 1:n_frames) do frame
+            ax2.azimuth[] = start_angle + 2pi * frame / n_frames
+        end
+    end
+
+    return fig2
 end
 
 
@@ -216,7 +230,7 @@ function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1
     ρ_est = Inf  # initialize the estimated DoA
     for _ in 1:max_iter
         lb, ub = domain
-        x0 = (ub .- lb) .* rand(length(domain)) .+ lb
+        x0 = (ub .- lb) .* rand(dim) .+ lb
         data, _, _ = integrate_model(ops, x0, ti, tf, dt, type, dim)
         δ = norm(data[:,1], 2)
         ϵ = maximum(norm.(eachcol(data), 2))
@@ -273,5 +287,108 @@ function verify_doa(ρ_int, ρ_nonint, integration_params, domain, max_iter; M=1
             ], rowgap = 8
         )
     end
+    return ρ_est, fig
+end
+
+function verify_doa_3D(ρ_int, ρ_nonint, integration_params, domain, max_iter; 
+                        M=1, dim=3, animate=false)
+    # Initialize the plot
+    fig = Figure(size=(1100,600), fontsize=20)
+    ax = Axis3(fig[1:3,1:3],
+        xlabel=L"x_1", ylabel=L"x_2", zlabel=L"x_3",
+        xlabelsize=25, ylabelsize=25, zlabelsize=25,
+        limits=(domain..., domain..., domain...),
+        perspectiveness=0.2, azimuth=0.8π, elevation=0.05π, 
+        aspect=(1,1,1)
+    )
+    colsize!(fig.layout, 1, Aspect(1, 1.0))
+
+    ops, ti, tf, dt, type = integration_params
+    ρ_est = Inf  # initialize the estimated DoA
+    for _ in 1:max_iter
+        lb, ub = domain
+        x0 = (ub .- lb) .* rand(dim) .+ lb
+        data, _, _ = integrate_model(ops, x0, ti, tf, dt, type, dim)
+        δ = norm(data[:,1], 2)
+        ϵ = maximum(norm.(eachcol(data), 2))
+        η = ϵ / δ
+
+        # Plot the sample
+        if η <= M
+            meshscatter!(
+                ax, data[1,1], data[2,1], data[3,1], 
+                color=:green3, label="", strokewidth=0, markersize=0.08, alpha=0.25,
+                lightposition=Vec3f(10, 5, 2),
+                ambient=Vec3f(0.95, 0.95, 0.95),
+                backlight=1.0f0
+            )
+        else
+            meshscatter!(
+                ax, data[1,1], data[2,1], data[3,1], 
+                color=:red, label="", strokewidth=0, markersize=0.08, alpha=0.25,
+                lightposition=Vec3f(10, 5, 2),
+                ambient=Vec3f(0.95, 0.95, 0.95),
+                backlight=1.0f0
+            )
+
+            # Update the estimated DoA
+            if ρ_est > δ
+                ρ_est = δ
+            end
+        end
+    end
+    # Plot the spheres
+    S = (a,u,v) -> [a*cos(u)*sin(v), a*sin(u)*sin(v), a*cos(v)]    # Sphere
+    u, v = range(0, 2π, length=20), range(0, π, length=20)
+    xs, ys, zs = [[p[i] for p in S.(ρ_int, u, v')] for i in 1:3]
+    wireframe!(ax, xs, ys, zs, color=:blue3)
+    xs, ys, zs = [[p[i] for p in S.(ρ_nonint, u, v')] for i in 1:3]
+    wireframe!(ax, xs, ys, zs, color=:orange)
+    xs, ys, zs = [[p[i] for p in S.(ρ_est, u, v')] for i in 1:3]
+    wireframe!(ax, xs, ys, zs, color=:black)
+
+    # mesh!(Sphere(Point3f(0,0,0), ρ_int), color=:blue3, alpha=0.3)
+    # mesh!(Sphere(Point3f(0,0,0), ρ_nonint), color=:orange, alpha=0.3)
+    # mesh!(Sphere(Point3f(0,0,0), ρ_est), color="black", alpha=0.3)
+
+    # Legend 
+    elem1 = MarkerElement(color=:green3, markersize=10, marker=:circle, strokewidth=0)
+    elem2 = MarkerElement(color=:red, markersize=10, marker=:circle, strokewidth=0)
+    elem3 = PolyElement(color=:black, strokecolor=:transparent)
+    elem4 = PolyElement(color=:blue3, strokecolor=:transparent)
+    elem5 = PolyElement(color=:orange, strokecolor=:transparent)
+    if M != 1
+        Legend(fig[2,4:5],
+            [elem1, elem2, elem3, elem4, elem5], 
+            [
+                L"$\max\Vert\textbf{x}(t)\Vert_2 ~\leq $ %$(M)$\Vert\textbf{x}_0\Vert_2$", 
+                L"$\max\Vert\textbf{x}(t)\Vert_2 ~>$ %$(M)$\Vert\textbf{x}_0\Vert_2$",
+                L"MC Estimate DoA: %$(round(ρ_est,digits=4)) $$",
+                L"Intrusive LyapInf DoA: %$(round(ρ_int,digits=4)) $$",
+                L"Non-Intrusive LyapInf DoA: %$(round(ρ_nonint,digits=4)) $$"
+            ], rowgap = 8
+        )
+    else
+        Legend(fig[2,4:5],
+            [elem1, elem2, elem3, elem4, elem5], 
+            [
+                L"$\max\Vert\textbf{x}(t)\Vert_2 ~\leq~\Vert\textbf{x}_0\Vert_2$", 
+                L"$\max\Vert\textbf{x}(t)\Vert_2 ~>~\Vert\textbf{x}_0\Vert_2$",
+                L"MC Estimate DoA: %$(round(ρ_est,digits=4)) $$",
+                L"Intrusive LyapInf DoA: %$(round(ρ_int,digits=4)) $$",
+                L"Non-Intrusive LyapInf DoA: %$(round(ρ_nonint,digits=4)) $$"
+            ], rowgap = 8
+        )
+    end
+
+    if animate
+        start_angle = 0.8π
+        n_frames = 120
+        ax.viewmode = :fit # Prevent axis from resizing during animation
+        record(fig, "doa_verify.gif", 1:n_frames) do frame
+            ax.azimuth[] = start_angle + 2pi * frame / n_frames
+        end
+    end
+
     return ρ_est, fig
 end
