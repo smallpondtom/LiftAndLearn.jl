@@ -2,7 +2,6 @@
 ## Packages
 ##############
 using CairoMakie
-using GLMakie
 using Kronecker
 using LinearAlgebra
 import Random: rand, rand!
@@ -116,7 +115,7 @@ P2, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options; Pi=1.0I(2))
 
 ## Sample the maximum level c
 V2 = (x) -> x' * P2 * x
-Vdot2 = (x) -> 2*x' * P2 * A * x + 2*x' * P2 * F * (x ⊘ x)
+Vdot2 = (x) -> 2*x' * P2 * ops.A * x + 2*x' * P2 * ops.F * (x ⊘ x)
 c_star2, c_all, x_sample = LFI.doa_sampling(
     V2,
     Vdot2,
@@ -150,7 +149,8 @@ display(fig15)
 ## Verify the DoA using Monte Carlo
 ρ_mc, fig16 = verify_doa(
     ρ_star1, ρ_star2, 
-    ([ops.A, ops.F], 0.0, 10.0, 0.001, "Q"), (-5,5), 5000
+    ([ops.A, ops.F], datasetting.ti, datasetting.tf, datasetting.dt, datasetting.model_type), 
+    (-5,5), 5000; M=1.0, dim=datasetting.N
 )
 display(fig16)
 
@@ -264,7 +264,8 @@ display(fig25)
 ## Verify the DoA
 ρ_mc, fig26 = verify_doa(
     ρ_star1, ρ_star2, 
-    ([ops.A, ops.E], 0.0, 10.0, 0.001, "C"), (-3.0,3.0), 5000; M=1.0
+    ([ops.A, ops.E], datasetting.ti, datasetting.tf, datasetting.dt, datasetting.model_type),
+    (-3.0,3.0), 5000; M=1.0, dim=datasetting.N
 )
 display(fig26)
 
@@ -272,6 +273,9 @@ display(fig26)
 #################################################
 ## Example 3: Stable 3D System Example
 #################################################
+using GLMakie  # switch Makie backend for 3D plots
+
+## 
 ops = Stable3D()  # Get the operators
 datasetting = DataSetting(
     N=3,                    # dimension
@@ -320,9 +324,62 @@ println("ρ_star = ", ρ_star1)
 
 ## Plot c convergence and DoAs for intrusive method
 fig31 = plot_cstar_convergence(c_all)
-fig32, d = plot_doa_results_3D(
+fig32 = plot_doa_results_3D(
     ops, c_star1, x_sample, P1, Vdot1, (-3.0,3.0), (-3.0,3.0), (-3.0,3.0);
-    meshsize=1e-1, ax2title="Intrusive LyapInf: DoA", dims="QC"
+    meshsize=1e-1, ax2title="Intrusive LyapInf: DoA", dims="QC",
+    with_streamplot=false, with_samples=false, animate=true
 )
-display(fig31)
-display(fig32)
+display(GLMakie.Screen(), fig31)
+display(GLMakie.Screen(), fig32)
+
+
+## Compute the Lyapunov function using Non-Intrusive LyapInf
+lyapinf_options = LFI.NonInt_LyapInf_options(
+    extra_iter=3,
+    optimizer="SCS",
+    ipopt_linear_solver="ma86",
+    verbose=true,
+    optimize_PandQ="P",
+    HSL_lib_path=HSL_jll.libhsl_path,
+)
+P2, Q, cost, ∇cost = LFI.NonInt_LyapInf(X, Xdot, lyapinf_options)
+
+## Compute the DoAs
+ρ_min, ρ_max = LFI.DoA(P2)
+ρ_est = LFI.skp_stability_rad(P2, ops.A, ops.H, ops.G; dims=(1,2,3))
+
+## Sample the maximum level c
+V2 = (x) -> x' * P2 * x
+Vdot2 = (x) -> 2*x' * P2 * ops.A * x + 2*x' * P2 * ops.F * (x ⊘ x) + 2*x' * P2 * ops.E * ⊘(x,x,x)
+c_star2, c_all, x_sample = LFI.doa_sampling(
+    V2,
+    Vdot2,
+    1000, 3, (-3.0,3.0);
+    method="memory", history=true
+)
+
+## Print the results
+ρ_star2 = sqrt(c_star2) * ρ_min
+println("c_star2 = ", c_star2)
+println("ρ_est = ", ρ_est)
+println("ρ_min = ", ρ_min)
+println("ρ_star = ", ρ_star2)
+
+## Plot c convergence and DoAs for non-intrusive method
+fig33 = plot_cstar_convergence(c_all)
+fig34 = plot_doa_results_3D(
+    ops, c_star2, x_sample, P2, Vdot2, (-3.0,3.0), (-3.0,3.0), (-3.0,3.0);
+    meshsize=1e-1, ax2title="Non-Intrusive LyapInf: DoA", dims="QC",
+    with_streamplot=true, with_samples=true, animate=true
+)
+display(GLMakie.Screen(), fig33)
+display(GLMakie.Screen(), fig34)
+
+
+## Verify the DoA
+ρ_mc, fig35 = verify_doa_3D(
+    ρ_star1, ρ_star2, 
+    ([ops.A, ops.F, ops.E], datasetting.ti, datasetting.tf, datasetting.dt, datasetting.model_type),
+    (-3.0,3.0), 3000; M=1.0, dim=datasetting.N, animate=true
+)
+display(fig35)
