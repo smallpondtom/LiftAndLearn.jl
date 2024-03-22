@@ -31,21 +31,32 @@ Abstract type for the model.
 """
 abstract type Abstract_Model end
 
-include("utils.jl")
-export ⊘, vech
+# Utilities
+include("utilities/unique_kronecker.jl")
+include("utilities/vech.jl")
+include("utilities/invec.jl")
+export ⊘, vech, invec
 
+# Operators and tools
+include("operators/operators.jl")
+include("operators/bilinear.jl")
+include("operators/quadratic.jl")
+include("operators/cubic.jl")
+
+# OpInf & LnL
 include("OpInf_options.jl")
 include("analyze.jl")
 include("integrator.jl")
 include("lift.jl")
+include("learn.jl")
+include("intrusiveROM.jl")
 
 # Include the optimizers
 include("optimizer/NC_Optimize.jl")
 include("optimizer/EP_Optimize.jl")
 
-include("learn.jl")
-include("intrusiveROM.jl")
-include("streaming.jl")
+# Streaming
+include("Streaming/streaming.jl")
 
 # [Submodule] Inferring the Lyapunov function
 include("LyapInf/LyapInf.jl")
