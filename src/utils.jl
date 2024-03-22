@@ -838,7 +838,7 @@ Inverse vectorization.
 - the inverse vectorized matrix
 """
 function invec(r::AbstractArray, m::Int, n::Int)::VecOrMat
-    tmp = vec(1.0I(n))'
+    tmp = reshape(1.0I(n), 1, :)
     return kron(tmp, 1.0I(m)) * kron(1.0I(n), r)
 end
 

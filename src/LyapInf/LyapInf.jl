@@ -14,7 +14,8 @@ import Distributions: Uniform
 import MatrixEquations: lyapc
 import Random: rand, rand!, shuffle
 import QuasiMonteCarlo
-import ..LiftAndLearn: operators, lifting, squareMatStates, cubeMatStates
+import ..LiftAndLearn: operators, lifting, squareMatStates, cubeMatStates, invec
+import Kronecker: ⊗
 
 include("doa.jl")
 include("intrusive.jl")

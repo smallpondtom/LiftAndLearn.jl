@@ -65,7 +65,7 @@ end
 # Plot the DoA results for 3D
 function plot_doa_results_3D(ops, c_star, x_sample, P, Vdot, xrange, yrange, zrange;
          meshsize=1e-3, ax2title="Domain of Attraction Estimate", dims="Q",
-         with_streamplot=true, with_samples=true, animate=false)
+         with_streamplot=true, with_samples=true, animate=false, contour_levels=35)
     fig2 = Figure(size=(1000,900), fontsize=20)
     ax2 = Axis3(fig2[1,1],
         title=ax2title,
@@ -87,7 +87,7 @@ function plot_doa_results_3D(ops, c_star, x_sample, P, Vdot, xrange, yrange, zra
     data = data .* (data .>= 0)
     contour!(ax2, xpoints, ypoints, zpoints, data, 
         transparent=true,
-        alpha = 0.2, levels=35
+        alpha=0.2, levels=contour_levels
     )
     # Colorbar(fig2[:, end+1], vol, label=L"\dot{V}(x) \leq 0")
     # rowsize!(fig2.layout, 1, ax2.scene.px_area[].widths[2])
