@@ -2,7 +2,9 @@
 Fitzhugh-Nagumo Equation test case using Lift & Learn.
 """
 
+##########
 ## Setups 
+##########
 using BlockDiagonals
 using Kronecker
 using LinearAlgebra
@@ -15,8 +17,11 @@ using Statistics
 
 using LiftAndLearn
 const LnL = LiftAndLearn
+const SAVE_FIGURE = true
 
-## Generate models
+##################
+## Generate model
+##################
 start = time()
 # First order Burger's equation setup
 fhn = LnL.fhn(
@@ -55,7 +60,9 @@ gp = Int(1 / fhn.Δx)
 # Downsampling
 DS = options.data.DS
 
-# Get the full-order model operators for intrusive model
+##########################################################
+## Get the full-order model operators for intrusive model
+##########################################################
 tmp = fhn.generateFHNmatrices(gp, fhn.Ω[2])
 fomLinOps = LnL.operators(
     A=tmp[1],
@@ -82,7 +89,9 @@ fom_state(x, u) = fomOps.A * x + fomOps.B * u + fomOps.f(x) + fomOps.K
 
 @info "(t=$(time()-start)) Complete generating full-order model operators"
 
+##########################
 ## Generate training data
+##########################
 # parameters for the training data
 α_train = vec([500 5000 50000] .* ones(3))
 β_train = vec([10 12.5 15]' .* ones(3)')
@@ -275,7 +284,7 @@ t2err_intru = vec(nanmedian(test2_err[:intrusive], dims=1))
 t2err_infer = vec(nanmedian(test2_err[:inferred], dims=1));
 
 # Training
-p = plot(dims, err_intru, marker=(:cross, 10), label="intru")
+p1 = plot(dims, err_intru, marker=(:cross, 10), label="intru")
 plot!(dims, err_infer, marker=(:circle), ls=:dash, label="opinf")
 plot!(yscale=:log10, majorgrid=true, minorgrid=true)
 tmp = log10.(err_infer)
@@ -284,10 +293,10 @@ xticks!(vec(dims))
 xlabel!("dimension n")
 ylabel!("Relative State Error")
 title!("Median Error over Training Trajectories")
-display(p)
+display(p1)
 
 # Test 1
-p = plot(dims, t1err_intru, marker=(:cross, 10), label="intru")
+p2 = plot(dims, t1err_intru, marker=(:cross, 10), label="intru")
 plot!(dims, t1err_infer, marker=(:circle), ls=:dash, label="opinf")
 plot!(yscale=:log10, majorgrid=true, minorgrid=true)
 tmp = log10.(t1err_infer)
@@ -296,10 +305,10 @@ xticks!(vec(dims))
 xlabel!("dimension n")
 ylabel!("Relative State Error")
 title!("Median Test1 Error over New Trajectories")
-display(p)
+display(p2)
 
 # Test 2
-p = plot(dims, t2err_intru, marker=(:cross, 10), label="intru")
+p3 = plot(dims, t2err_intru, marker=(:cross, 10), label="intru")
 plot!(dims, t2err_infer, marker=(:circle), ls=:dash, label="opinf")
 plot!(yscale=:log10, majorgrid=true, minorgrid=true)
 tmp = log10.(t2err_infer)
@@ -308,4 +317,10 @@ xticks!(vec(dims))
 xlabel!("dimension n")
 ylabel!("Relative State Error")
 title!("Median Test2 Error over New Trajectories")
-display(p)
+display(p3)
+
+if SAVE_FIGURE
+    savefig(p1, "scripts/LnL/plots/fhn_LnL_train_error.png")
+    savefig(p2, "scripts/LnL/plots/fhn_LnL_test1_error.png")
+    savefig(p3, "scripts/LnL/plots/fhn_LnL_test2_error.png")
+end

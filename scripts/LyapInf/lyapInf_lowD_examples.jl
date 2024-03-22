@@ -1,3 +1,7 @@
+"""
+Low-dimensional examples for Lyapunov function Inference
+"""
+
 ##############
 ## Packages
 ##############

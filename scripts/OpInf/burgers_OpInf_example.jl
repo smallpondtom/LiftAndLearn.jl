@@ -2,7 +2,10 @@
 Burger's equation test case using Operator Inference.
 """
 
-##
+#################
+## Load Packages
+#################
+using CSV
 using DataFrames
 using LinearAlgebra
 using Plots
@@ -10,11 +13,21 @@ using ProgressMeter
 using Random
 using Statistics
 
-##
+############
+## Load LnL
+############
 using LiftAndLearn
 const LnL = LiftAndLearn
 
-##
+###############
+## Some option
+###############
+savefigure = true
+savedata = true
+
+####################
+## Setup burgers eq
+####################
 burger = LnL.burgers(
     [0.0, 1.0], [0.0, 1.0], [0.1, 1.0],
     2^(-7), 1e-4, 10, "dirichlet"
@@ -55,6 +68,9 @@ opinf_output_err = zeros(rmax - k, burger.Pdim)
 # Add 5 extra parameters drawn randomly from the uniform distribution of range [0, 1]
 μs = vcat(burger.μs)
 
+#############################
+## Compute reduced operators
+#############################
 @info "Compute inferred and intrusive operators and calculate the errors"
 prog = Progress(length(μs))
 for i in 1:length(μs)
@@ -123,7 +139,6 @@ for i in 1:length(μs)
     next!(prog)
 end
 
-
 proj_err = mean(proj_err, dims=2)
 intru_state_err = mean(intru_state_err, dims=2)
 intru_output_err = mean(intru_output_err, dims=2)
@@ -140,23 +155,26 @@ df = DataFrame(
     inferred_state_err=vec(opinf_state_err),
     inferred_output_err=vec(opinf_output_err)
 )
-# CSV.write("scripts/data/burger_data.csv", df)  # Write the data just in case
+if savedata
+    CSV.write("scripts/OpInf/data/burger_data.csv", df)  # Write the data just in case
+end
 
+############
 ## Plotting
+############
 @info "Plotting results"
 # Projection error
-p = plot(df.order[cutoff], df.projection_err[cutoff], marker=(:rect))
+p1 = plot(df.order[cutoff], df.projection_err[cutoff], marker=(:rect))
 plot!(yscale=:log10, majorgrid=true, minorgrid=true, legend=false)
 tmp = log10.(df.projection_err)
 yticks!([10.0^i for i in floor(minimum(tmp))-1:ceil(maximum(tmp))+1])
 xticks!(df.order)
 xlabel!("dimension n")
 ylabel!("avg projection error")
-# savefig("scripts/plots/burger_projerr.pdf")
-display(p)
+display(p1)
 
 # State errors
-p = plot(df.order[cutoff], df.intrusive_state_err[cutoff], marker=(:cross, 10), label="intru")
+p2 = plot(df.order[cutoff], df.intrusive_state_err[cutoff], marker=(:cross, 10), label="intru")
 plot!(df.order[cutoff], df.inferred_state_err[cutoff], marker=(:circle), ls=:dash, label="opinf")
 plot!(yscale=:log10, majorgrid=true, minorgrid=true)
 tmp = log10.(df.intrusive_state_err)
@@ -164,17 +182,21 @@ yticks!([10.0^i for i in floor(minimum(tmp))-1:ceil(maximum(tmp))+1])
 xticks!(df.order)
 xlabel!("dimension n")
 ylabel!("avg error of states")
-# savefig("scripts/plots/burger_stateerr.pdf")
-display(p)
+display(p2)
 
 # Output errors
-p = plot(df.order[cutoff], df.intrusive_output_err[cutoff], marker=(:cross, 10), label="intru")
+p3 = plot(df.order[cutoff], df.intrusive_output_err[cutoff], marker=(:cross, 10), label="intru")
 plot!(df.order[cutoff], df.inferred_output_err[cutoff], marker=(:circle), ls=:dash, label="opinf")
 plot!(majorgrid=true, minorgrid=true)
 xticks!(df.order)
 xlabel!("dimension n")
 ylabel!("avg error of outputs")
-# savefig("scripts/plots/burger_outputerr.pdf")
-display(p)
+display(p3)
+
+if savefigure
+    savefig(p1, "scripts/OpInf/plots/burger_projerr.pdf")
+    savefig(p2, "scripts/OpInf/plots/burger_stateerr.pdf")
+    savefig(p3, "scripts/OpInf/plots/burger_outputerr.pdf")
+end
 
 @info "Done"

@@ -1,3 +1,7 @@
+"""
+LyapInf examples for the Burgers' equation
+"""
+
 #############
 ## Packages
 #############
