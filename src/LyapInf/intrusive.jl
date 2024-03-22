@@ -64,6 +64,12 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         end
 
 
+        # # INFO: Experimental
+        # @variable(model, R[1:n, 1:n], Symmetric)
+        # @variable(model, Ld[1:n, 1:n] >= eps(), Symmetric)  # Lower triangular matrix
+        # L = LinearAlgebra.LowerTriangular(Ld)
+
+
         # INFO: Directly make P into a cholesky factorization
         #         This takes very long to solve
         # @variable(model, Ld[1:n, 1:n], Symmetric)
@@ -73,6 +79,14 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         # if !isnothing(Pi)
         #     set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
         # end
+
+
+        # # INFO: Experimental
+        # @expression(model,
+        #     P,
+        #     -invec(inv((A ⊗ 1.0I(n)) + (1.0I(n) ⊗ A)) * vec(R), n, n)
+        # )
+
 
         @variable(model, Z[1:n, 1:K])
         if options.is_quad && options.is_cubic
@@ -85,14 +99,20 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         else
             @error "The system must be either quadratic, cubic, or both."
         end
-        # @constraint(
-        #     model, 
-        #     # Z .== Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt'  
-        #     # Z .== Xt*A'*P .+ X2t*F'*P .- 0.25 .* Xt*P*Xt'*Xt*Q .+ 0.5 .* Xt*Q
-        #     # Z .== X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X
-        #     # Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+  Q*X
-        #     # Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+  Q*X
-        # )
+
+        # # INFO: Experimental
+        # @variable(model, Z[1:n, 1:K])
+        # if options.is_quad && options.is_cubic
+        #     @constraint(model, Z .== R*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
+        # elseif options.is_quad
+        #     @constraint(model, Z .== R*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X)
+        #     # @constraint(model, Z .== 2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ Q*X)
+        # elseif options.is_cubic
+        #     @constraint(model, Z .== R*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X)
+        # else
+        #     @error "The system must be either quadratic, cubic, or both."
+        # end
+
         @objective(model, Min, sum(Z.^2))
 
         # Add constraints for positive definiteness:
@@ -102,6 +122,13 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
                 @constraint(model, P[i, j] == sum(L[i, k] * L[j, k] for k in 1:min(i, j)))
             end
         end
+
+        # # INFO: Experimental
+        # for i in 1:n
+        #     for j in 1:n
+        #         @constraint(model, R[i, j] == sum(L[i, k] * L[j, k] for k in 1:min(i, j)))
+        #     end
+        # end
 
     else   # SCS is okay with large objective
         model = Model(SCS.Optimizer)
@@ -117,6 +144,15 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
             set_start_value.(P, Pi)  # set initial guess for the quadratic P matrix
         end
 
+        # # INFO: Experimental
+        # @variable(model, R[1:n, 1:n], PSD)
+
+        # # INFO: Experimental
+        # @expression(model,
+        #     P,
+        #     -invec(inv((A ⊗ 1.0I(n)) + (1.0I(n) ⊗ A)) * vec(R), n, n)
+        # )
+
         if options.is_quad && options.is_cubic
             @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
         elseif options.is_quad
@@ -127,17 +163,24 @@ function optimize_P(op::operators, X::AbstractArray{T}, Q::AbstractArray{T},
         else
             @error "The system must be either quadratic, cubic, or both."
         end
-        # @expression(
-        #     model, 
-        #     inside_norm, 
-        #     # sum((Xt*A'*P*Xt' .+ X2t*F'*P*Xt' .- 0.25 .* Xt*P*Xt'*Xt*Q*Xt' .+ 0.5 .* Xt*Q*Xt').^2) 
-        #     # sum((X'*P*A*X .+ X'*P*F*X2 .- 0.25 .* X'*Q*X*X'*P*X .+ 0.5 .* X'*Q*X).^2) 
-        #     sum((2.0 .*P*A*X .+ 2.0 .*P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2) 
-        # )  
+
+        # # INFO: Experimental
+        # if options.is_quad && options.is_cubic
+        #     @expression(model, inside_norm, sum((R*X .+ 2.0 .* P*F*X2 .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
+        # elseif options.is_quad
+        #     @expression(model, inside_norm, sum((R*X .+ 2.0 .* P*F*X2 .- Q*X*X'*P*X .+ Q*X).^2))
+        #     # @expression(model, inside_norm, sum((2.0 .* P*A*X .+ 2.0 .* P*F*X2 .+ Q*X).^2))
+        # elseif options.is_cubic
+        #     @expression(model, inside_norm, sum((R*X .+ 2.0 .* P*E*X3 .- Q*X*X'*P*X .+ Q*X).^2))
+        # else
+        #     @error "The system must be either quadratic, cubic, or both."
+        # end
+
         @objective(model, Min, inside_norm)
 
         # Add a constraint to make positive definite
         for i in 1:n
+            # @constraint(model, R[i, i] >= options.α)
             @constraint(model, P[i, i] >= options.α)
         end
     end

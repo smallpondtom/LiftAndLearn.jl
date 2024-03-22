@@ -49,7 +49,7 @@ X, Xdot = generate_data(datasetting, ops)  # Generate the data
 ## Compute the Lyapunov Function using the intrusive LyapInf
 lyapinf_options = LFI.Int_LyapInf_options(
     extra_iter=3,
-    optimizer="SCS",
+    optimizer="ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
     optimize_PandQ="P",
@@ -100,7 +100,7 @@ display(fig12)
 ## Compute the Lyapunov function using Non-Intrusive LyapInf
 lyapinf_options = LFI.NonInt_LyapInf_options(
     extra_iter=3,
-    optimizer="SCS",
+    optimizer="ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
     optimize_PandQ="P",
@@ -153,6 +153,9 @@ display(fig15)
     (-5,5), 5000; M=1.0, dim=datasetting.N
 )
 display(fig16)
+
+
+
 
 
 #################################################
@@ -270,6 +273,9 @@ display(fig25)
 display(fig26)
 
 
+
+
+
 #################################################
 ## Example 3: Stable 3D System Example
 #################################################
@@ -280,7 +286,7 @@ ops = Stable3D()  # Get the operators
 datasetting = DataSetting(
     N=3,                    # dimension
     num_ic=20,              # number of initial conditions
-    ti=0.0, tf=5.0,        # initial and final time
+    ti=0.0, tf=10.0,         # initial and final time
     dt=0.001,               # time step
     DS=100,                 # down-sampling
     x0_bnds=(-3.0, 3.0),    # initial condition bounds
@@ -311,7 +317,7 @@ Vdot1(x) = 2*x' * P1 * ops.A * x + 2*x' * P1 * ops.F * (x ⊘ x) + 2*x' * P1 * o
 c_star1, c_all, x_sample = LFI.doa_sampling(
     V1,
     Vdot1,
-    1000, 3, (-3.0,3.0);
+    1000, 3, (-4.0,4.0);
     method="memory", history=true
 )
 
@@ -325,9 +331,9 @@ println("ρ_star = ", ρ_star1)
 ## Plot c convergence and DoAs for intrusive method
 fig31 = plot_cstar_convergence(c_all)
 fig32 = plot_doa_results_3D(
-    ops, c_star1, x_sample, P1, Vdot1, (-3.0,3.0), (-3.0,3.0), (-3.0,3.0);
+    ops, c_star1, x_sample, P1, Vdot1, (-7.0,7.0), (-7.0,7.0), (-7.0,7.0);
     meshsize=1e-1, ax2title="Intrusive LyapInf: DoA", dims="QC",
-    with_streamplot=false, with_samples=false, animate=true
+    with_streamplot=false, with_samples=false, animate=false, contour_levels=49
 )
 display(GLMakie.Screen(), fig31)
 display(GLMakie.Screen(), fig32)
@@ -368,9 +374,9 @@ println("ρ_star = ", ρ_star2)
 ## Plot c convergence and DoAs for non-intrusive method
 fig33 = plot_cstar_convergence(c_all)
 fig34 = plot_doa_results_3D(
-    ops, c_star2, x_sample, P2, Vdot2, (-3.0,3.0), (-3.0,3.0), (-3.0,3.0);
+    ops, c_star2, x_sample, P2, Vdot2, (-7.0,7.0), (-7.0,7.0), (-7.0,7.0);
     meshsize=1e-1, ax2title="Non-Intrusive LyapInf: DoA", dims="QC",
-    with_streamplot=true, with_samples=true, animate=true
+    with_streamplot=true, with_samples=true, animate=false, contour_levels=49
 )
 display(GLMakie.Screen(), fig33)
 display(GLMakie.Screen(), fig34)
@@ -380,6 +386,6 @@ display(GLMakie.Screen(), fig34)
 ρ_mc, fig35 = verify_doa_3D(
     ρ_star1, ρ_star2, 
     ([ops.A, ops.F, ops.E], datasetting.ti, datasetting.tf, datasetting.dt, datasetting.model_type),
-    (-3.0,3.0), 3000; M=1.0, dim=datasetting.N, animate=true
+    (-7.0,7.0), 5000; M=1.0, dim=datasetting.N, animate=false
 )
 display(fig35)

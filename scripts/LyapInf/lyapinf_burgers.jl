@@ -54,15 +54,20 @@ DS = opinf_options.data.DS
 Tdim_ds = size(1:DS:burgers.Tdim, 1)  # downsampled time dimension
 
 ## Initial condition
-IC = Dict(
+IC = Dict{Symbol,Any}(
     :a => [3, 5, 7],
     :b => [-0.5, 0, 0.5],
     :c => [-0.25, 0, 0.25],
-    :test => ([0.1, 10.0], [-1.0, 1.0], [-0.5, 0.5]),
+)
+LyapInf_IC = Dict{Symbol,Any}(
+    :a => [1, 8, 15], 
+    :b => [-5, 0, 5], 
+    :c => [-3, 0, 3],
 )
 IC[:n] = Int(length(IC[:a])*length(IC[:b])*length(IC[:c]))
 IC[:f] = (a,b,c) -> exp.(-a * cos.(π .* burgers.x .+ b).^2) .+ c
-
+LyapInf_IC[:n] = Int(length(LyapInf_IC[:a])*length(LyapInf_IC[:b])*length(LyapInf_IC[:c]))
+LyapInf_IC[:f] = (a,b,c) -> exp.(-a * cos.(π .* burgers.x .+ b).^2) .+ c
 
 ################################
 ## Generate the training data
@@ -72,7 +77,6 @@ op_fom = LnL.operators(A=A, F=F)
     
 Xall = Vector{Matrix{Float64}}(undef, IC[:n])
 Xdotall = Vector{Matrix{Float64}}(undef, IC[:n])
-
 ct = 1
 for a in IC[:a], b in IC[:b], c in IC[:c]
     states = burgers.semiImplicitEuler(A, F, burgers.t, IC[:f](a, b, c))
@@ -99,11 +103,25 @@ op_int = LnL.intrusiveMR(op_fom, Vrmax, opinf_options)
 #####################################
 op_inf = LnL.inferOp(X, zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vrmax, Vrmax' * R, opinf_options)
 
-## Create a batch of training data
-# batchsize = 300
-# X_batch = map(Iterators.partition(axes(X,2), batchsize)) do cols
-#     X[:, cols]
-# end
+
+#####################################
+## Generate new data for LyapInf
+#####################################
+Xall = Vector{Matrix{Float64}}(undef, LyapInf_IC[:n])
+Xdotall = Vector{Matrix{Float64}}(undef, LyapInf_IC[:n])
+ct = 1
+for a in LyapInf_IC[:a], b in LyapInf_IC[:b], c in LyapInf_IC[:c]
+    states = burgers.semiImplicitEuler(op_int.A, op_int.F, burgers.t, Vrmax' * LyapInf_IC[:f](a, b, c))
+    tmp = states[:, 2:end]
+    Xall[ct] = tmp[:, 1:DS:end]  # downsample data
+    tmp = (states[:, 2:end] - states[:, 1:end-1]) / burgers.Δt
+    Xdotall[ct] = tmp[:, 1:DS:end]  # downsample data
+    @info "(Loop #$ct) Generated training data for a = $a, b = $b, c = $c"
+    ct += 1
+end
+X_lf = reduce(hcat, Xall)
+R_lf = reduce(hcat, Xdotall)
+
 
 #####################################
 ## Intrusive LyapInf for POD model
@@ -114,7 +132,7 @@ int_lyapinf_options = LFI.Int_LyapInf_options(
     optimizer="ipopt",
     ipopt_linear_solver="ma86",
     verbose=true,
-    optimize_PandQ="together",
+    optimize_PandQ="P",
     opt_max_iter=10,
     δJ=1e-3,
     HSL_lib_path=HSL_jll.libhsl_path,
@@ -127,7 +145,6 @@ P_int, Q_int, cost, ∇cost = LFI.Int_LyapInf(op_int, Vrmax' * X[:,1:ds2:end], i
 R = -(op_int.A' * P_int + P_int * op_int.A)
 Red = eigen(R)
 RD = Red.values
-RV = Red.vectors
 # RD = [λ > 0 ? λ : eps() for λ in RD]
 # R_ = RV * Diagonal(RD) / RV
 
