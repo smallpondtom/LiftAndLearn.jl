@@ -1,7 +1,7 @@
 export dupmat, elimat, commat, symmtzrmat
 export F2H, H2F, F2Hs, squareMatStates, kronMatStates
 export extractF, insert2F, insert2randF, extractH, insert2H
-export invec, Q2H, H2Q, makeQuadOp
+export Q2H, H2Q, makeQuadOp
 
 
 """
