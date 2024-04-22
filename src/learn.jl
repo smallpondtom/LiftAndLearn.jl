@@ -487,7 +487,7 @@ Infer the operators with derivative data given
 """
 function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, R::Matrix,
     options::Abstract_Option, IG::operators=operators())::operators
-    Rt = transpose(R)
+    Rt = transpose(Vn' * R)
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
 
