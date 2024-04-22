@@ -58,10 +58,6 @@ include("optimizer/EP_Optimize.jl")
 # Streaming
 include("Streaming/streaming.jl")
 
-# [Submodule] Inferring the Lyapunov function
-# include("LyapInf/LyapInf.jl")
-# export LyapInf
-
 # [Submodule] Analysis of chaos analysis tools
 include("ChaosGizmo/ChaosGizmo.jl")
 
