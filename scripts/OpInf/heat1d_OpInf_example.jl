@@ -20,9 +20,9 @@ const LnL = LiftAndLearn
 ####################
 ## Set some options
 ####################
-savefigure = true
+savefigure = false
 provide_R = false
-savedata = true
+savedata = false
 
 #########################
 ## 1D Heat equation setup
@@ -103,7 +103,7 @@ for (idx, μ) in enumerate(heat1d.μs)
         Xn = X[:, jj]
         Un = heat1d.Ubc[jj, :]
         Yn = Y[:, jj]
-        Xdot = A_intru[idx] * Vr' * Xn + B_intru[idx] * Un'
+        Xdot = A * Xn + B * Un'
         op_infer = LnL.inferOp(Xn, Un, Yn, Vr, Xdot, options)
     else
         op_infer = LnL.inferOp(X, heat1d.Ubc, Y, Vr, options)
