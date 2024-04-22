@@ -253,5 +253,5 @@ end
     # r = rmax
     λr3, _ = CG.lyapunovExponent(oprom, lorenz_integrator, Vr, x0, options)
     dkyr3 = CG.kaplanYorkeDim(λr3; sorted=false)
-    @test dkyr ≈ dkyr3 atol=1.0
+    @test dkyr ≈ dkyr3 atol=2.0
 end

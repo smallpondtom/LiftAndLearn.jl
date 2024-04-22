@@ -24,6 +24,5 @@ defaultname(file) = uppercasefirst(replace(splitext(basename(file))[1], '_' => '
     testfile("models/kse.jl")
 
     # Submodules
-    # testfile("LyapInf/toy_examples.jl")
     testfile("ChaosGizmo/LyapunovExponent.jl")
 end

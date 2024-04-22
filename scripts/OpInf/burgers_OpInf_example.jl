@@ -22,8 +22,8 @@ const LnL = LiftAndLearn
 ###############
 ## Some option
 ###############
-savefigure = true
-savedata = true
+savefigure = false
+savedata = false
 
 ####################
 ## Setup burgers eq
@@ -110,7 +110,7 @@ for i in 1:length(μs)
     if options.optim.reproject 
         op_inf = LnL.inferOp(X, U, Y, Vrmax, op_burger, options)  # Using Reprojection
     else
-        op_inf = LnL.inferOp(X, U, Y, Vrmax, Vrmax' * R, options)
+        op_inf = LnL.inferOp(X, U, Y, Vrmax, R, options)
     end
 
     for j = 1+k:rmax
