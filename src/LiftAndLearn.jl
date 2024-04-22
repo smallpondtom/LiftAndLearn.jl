@@ -55,9 +55,6 @@ include("intrusiveROM.jl")
 include("optimizer/NC_Optimize.jl")
 include("optimizer/EP_Optimize.jl")
 
-# Streaming
-# include("Streaming/streaming.jl")
-
 # [Submodule] Analysis of chaos analysis tools
 include("ChaosGizmo/ChaosGizmo.jl")
 
