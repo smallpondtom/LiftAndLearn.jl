@@ -99,3 +99,15 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
     URL = {https://doi.org/10.1137/21M1393972},
     eprint = {https://doi.org/10.1137/21M1393972},
 }</pre></details>
+
+
+5. Koike, T., Qian, E. [Energy-Preserving Reduced Operator Inference for Efficient Design and Control](https://arc.aiaa.org/doi/10.2514/6.2024-1012), AIAA SCITECH 2024 Forum. 2024.<details><summary>BibTeX</summary><pre>
+@inproceedings{koike2024energy,
+  title={Energy-Preserving Reduced Operator Inference for Efficient Design and Control},
+  author={Koike, Tomoki and Qian, Elizabeth},
+  booktitle={AIAA SCITECH 2024 Forum},
+  pages={1012},
+  year={2024},
+  doi={https://doi.org/10.2514/6.2024-1012}
+}
+</pre></details>
