@@ -7,14 +7,9 @@ using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
+import ..LiftAndLearn: Abstract_Model, vech, ⊘, operators
+
 export burgers
-
-"""
-    Abstract_Models
-
-Abstract type for the models.
-"""
-abstract type Abstract_Models end
 
 
 """
@@ -46,7 +41,7 @@ Viscous Burgers' equation model
 - `generateEPmatrix::Function`: function to generate A, F matrices for the Burgers' equation. (Energy-preserving form)
 - `semiImplicitEuler::Function`: function to integrate the system using semi-implicit Euler scheme
 """
-mutable struct burgers <: Abstract_Models
+mutable struct burgers <: Abstract_Model
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain
@@ -279,27 +274,6 @@ function generateEPmatrix(model::burgers, μ::Float64)
 end
 
 
-"""
-    vech(A) → v
-
-Half-vectorization operation
-
-## Arguments
-- `A`: matrix to half-vectorize
-
-## Returns
-- `v`: half-vectorized form
-"""
-function vech(A::AbstractMatrix{T}) where {T}
-    m = LinearAlgebra.checksquare(A)
-    v = Vector{T}(undef, (m * (m + 1)) >> 1)
-    k = 0
-    for j = 1:m, i = j:m
-        @inbounds v[k+=1] = A[i, j]
-    end
-    return v
-end
-
 
 """
     semiImplicitEuler(A, B, F, U, tdata, IC) → states
@@ -325,7 +299,8 @@ function semiImplicitEuler(A, B, F, U, tdata, IC)
 
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        state2 = vech(state[:, j-1] * state[:, j-1]')
+        # state2 = vech(state[:, j-1] * state[:, j-1]')
+        state2 = state[:, j-1] ⊘ state[:, j-1]
         state[:, j] = (1.0I(Xdim) - Δt * A) \ (state[:, j-1] + F * state2 * Δt + B * U[j-1] * Δt)
     end
     return state
@@ -354,10 +329,43 @@ function semiImplicitEuler(A, F, tdata, IC)
 
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        state2 = vech(state[:, j-1] * state[:, j-1]')
+        # state2 = vech(state[:, j-1] * state[:, j-1]')
+        state2 = state[:, j-1] ⊘ state[:, j-1]
         state[:, j] = (1.0I(Xdim) - Δt * A) \ (state[:, j-1] + F * state2 * Δt)
     end
     return state
 end
+
+
+"""
+    semiImplicitEuler(ops, tdata, IC) → states
+
+Semi-Implicit Euler scheme without control (dispatch)
+
+## Arguments
+- `ops`: operators
+- `tdata`: time data
+- `IC`: initial condtions
+
+## Returns
+- `states`: integrated states
+"""
+function semiImplicitEuler(ops, tdata, IC)
+    A = ops.A 
+    F = ops.F
+    Xdim = length(IC)
+    Tdim = length(tdata)
+    state = zeros(Xdim, Tdim)
+    state[:, 1] = IC
+
+    for j in 2:Tdim
+        Δt = tdata[j] - tdata[j-1]
+        # state2 = vech(state[:, j-1] * state[:, j-1]')
+        state2 = state[:, j-1] ⊘ state[:, j-1]
+        state[:, j] = (1.0I(Xdim) - Δt * A) \ (state[:, j-1] + F * state2 * Δt)
+    end
+    return state
+end
+
 
 end

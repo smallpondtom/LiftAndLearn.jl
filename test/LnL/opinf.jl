@@ -81,7 +81,7 @@ const LnL = LiftAndLearn
             Xn = X[:, jj]
             Un = heat1d.Ubc[jj, :]
             Yn = Y[:, jj]
-            Xdot = A_intru[idx] * Vr' * Xn + B_intru[idx] * Un'
+            Xdot = A * Xn + B * Un'
             op_infer = LnL.inferOp(Xn, Un, Yn, Vr, Xdot, options)
         else
             op_infer = LnL.inferOp(X, heat1d.Ubc, Y, Vr, options)
@@ -269,7 +269,7 @@ end
         if options.optim.reproject || i == 1
             op_inf = LnL.inferOp(X, U, Y, Vrmax, op_burger, options)  # Using Reprojection
         else
-            op_inf = LnL.inferOp(X, U, Y, Vrmax, Vrmax' * R, options)
+            op_inf = LnL.inferOp(X, U, Y, Vrmax, R, options)
         end
 
         for j = 1+k:rmax

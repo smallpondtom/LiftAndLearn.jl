@@ -1,8 +1,6 @@
 using LiftAndLearn
 using Test
 
-# DO_EXTENSIVE_TESTS = get(ENV, "CHAOSTOOLS_EXTENSIVE_TESTS", "false") == "true"
-
 function testfile(file, testname=defaultname(file))
     println("running test file $(file)")
     @testset "$testname" begin; include(file); end
@@ -24,4 +22,7 @@ defaultname(file) = uppercasefirst(replace(splitext(basename(file))[1], '_' => '
 
     testfile("models/burgers.jl")
     testfile("models/kse.jl")
+
+    # Submodules
+    testfile("ChaosGizmo/LyapunovExponent.jl")
 end

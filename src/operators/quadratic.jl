@@ -1,35 +1,7 @@
-export operators, dupmat, elimat, commat, nommat, vech
-export F2H, H2F, F2Hs, squareMatStates, kronMatStates, extractF 
-export insert2F, insert2randF, extractH, insert2H, insert2bilin
-export invec, Q2H, H2Q
-
-"""
-$(TYPEDEF)
-
-Organize the operators of the system in a structure. The operators currently 
-supported are up to second order.
-
-## Fields
-- `A`: linear state operator
-- `B`: linear input operator
-- `C`: linear output operator
-- `F`: quadratic state operator with no redundancy
-- `H`: quadratic state operator with redundancy
-- `K`: constant operator
-- `N`: bilinear (state-input) operator
-- `f`: nonlinear function operator f(x,u)
-"""
-Base.@kwdef mutable struct operators
-    A::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    B::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    C::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    F::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    H::Union{SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Matrix{Any},Int64} = 0
-    Q::Union{AbstractArray,Real} = 0
-    K::Union{SparseVector{Float64,Int64},SparseMatrixCSC{Float64,Int64},VecOrMat{Real},Matrix{Float64},Int64} = 0
-    N::Union{SparseMatrixCSC{Float64,Int64},AbstractArray,Vector{Matrix{Real}},VecOrMat{Real},Matrix{Float64},Int64} = 0
-    f::Function = x -> x
-end
+export dupmat, elimat, commat, symmtzrmat
+export F2H, H2F, F2Hs, squareMatStates, kronMatStates
+export extractF, insert2F, insert2randF, extractH, insert2H
+export Q2H, H2Q, makeQuadOp
 
 
 """
@@ -159,25 +131,25 @@ commat(m::Integer) = commat(m, m)  # dispatch
 
 
 """
-    nommat(m::Integer, n::Integer) → N
+    symmtzrmat(m::Integer, n::Integer) → N
 
-Create symmetric commutation matrix `N` of dimension `m x n` [^magnus1980].
+Create symmetrizer (or symmetric commutation) matrix `N` of dimension `m x n` [^magnus1980].
 
 ## Arguments
 - `m::Integer`: row dimension of the commutation matrix
 - `n::Integer`: column dimension of the commutation matrix
 
 ## Returns
-- `N`: symmetric commutation matrix
+- `N`: symmetrizer (symmetric commutation) matrix
 """
-function nommat(m::Integer, n::Integer)
+function symmtzrmat(m::Integer, n::Integer)
     mn = Int(m * n)
     return 0.5 * (sparse(1.0I, mn, mn) + commat(m, n))
 end
 
 
 """
-    nommat(m::Integer) → N
+    symmtzrmat(m::Integer) → N
 
 Dispatch for the symmetric commutation matrix of dimensions (m, m)
 
@@ -187,43 +159,7 @@ Dispatch for the symmetric commutation matrix of dimensions (m, m)
 ## Returns
 - `N`: symmetric commutation matrix
 """
-nommat(m::Integer) = nommat(m, m)  # dispatch
-
-
-"""
-    vech(A::AbstractMatrix{T}) → v
-
-Half-vectorization operation. For example half-vectorzation of
-```math
-A = \\begin{bmatrix}
-    a_{11} & a_{12}  \\\\
-    a_{21} & a_{22}
-\\end{bmatrix}
-```
-becomes
-```math
-v = \\begin{bmatrix}
-    a_{11} \\\\
-    a_{21} \\\\
-    a_{22}
-\\end{bmatrix}
-```
-
-## Arguments
-- `A`: matrix to half-vectorize
-
-## Returns
-- `v`: half-vectorized form
-"""
-function vech(A::AbstractMatrix{T}) where {T}
-    m = LinearAlgebra.checksquare(A)
-    v = Vector{T}(undef, (m * (m + 1)) >> 1)
-    k = 0
-    for j = 1:m, i = j:m
-        @inbounds v[k+=1] = A[i, j]
-    end
-    return v
-end
+symmtzrmat(m::Integer) = symmtzrmat(m, m)  # dispatch
 
 
 """
@@ -279,7 +215,7 @@ we use the elimination matrix `L` and the symmetric commutation matrix `N` to mu
 function F2Hs(F)
     n = size(F, 1)
     Ln = elimat(n)
-    Nn = nommat(n)
+    Nn = symmtzrmat(n)
     return F * Ln * Nn
 end
 
@@ -298,7 +234,7 @@ snapshot data matrix
 """
 function squareMatStates(Xmat)
     function vech_col(X)
-        return vech(X * X')
+        return X ⊘ X
     end
     tmp = vech_col.(eachcol(Xmat))
     return reduce(hcat, tmp)
@@ -319,7 +255,7 @@ a matrix form state data
 """
 function kronMatStates(Xmat)
     function vec_col(X)
-        return vec(X * X')
+        return X ⊗ X
     end
     tmp = vec_col.(eachcol(Xmat))
     return reduce(hcat, tmp)
@@ -451,48 +387,6 @@ end
 
 
 """
-    insert2bilin(X::Union{SparseMatrixCSC,VecOrMat}, N::Int, p::Int) → BL
-
-Inserting the values into the bilinear matrix (`N`) for higher dimensions
-
-## Arguments
-- `X`: bilinear matrix to insert
-- `N`: the larger order
-
-## Returns
-- Inserted bilinear matrix
-"""
-function insert2bilin(X, N, p)
-    Ni = size(X, 1)
-    BL = zeros(N, N*p)
-    for i in 1:p
-        idx = (i-1)*N+1
-        BL[1:Ni, idx:(idx+Ni-1)] = X[:, (i-1)*Ni+1:i*Ni]
-    end
-    return BL
-end
-
-
-"""
-    invec(r::AbstractArray, m::Int, n::Int) → r
-
-Inverse vectorization.
-
-## Arguments
-- `r::AbstractArray`: the input vector
-- `m::Int`: the row dimension
-- `n::Int`: the column dimension
-
-## Returns
-- the inverse vectorized matrix
-"""
-function invec(r::AbstractArray, m::Int, n::Int)::VecOrMat
-    tmp = vec(1.0I(n))'
-    return kron(tmp, 1.0I(m)) * kron(1.0I(n), r)
-end
-
-
-"""
     Q2H(Q::AbstractArray) → H
 
 Convert the quadratic `Q` operator into the `H` operator. The `Q` matrix is 
@@ -556,6 +450,57 @@ end
 
 
 """
+    makeQuadOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int}}, vals::AbstractArray{Real}, 
+    which_quad_term::Union{String,Char}="H") → H or F or Q
+
+Helper function to construct the quadratic operator from the indices and values. The indices must
+be a 1-dimensional array of tuples of the form `(i,j,k)` where `i,j,k` are the indices of the
+quadratic term. For example, for the quadratic term ``2.5x_1x_2`` for ``\\dot{x}_3`` would have an 
+index of `(1,2,3)` with a value of `2.5`. The `which_quad_term` argument specifies which quadratic
+term to construct. Note that the values must be a 1-dimensional array of the same length as the indices.
+
+## Arguments
+- `n::Int`: dimension of the quadratic operator
+- `inds::AbstractArray{Tuple{Int,Int,Int}}`: indices of the quadratic term
+- `vals::AbstractArray{Real}`: values of the quadratic term
+- `which_quad_term::Union{String,Char}="H"`: which quadratic term to construct
+- `symmetric::Bool=true`: whether to construct the symmetric `H` or `Q` matrix
+
+## Returns
+- the quadratic operator
+"""
+function makeQuadOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int}}, vals::AbstractArray{<:Real}; 
+    which_quad_term::Union{String,Char}="H", symmetric::Bool=true)
+
+    @assert length(inds) == length(vals) "The length of indices and values must be the same."
+    Q = zeros(n, n, n)
+    for (ind,val) in zip(inds, vals)
+        if symmetric
+            i, j, k = ind
+            if i == j
+                Q[ind...] = val
+            else
+                Q[i,j,k] = val/2
+                Q[j,i,k] = val/2
+            end
+        else
+            Q[ind...] = val
+        end
+    end
+
+    if which_quad_term == "H" || which_quad_term == 'H'
+        return Q2H(Q)
+    elseif which_quad_term == "F" || which_quad_term == 'F'
+        return (H2F ∘ Q2H)(Q)
+    elseif which_quad_term == "Q" || which_quad_term == 'Q'
+        return Q
+    else
+        error("The quad term must be either H, F, or Q.")
+    end
+end
+
+
+"""
     fidx(n::Int, j::Int, k::Int) → Int
 
 Auxiliary function for the `F` matrix indexing.
@@ -592,4 +537,3 @@ Another auxiliary function for the `F` matrix
 function delta(v,w)
     return v == w ? 1.0 : 0.5
 end
-
