@@ -59,13 +59,13 @@ We use a 9-dimensional Lorenz system to analyze the Lyapunov exponents and Kapla
     <tr>
         <td>
             <figure>
-                <img src='../../assets/images/ChaosGizmo/9dim_lorenz_frame1.png' alt='missing'><br>
+                <img src='../../../images/ChaosGizmo/9dim_lorenz_frame1.png' alt='missing'><br>
                 <figcaption><em></em></figcaption>
             </figure>
         </td>
         <td>
             <figure>
-                <img src='../../assets/images/ChaosGizmo/9dim_lorenz_frame2.png' alt='missing'><br>
+                <img src='../../../images/ChaosGizmo/9dim_lorenz_frame2.png' alt='missing'><br>
                 <figcaption><em></em></figcaption>
             </figure>
         </td> 
@@ -73,13 +73,13 @@ We use a 9-dimensional Lorenz system to analyze the Lyapunov exponents and Kapla
     <tr>
         <td>
             <figure>
-                <img src='../../assets/images/ChaosGizmo/9dim_lorenz_3d.png' alt='missing'><br>
+                <img src='../../../images/ChaosGizmo/9dim_lorenz_3d.png' alt='missing'><br>
                 <figcaption><em></em></figcaption>
             </figure>
         </td>
         <td>
             <figure>
-                <img src='../../assets/images/ChaosGizmo/9dim_lorenz_frame3.png' alt='missing'><br>
+                <img src='../../../images/ChaosGizmo/9dim_lorenz_frame3.png' alt='missing'><br>
                 <figcaption><em></em></figcaption>
             </figure>
         </td> 
