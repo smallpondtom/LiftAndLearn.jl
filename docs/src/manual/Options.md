@@ -92,10 +92,10 @@ where ``\mathbf{D}``, ``\mathbf{O}^\top``, ``\dot{\hat{\mathbf{X}}}`` are the da
 
 ## Model Reduction Specific Options
 
-These options are all specific to each solution method of Operator Inference. All of the options below are a subtype of `Abstract_Options`.
+These options are all specific to each solution method of Operator Inference. All of the options below are a subtype of `Abstract_Option`.
 
 ```@docs
-LiftAndLearn.Abstract_Options
+LiftAndLearn.Abstract_Option
 ```
 
 ### Standard Operator Inference

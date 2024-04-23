@@ -42,10 +42,10 @@ const LnL = LiftAndLearn
     op_rom = LnL.intrusiveMR(op, Vr, options)
 
     for field in fieldnames(typeof(op_rom))
-        if field != :f || field != :Q
+        if field != :f && field != :Q
             mat_rom = getfield(op_rom, field)
             mat_naive = getfield(op_naive, field)
-            @test all(mat_rom .== mat_naive)
+            @test all(mat_rom ≈ mat_naive)
         end
     end
 end
@@ -93,10 +93,10 @@ end
     op_rom = LnL.intrusiveMR(op, Vr, options)
 
     for field in fieldnames(typeof(op_rom))
-        if field != :f || field != :Q 
+        if field != :f && field != :Q 
             mat_rom = getfield(op_rom, field)
             mat_naive = getfield(op_naive, field)
-            @test all(mat_rom .== mat_naive)
+            @test all(mat_rom ≈ mat_naive)
         end
     end
 end

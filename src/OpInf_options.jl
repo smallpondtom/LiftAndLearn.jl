@@ -9,6 +9,7 @@ Structure of the given system.
 ## Fields
 - `is_lin::Bool`: the system is linear
 - `is_quad::Bool`: the system is quadratic
+- `is_cubic::Bool`: the system is cubic
 - `is_bilin::Bool`: the system is bilinear
 - `has_control::Bool`: the system has control inputs
 - `has_output::Bool`: the system has output
@@ -21,6 +22,7 @@ Structure of the given system.
     has_control::Bool = false
     has_output::Bool = false
     is_quad::Bool = false
+    is_cubic::Bool = false
     is_bilin::Bool = false
     has_const::Bool = false
     has_funcOp::Bool = false
@@ -83,6 +85,7 @@ Information about the optimization.
     initial_guess::Bool = false
     max_iter::Int64 = 3000
     which_quad_term::String = "F"
+    which_cubic_term::String = "E"
     reproject::Bool = false
     SIGE::Bool = false  # Successive Initial Guess Estimation
     with_bnds::Bool = false  # add bounds to the variables
@@ -105,6 +108,7 @@ Tikhonov regularization parameters.
 @with_kw struct λtik
     lin::Union{Real, AbstractArray{Real}} = 0.0
     quad::Real = 0.0
+    cubic::Real = 0.0
     ctrl::Real = 0.0
     bilin::Real = 0.0
 end
@@ -126,7 +130,7 @@ Standard Operator Inference.
 - `with_reg::Bool`: the option to use Tikhonov regularization
 - `pinv_tol::Real`: the tolerance for the least square pseudo inverse
 """
-@with_kw mutable struct LS_options <: Abstract_Options
+@with_kw mutable struct LS_options <: Abstract_Option
     method::String = "LS"
     system::sys_struct = sys_struct()
     vars::vars = vars()
@@ -153,7 +157,7 @@ Non-Constrained Operator Inference.
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 """
-@with_kw mutable struct NC_options <: Abstract_Options
+@with_kw mutable struct NC_options <: Abstract_Option
     method::String = "NC"
     system::sys_struct = sys_struct()
     vars::vars = vars()
@@ -180,7 +184,7 @@ Energy-Preserving Hard Equality Constraint Operator Inference.
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPHEC_options <: Abstract_Options
+@with_kw mutable struct EPHEC_options <: Abstract_Option
     method::String = "EPHEC"
     system::sys_struct = sys_struct()
     vars::vars = vars()
@@ -210,7 +214,7 @@ Energy-Preserving Soft Inequality Constraint Operator Inference.
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPSIC_options <: Abstract_Options
+@with_kw mutable struct EPSIC_options <: Abstract_Option
     method::String = "EPSIC"
     system::sys_struct = sys_struct()
     vars::vars = vars()
@@ -241,7 +245,7 @@ Energy-Preserving Penalty Operator Inference.
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPP_options <: Abstract_Options
+@with_kw mutable struct EPP_options <: Abstract_Option
     method::String = "EPP"
     system::sys_struct = sys_struct()
     vars::vars = vars()

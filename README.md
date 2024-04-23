@@ -14,6 +14,7 @@
 [![CI](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl/graph/badge.svg?token=4MJJ4716UA)](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl)
 [![Doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/dev)
+[![DOI](https://zenodo.org/badge/657587865.svg)](https://zenodo.org/doi/10.5281/zenodo.10826114)
 </div>
 
 LiftAndLearn.jl is an implementation of the Lift and Learn as well as the operator inference algorithm proposed in the papers listed in [References](#references). 
@@ -33,47 +34,26 @@ Lift and Learn is a physics-informed method for learning low-dimensional models 
 
 ### Installation
 ```julia-repl
-(@v1.9) pkg> add LiftAndLearn
+(@v1.10) pkg> add LiftAndLearn
 ```
 
 ### Get Started
-Try out the 1D heat equation example 
+Clone this repository and try the 1D heat equation example out
 $$\frac{\partial u}{\partial t} = \mu\frac{\partial^2 u}{\partial x^2}$$
-in the Julia REPL.
-```julia-repl
-> julia
-julia> ;
-shell> cd scripts 
-⌫
-julia> ]
-(@v1.9) pkg> activate .
-(@v1.9) pkg> instantiate
-⌫
-julia> include("heat1d_OpInf_example.jl")
+from the command line using the following command
+```
+> julia --project="./scripts" scripts/OpInf/heat1d_OpInf_example.jl
 ```
 
-### TODO
-
-- [ ] Generalize the Learn & Lift Julia package 
-    - [ ] Make an operation where the user gives all the settings and training data then the code outputs the inferred operators
-    - [ ] Make an operation where the user inputs the inferred operators and the testing data then the error analysis is automatically completed.
-- [ ] Expand opinf
-    - [ ] Allow quad-linear (quadratic state and linear input)
-    - [ ] Allow quadratic input (U * U')
-    - [ ] Allow linear-quad (linear state and quadratic input) (this is experimental)
-- [ ] Make example test cases for both operator inference and lift & learn
-    - [x] one-dimensional heat equation
-    - [x] burger's equation
-    - [x] Fitzhugh-Nagumo equation
-    - [x] Kuramoto-Sivashinsky equation
-
+### Similar Works
+- [Python Operator Inference Code](https://github.com/Willcox-Research-Group/rom-operator-inference-Python3?tab=readme-ov-file) by [Willcox Research Group](https://oden.utexas.edu/research/centers-and-groups/willcox-research-group/)
+- Julia SciML [ModelReduction.jl](https://github.com/SciML/ModelOrderReduction.jl)
 
 ### References
 
 1. Peherstorfer, B. and Willcox, K. 
 [Data-driven operator inference for non-intrusive projection-based model reduction.](https://www.sciencedirect.com/science/article/pii/S0045782516301104)
-Computer Methods in Applied Mechanics and Engineering, 306:196-215, 2016. ([Download](https://cims.nyu.edu/~pehersto/preprints/Non-intrusive-model-reduction-Peherstorfer-Willcox.pdf))
-```
+Computer Methods in Applied Mechanics and Engineering, 306:196-215, 2016. ([Download](https://cims.nyu.edu/~pehersto/preprints/Non-intrusive-model-reduction-Peherstorfer-Willcox.pdf))<details><summary>BibTeX</summary><pre>
 @article{Peherstorfer16DataDriven,
     title   = {Data-driven operator inference for nonintrusive projection-based model reduction},
     author  = {Peherstorfer, B. and Willcox, K.},
@@ -81,13 +61,12 @@ Computer Methods in Applied Mechanics and Engineering, 306:196-215, 2016. ([Down
     volume  = {306},
     pages   = {196-215},
     year    = {2016},
-}
-```
+}</pre></details>
+
 
 2. Qian, E., Kramer, B., Marques, A., and Willcox, K. 
 [Transform & Learn: A data-driven approach to nonlinear model reduction](https://arc.aiaa.org/doi/10.2514/6.2019-3707).
-In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www.dropbox.com/s/5znea6z1vntby3d/QKMW_aviation19.pdf?dl=0))
-```
+In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www.dropbox.com/s/5znea6z1vntby3d/QKMW_aviation19.pdf?dl=0))<details><summary>BibTeX</summary><pre>
 @inbook{QKMW2019aviation,
     author = {Qian, E. and Kramer, B. and Marques, A. N. and Willcox, K. E.},
     title = {Transform \&amp; Learn: A data-driven approach to nonlinear model reduction},
@@ -95,11 +74,9 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
     doi = {10.2514/6.2019-3707},
     URL = {https://arc.aiaa.org/doi/abs/10.2514/6.2019-3707},
     eprint = {https://arc.aiaa.org/doi/pdf/10.2514/6.2019-3707}
-}
-```
+}</pre></details>
 
-3. Qian, E., Kramer, B., Peherstorfer, B., and Willcox, K. [Lift & Learn: Physics-informed machine learning for large-scale nonlinear dynamical systems](https://www.sciencedirect.com/science/article/pii/S0167278919307651), Physica D: Nonlinear Phenomena, 2020.
-```
+3. Qian, E., Kramer, B., Peherstorfer, B., and Willcox, K. [Lift & Learn: Physics-informed machine learning for large-scale nonlinear dynamical systems](https://www.sciencedirect.com/science/article/pii/S0167278919307651), Physica D: Nonlinear Phenomena, 2020.<details><summary>BibTeX</summary><pre>
 @article{qian2020lift,
     title={Lift \& {L}earn: {P}hysics-informed machine learning for large-scale nonlinear dynamical systems},
     author={Qian, E. and Kramer, B. and Peherstorfer, B. and Willcox, K.},
@@ -108,11 +85,9 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
     pages={132401},
     year={2020},
     publisher={Elsevier}
-}
-```
+}</pre></details>
 
-4. Qian, E., Farcas, I.-G., and Willcox, K. [Reduced operator inference for nonlinear partial differential equations](https://epubs.siam.org/doi/10.1137/21M1393972), SIAM Journal of Scientific Computing, 2022.
-```
+4. Qian, E., Farcas, I.-G., and Willcox, K. [Reduced operator inference for nonlinear partial differential equations](https://epubs.siam.org/doi/10.1137/21M1393972), SIAM Journal of Scientific Computing, 2022.<details><summary>BibTeX</summary><pre>
 @article{doi:10.1137/21M1393972,
     author = {Qian, Elizabeth and Farca\c{s}, Ionu\c{t}-Gabriel and Willcox, Karen},
     title = {Reduced Operator Inference for Nonlinear Partial Differential Equations},
@@ -124,5 +99,32 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
     doi = {10.1137/21M1393972},
     URL = {https://doi.org/10.1137/21M1393972},
     eprint = {https://doi.org/10.1137/21M1393972},
+}</pre></details>
+
+
+5. Koike, T., Qian, E. [Energy-Preserving Reduced Operator Inference for Efficient Design and Control](https://arc.aiaa.org/doi/10.2514/6.2024-1012), AIAA SCITECH 2024 Forum. 2024.<details><summary>BibTeX</summary><pre>
+@inproceedings{koike2024energy,
+  title={Energy-Preserving Reduced Operator Inference for Efficient Design and Control},
+  author={Koike, Tomoki and Qian, Elizabeth},
+  booktitle={AIAA SCITECH 2024 Forum},
+  pages={1012},
+  year={2024},
+  doi={https://doi.org/10.2514/6.2024-1012}
+}
+</pre></details>
+
+
+### Citing this Project
+If you have used this code for your research, we would be grateful if you could cite us using the following BibTeX
+```
+@software{smallpondtom_LnL,
+  author       = {Tomoki Koike},
+  title        = {LiftAndLearn.jl: Julia Implementation of Lift and Learn and Operator Inference},
+  month        = Dec,
+  year         = 2023,
+  publisher    = {Zenodo},
+  version      = {0.1.0},
+  doi          = {10.5281/zenodo.10826115},
+  url          = {https://zenodo.org/doi/10.5281/zenodo.10826114}
 }
 ```

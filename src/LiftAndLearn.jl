@@ -1,26 +1,29 @@
 """
     LiftAndLearn package main module
 """
-
 module LiftAndLearn
 
 using LinearAlgebra
 using BlockDiagonals
+using Distributions: Uniform
+using Kronecker
 using Parameters
+using QuasiMonteCarlo
 using SparseArrays
-using MatrixEquations
-using Random
+using StatsBase: countmap
+using MatrixEquations: lyapc
+using Random: rand, rand!, shuffle
 using JuMP
-using Ipopt, SCS
+using Ipopt, SCS, Alpine
 using FFTW
 using DocStringExtensions
 
 """
-    Abstract_Options
+    Abstract_Option
 
 Abstract type for the options.
 """
-abstract type Abstract_Options end
+abstract type Abstract_Option end
 """
     Abstract_Model
 
@@ -28,19 +31,32 @@ Abstract type for the model.
 """
 abstract type Abstract_Model end
 
-include("utils.jl")
+# Utilities
+include("utilities/unique_kronecker.jl")
+include("utilities/vech.jl")
+include("utilities/invec.jl")
+export ⊘, vech, invec
+
+# Operators and tools
+include("operators/operators.jl")
+include("operators/bilinear.jl")
+include("operators/quadratic.jl")
+include("operators/cubic.jl")
+
+# OpInf & LnL
 include("OpInf_options.jl")
 include("analyze.jl")
 include("integrator.jl")
 include("lift.jl")
+include("learn.jl")
+include("intrusiveROM.jl")
 
 # Include the optimizers
 include("optimizer/NC_Optimize.jl")
 include("optimizer/EP_Optimize.jl")
-# include("optimizer/PP-ZQLFI.jl")  # still under development
 
-include("learn.jl")
-include("intrusiveROM.jl")
+# [Submodule] Analysis of chaos analysis tools
+include("ChaosGizmo/ChaosGizmo.jl")
 
 # Include the models
 include("model/Heat1D.jl")

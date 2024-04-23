@@ -82,7 +82,7 @@ const LnL = LiftAndLearn
         if options.optim.reproject
             op_inf = LnL.inferOp(X, U, Y, Vrmax, op_burger, options, op_int)  # Using Reprojection
         else
-            op_inf = LnL.inferOp(X, U, Y, Vrmax, Vrmax' * R, options, op_int)  # without reprojection
+            op_inf = LnL.inferOp(X, U, Y, Vrmax, R, options, op_int)  # without reprojection
         end
 
         for j = 1+k:rmax
@@ -226,7 +226,7 @@ end
     )
     op_ephec =  Array{LnL.operators}(undef, KSE.Pdim)
     for i in eachindex(KSE.μs)
-        op_ephec[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i], options)
+        op_ephec[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
     end
     @test true # dummy test to make sure the testset runs
 
@@ -241,7 +241,7 @@ end
     )
     op_epsic = Array{LnL.operators}(undef, KSE.Pdim)
     for i in eachindex(KSE.μs)
-        op_epsic[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i], options)
+        op_epsic[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
     end
     @test true # dummy test to make sure the testset runs
 
@@ -256,7 +256,7 @@ end
     )
     op_epp =  Array{LnL.operators}(undef, KSE.Pdim)
     for i in eachindex(KSE.μs)
-        op_epp[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Vr[i][:, 1:ro[end]]' * Rtr[i], options)
+        op_epp[i] = LnL.inferOp(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
     end
     Fextract = LnL.extractF(op_epp[1].F, ro[2])
     _ =  LnL.EPConstraintResidual(Fextract, ro[2], "F"; with_mmt=false)

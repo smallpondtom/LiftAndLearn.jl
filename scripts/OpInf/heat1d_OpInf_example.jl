@@ -2,21 +2,31 @@
 One-dimensional heat equation test case using Operator Inference.
 """
 
+#################
 ## Load packages
+#################
 using CSV
 using DataFrames
 using LinearAlgebra
 using Plots
 using ProgressMeter
 
+############
+## Load LnL
+############
 using LiftAndLearn
 const LnL = LiftAndLearn
 
+####################
 ## Set some options
+####################
 savefigure = false
 provide_R = false
+savedata = false
 
-# 1D Heat equation setup
+#########################
+## 1D Heat equation setup
+#########################
 heat1d = LnL.heat1d(
     [0.0, 1.0], [0.0, 1.0], [0.1, 10],
     2^(-7), 1e-3, 10
@@ -54,7 +64,10 @@ A_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 B_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 C_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
 
+
+######################
 ## Generate operators
+######################
 r = 15  # order of the reduced form
 
 @info "Generate intrusive and inferred operators"
@@ -90,7 +103,7 @@ for (idx, μ) in enumerate(heat1d.μs)
         Xn = X[:, jj]
         Un = heat1d.Ubc[jj, :]
         Yn = Y[:, jj]
-        Xdot = A_intru[idx] * Vr' * Xn + B_intru[idx] * Un'
+        Xdot = A * Xn + B * Un'
         op_infer = LnL.inferOp(Xn, Un, Yn, Vr, Xdot, options)
     else
         op_infer = LnL.inferOp(X, heat1d.Ubc, Y, Vr, options)
@@ -103,7 +116,9 @@ for (idx, μ) in enumerate(heat1d.μs)
     next!(p)
 end
 
+###########
 ## Analyze
+###########
 @info "Compute errors"
 
 # Error analysis 
@@ -147,7 +162,6 @@ proj_err = zeros(r, 1)
     opinf_output_err[i] += OOE / heat1d.Pdim
 end
 
-# Export results to CSV file 
 df = DataFrame(
     :order => 1:r,
     :projection_err => vec(proj_err),
@@ -156,9 +170,13 @@ df = DataFrame(
     :inferred_state_err => vec(opinf_state_err),
     :inferred_output_err => vec(opinf_output_err)
 )
-# CSV.write("scripts/data/heat1d_data.csv", df)  # Write the data just in case
+if savedata
+    CSV.write("scripts/OpInf/data/heat1d_data.csv", df)  # Write the data just in case
+end
 
-## Plot resultse
+################
+## Plot results
+################
 @info "Plotting results"
 # Projection error
 p1 = plot(1:r, df.projection_err, marker=(:rect),show=true)
@@ -203,9 +221,9 @@ plot!(p3,
 display(p3)
 
 if savefigure
-    savefig(p1, "scripts/figures/heat1d_proj_err.png")
-    savefig(p2, "scripts/figures/heat1d_state_err.png")
-    savefig(p3, "scripts/figures/heat1d_output_err.png")
+    savefig(p1, "scripts/OpInf/plots/heat1d_proj_err.png")
+    savefig(p2, "scripts/OpInf/plots/heat1d_state_err.png")
+    savefig(p3, "scripts/OpInf/plots/heat1d_output_err.png")
 end
 
 @info "Done"
