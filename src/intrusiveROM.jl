@@ -14,7 +14,7 @@ Perform intrusive model reduction using Proper Orthogonal Decomposition (POD)
 # Return
 - `op_new`: new operator projected onto the basis
 """
-function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, options::Abstract_Options)
+function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, options::Abstract_Option)
     Ahat = Vr' * op.A * Vr
     Bhat = Vr' * op.B
     Chat = op.C * Vr
@@ -31,7 +31,7 @@ function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractA
         if op.F != 0
             Ln = elimat(n)
             Dr = dupmat(r)
-            VV = kron(Vr, Vr)
+            VV = Vr ⊗ Vr
             Fhat = Vr' * op.F * Ln * VV * Dr
             op_new.F = Matrix(Fhat)
 
@@ -42,7 +42,7 @@ function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractA
         end
 
         if op.H != 0  # Add the Hhat term here
-            Hhat = Vr' * op.H * kron(Vr, Vr)
+            Hhat = Vr' * op.H * (Vr ⊗ Vr)
             op_new.H = Matrix(Hhat)
 
             if op.F == 0
@@ -71,6 +71,30 @@ function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractA
         else
             Nhat = Vr' * op.N * Vr
             op_new.N = Matrix(Nhat[:, :])
+        end
+    end
+
+    # Cubic term
+    if options.system.is_cubic
+        if op.E != 0
+            Ln3 = elimat3(n)
+            Dr3 = dupmat3(r)
+            Ehat = Vr' * op.E * Ln3 * (Vr ⊗ Vr ⊗ Vr) * Dr3
+            op_new.E = Matrix(Ehat)
+
+            if op.G == 0
+                Ghat = LnL.E2Gs(Ehat)
+                op_new.G = Matrix(Ghat)
+            end
+        end
+        if op.G != 0
+            Ghat = Vr' * op.G * (Vr ⊗ Vr ⊗ Vr)
+            op_new.G = Matrix(Ghat)
+
+            if op.E != 0
+                Ehat = LnL.G2E(Ghat)
+                op_new.E = Matrix(Ehat)
+            end
         end
     end
 

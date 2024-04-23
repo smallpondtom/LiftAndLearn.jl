@@ -16,6 +16,10 @@ PAGES = [
             "Lift And Learn" => "manual/nonintrusive/LnL.md",
             "Energy Preserving" => "manual/nonintrusive/EPOpInf.md",
         ],
+        "ChaosGizmo" => [
+            "Introduction" => "manual/ChaosGizmo/chaosgizmo.md",
+            "Lyapunov Exponents" => "manual/ChaosGizmo/lyap_exp.md",
+        ],
     ],
     "Models" => [
         "Heat1D" => "models/Heat1D.md",

@@ -38,16 +38,35 @@ struct lifting
         # Map all the original and the lifted variables
         function map(x::Union{Vector{Vector{T}},Vector{Matrix{T}},
             Vector{SparseVector{T,Int64}},Vector{SparseMatrixCSC{T,Int64}}}) where {T<:Real}
-            splat(i) = lift_map[i](x)
+            splat(idx) = lift_map[idx](x)
             return reduce(vcat, splat.(1:Nl))
+        end
+
+        function map(x::AbstractArray{T}, gp::Int=1) where {T<:Real}
+            xsep = Vector{Matrix{T}}(undef, N) 
+            for k in 1:N-1
+                xsep[k] = x[Int((k-1)*gp+1):Int(k*gp), :]
+            end
+            xsep[N] = x[Int((N-1)*gp+1):end, :]
+            return map(xsep)
         end
 
         # Map only the nonlinear lifted variables
         function mapNL(x::Union{Vector{Vector{T}},Vector{Matrix{T}},
             Vector{SparseVector{T,Int64}},Vector{SparseMatrixCSC{T,Int64}}}) where {T<:Real}
-            splat(i) = lift_map[i](x)
+            splat(idx) = lift_map[idx](x)
             return reduce(vcat, splat.(N+1:Nl))
         end
+
+        function mapNL(x::AbstractArray{T}, gp::Int=1) where {T<:Real}
+            xsep = Vector{Matrix{T}}(undef, N) 
+            for p in 1:N-1
+                xsep[p] = x[Int((p-1)*gp+1):Int(p*gp), :]
+            end
+            xsep[N] = x[Int((N-1)*gp+1):end, :]
+            return mapNL(xsep)
+        end
+
         new(N, Nl, lift_funcs, map, mapNL)
     end
 end
