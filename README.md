@@ -112,7 +112,7 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
   doi={https://doi.org/10.2514/6.2024-1012}
 }
 </pre></details>
-```
+
 
 ### Citing this Project
 If you have used this code for your research, we would be grateful if you could cite us using the following BibTeX
