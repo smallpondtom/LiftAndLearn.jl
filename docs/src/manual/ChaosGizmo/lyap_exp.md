@@ -1,6 +1,4 @@
-# LyapunovExponent.jl Documentation
-
-This file contains the implementation of functions related to the computation of Lyapunov Exponents and Kaplan-Yorke dimension.
+# Analyzing Chaos
 
 ## Lyapunov Exponent
 
