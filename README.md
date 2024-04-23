@@ -14,6 +14,7 @@
 [![CI](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl/graph/badge.svg?token=4MJJ4716UA)](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl)
 [![Doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/dev)
+[![DOI](https://zenodo.org/badge/657587865.svg)](https://zenodo.org/doi/10.5281/zenodo.10826114)
 </div>
 
 LiftAndLearn.jl is an implementation of the Lift and Learn as well as the operator inference algorithm proposed in the papers listed in [References](#references). 
@@ -111,3 +112,19 @@ In the AIAA Aviation 2019 Forum, June 17-21, Dallas, TX. ([Download](https://www
   doi={https://doi.org/10.2514/6.2024-1012}
 }
 </pre></details>
+```
+
+### Citing this Project
+If you have used this code for your research, we would be grateful if you could cite us using the following BibTeX
+```
+@software{smallpondtom_LnL,
+  author       = {Tomoki Koike},
+  title        = {LiftAndLearn.jl: Julia Implementation of Lift and Learn and Operator Inference},
+  month        = Dec,
+  year         = 2023,
+  publisher    = {Zenodo},
+  version      = {0.1.0},
+  doi          = {10.5281/zenodo.10826115},
+  url          = {https://zenodo.org/doi/10.5281/zenodo.10826114}
+}
+```
