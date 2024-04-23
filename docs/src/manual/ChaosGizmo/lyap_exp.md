@@ -1,6 +1,4 @@
-# LyapunovExponent.jl Documentation
-
-This file contains the implementation of functions related to the computation of Lyapunov Exponents and Kaplan-Yorke dimension.
+# Analyzing Chaos
 
 ## Lyapunov Exponent
 
@@ -53,13 +51,41 @@ LiftAndLearn.ChaosGizmo.LE_options
 
 We use a 9-dimensional Lorenz system to analyze the Lyapunov exponents and Kaplan-Yorke dimension of a reduced model. This model is introduced in [Reiterer et al.](https://iopscience.iop.org/article/10.1088/0305-4470/31/34/015). We reduce this system to an order of 7 from 9 for the analysis. Here are some cool visualizations of the model's dynamics.
 
-<img src="assets/images/ChaosGizmo/9dim_lorenz_3d.svg" width="300" align="right">
-<img src="assets/images/ChaosGizmo/9dim_lorenz_frame1.svg" width="300" align="right">
-<img src="assets/images/ChaosGizmo/9dim_lorenz_frame2.svg" width="300" align="right">
-<img src="assets/images/ChaosGizmo/9dim_lorenz_frame3.svg" width="300" align="right">
 
+```@raw html
+<table border="0">
+    <tr>
+        <td>
+            <figure>
+                <img src='../../../images/ChaosGizmo/9dim_lorenz_frame1.png' alt='missing'><br>
+                <figcaption><em></em></figcaption>
+            </figure>
+        </td>
+        <td>
+            <figure>
+                <img src='../../../images/ChaosGizmo/9dim_lorenz_frame2.png' alt='missing'><br>
+                <figcaption><em></em></figcaption>
+            </figure>
+        </td> 
+    </tr>
+    <tr>
+        <td>
+            <figure>
+                <img src='../../../images/ChaosGizmo/9dim_lorenz_3d.png' alt='missing'><br>
+                <figcaption><em></em></figcaption>
+            </figure>
+        </td>
+        <td>
+            <figure>
+                <img src='../../../images/ChaosGizmo/9dim_lorenz_frame3.png' alt='missing'><br>
+                <figcaption><em></em></figcaption>
+            </figure>
+        </td> 
+    </tr>
+</table>
+```
 
-```@example
+```@example lorenz9
 using LinearAlgebra: svd, I
 using LiftAndLearn
 const LnL = LiftAndLearn
@@ -178,25 +204,30 @@ options = CG.LE_options(N=1e4, τ=1e2, τ0=0.0, Δt=1e-2, m=rmax, T=1e-2, verbos
 λr1, λr1_all = CG.lyapunovExponent(oprom, lorenz_integrator, Vr, x0, options)
 dkyr1 = CG.kaplanYorkeDim(λr1; sorted=false)
 println("Kaplan-Yorke dimension (without Jacobian): ", dkyr1)
+```
 
+```@example lorenz9
 using Plots
 p = plot()
 for i in 1:rmax
     plot!(p, λr1_all[i,:], label="λ$i", lw=2)
 end
 plot!(p, xlabel="reorthonormalization steps", ylabel="Lyapunov exponent", legend=:right, fontfamily="Computer Modern")
-display(p)
+p
+```
 
+```@example lorenz9
 # You can also compute them using the method with the Tangent map.
 λr2, λr2_all = CG.lyapunovExponentJacobian(oprom, lorenz_integrator, lorenz_jacobian, Vr' * x0, options)
 dkyr2 = CG.kaplanYorkeDim(λr2; sorted=false)
 println("Kaplan-Yorke dimension (with Jacobian): ", dkyr2)
+```
 
+```@example lorenz9
 p = plot()
 for i in 1:rmax
     plot!(p, λr2_all[i,:], label="λ$i", lw=2)
 end
 plot!(p, xlabel="reorthonormalization steps", ylabel="Lyapunov exponent", legend=:right, fontfamily="Computer Modern")
-display(p)
+p
 ```
-
