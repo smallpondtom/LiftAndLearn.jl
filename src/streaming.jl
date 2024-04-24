@@ -16,6 +16,7 @@ mutable struct Streaming_InferOp
     Py_k::Union{AbstractArray{Float64,2}, Nothing}  # projection matrix
     Ky_k::Union{AbstractArray{Float64,2}, Nothing}  # gain matrix
 
+    tol::Union{Float64,Nothing}                  # tolerance of the pseudo-inverse
     dims::Dict{Symbol,Int}                       # dimensions
     options::Abstract_Option                     # options
     init!::Function
@@ -25,7 +26,7 @@ mutable struct Streaming_InferOp
 end
 
 
-function Streaming_InferOp(options::Abstract_Option)
+function Streaming_InferOp(options::Abstract_Option; tol::Union{Float64,Nothing}=nothing)
     dims = Dict(
         :n => 0, :m => 0, :p => 0, :q => 0, 
         :s => 0, :v => 0, :s3 => 0, :v3 => 0,
@@ -40,7 +41,7 @@ function Streaming_InferOp(options::Abstract_Option)
     Py_k = nothing
     Ky_k = nothing
 
-    return Streaming_InferOp(O_k, P_k, K_k, C_k, Py_k, Ky_k, dims, options, 
+    return Streaming_InferOp(O_k, P_k, K_k, C_k, Py_k, Ky_k, tol, dims, options, 
                                 init!, stream!, stream_output!, unpack_operators)
 end
 
@@ -94,7 +95,11 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractAr
     D_k = getDataMat(X_k, transpose(X_k), U_k, stream.dims, stream.options)
 
     # Aggregated data matrix and Operator matrix
-    stream.P_k = (D_k' * Q_k_inv * D_k) \ I
+    if isnothing(stream.tol)
+        stream.P_k = (D_k' * Q_k_inv * D_k) \ I
+    else
+        stream.P_k = pinv(D_k' * Q_k_inv * D_k; atol=stream.tol)
+    end
     stream.O_k = stream.P_k * D_k' * Q_k_inv * R_k
 
     ## Output (state-output)
@@ -103,7 +108,11 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractAr
 
     # Aggregated data matrix and Output matrix
     Xt_k = transpose(X_k)
-    stream.Py_k = (Xt_k' * Z_k_inv * Xt_k) \ I
+    if isnothing(stream.tol)
+        stream.Py_k = (Xt_k' * Z_k_inv * Xt_k) \ I
+    else
+        stream.Py_k = pinv(Xt_k' * Z_k_inv * Xt_k; atol=stream.tol)
+    end
     stream.C_k = stream.Py_k * Xt_k' * Z_k_inv * Y_k
 
     return D_k
@@ -129,14 +138,24 @@ function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, U_kp1::Abst
 
     if !isnothing(Q_kp1)
         Q_k_inv = Q_kp1 \ I
-        stream.P_k -= stream.P_k * D_kp1' * ((Q_kp1 + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+        if isnothing(stream.tol)
+            stream.P_k -= stream.P_k * D_kp1' * ((Q_kp1 + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+        else
+            stream.P_k -= stream.P_k * D_kp1' * (pinv(Q_kp1 + D_kp1 * stream.P_k * D_kp1'; atol=stream.tol) * D_kp1) * stream.P_k
+        end
         stream.K_k = stream.P_k * D_kp1' * Q_k_inv
         stream.O_k += stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
     else
-        stream.P_k -= stream.P_k * D_kp1' * ((1.0I(K) + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+        if isnothing(stream.tol)
+            stream.P_k -= stream.P_k * D_kp1' * ((1.0I(K) + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+        else
+            stream.P_k -= stream.P_k * D_kp1' * (pinv(1.0I(K) + D_kp1 * stream.P_k * D_kp1'; atol=stream.tol) * D_kp1) * stream.P_k
+        end
         stream.K_k = stream.P_k * D_kp1'
         stream.O_k += stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
     end
+
+    return D_kp1
 end
 
 
@@ -148,15 +167,17 @@ Update the streaming operator inference with new data for multiple batches of da
 function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{<:AbstractArray{T}}, U_kp1::AbstractArray{<:AbstractArray{T}},
                     R_kp1::AbstractArray{<:AbstractArray{T}}, Q_kp1::Union{AbstractArray{<:AbstractArray{T}}, Nothing}=nothing) where T<:Real
     N = length(X_kp1)
+    D_kp1 = nothing
     if !isnothing(Q_kp1)
         for i in 1:N
-            stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i], Q_kp1[i])
+            D_kp1 = stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i], Q_kp1[i])
         end
     else
         for i in 1:N
-            stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i])
+            D_kp1 = stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i])
         end
     end
+    return D_kp1
 end
 
 
@@ -176,11 +197,19 @@ function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, Y_kp
 
     if !isnothing(Z_kp1)
         Z_k_inv = Z_kp1 \ I
-        stream.Py_k -= stream.Py_k * Xt_kp1' * ((Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+        if isnothing(stream.tol)
+            stream.Py_k -= stream.Py_k * Xt_kp1' * ((Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+        else
+            stream.Py_k -= stream.Py_k * Xt_kp1' * (pinv(Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol) * Xt_kp1) * stream.Py_k
+        end
         stream.Ky_k = stream.Py_k * Xt_kp1' * Z_k_inv
         stream.C_k += stream.Ky_k * (Y_kp1 - Xt_kp1 * stream.C_k)
     else
-        stream.Py_k -= stream.Py_k * Xt_kp1' * ((1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+        if isnothing(stream.tol)
+            stream.Py_k -= stream.Py_k * Xt_kp1' * ((1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+        else
+            stream.Py_k -= stream.Py_k * Xt_kp1' * (pinv(1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol) * Xt_kp1) * stream.Py_k
+        end
         stream.Ky_k = stream.Py_k * Xt_kp1'
         stream.C_k += stream.Ky_k * (Y_kp1 - Xt_kp1 * stream.C_k)
     end

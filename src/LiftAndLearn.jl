@@ -36,6 +36,7 @@ include("utilities/unique_kronecker.jl")
 include("utilities/vech.jl")
 include("utilities/invec.jl")
 export ⊘, vech, invec
+include("utilities/batchify.jl")
 
 # Operators and tools
 include("operators/operators.jl")
