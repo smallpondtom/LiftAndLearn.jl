@@ -74,7 +74,7 @@ function forwardEuler(f::Function, U::Matrix, tdata::VecOrMat, IC::VecOrMat)::Ma
     Tdim = length(tdata)
     states = zeros(Xdim, Tdim)
     states[:, 1] = IC
-    for j in 2:Tdim
+    @inbounds @views for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
         states[:, j] = states[:, j-1] + Δt * f(states[:, j-1], U[j])
     end
@@ -102,7 +102,7 @@ function backwardEuler(A, B, U, tdata, IC)
     Tdim = length(tdata)
     state = zeros(Xdim, Tdim)
     state[:, 1] = IC
-    for j in 2:Tdim
+    @inbounds @views for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
         state[:, j] = (I(Xdim) - Δt * A) \ (state[:, j-1] + B * U[j-1] * Δt)
     end
@@ -131,7 +131,7 @@ function crankNicolson(A, B, U, tdata, IC)
     Tdim = length(tdata)
     states = zeros(Xdim, Tdim)
     states[:, 1] = IC
-    for j in 2:Tdim
+    @inbounds @views for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
         states[:, j] = (I(Xdim) - 0.5 * Δt * A) \ ((I(Xdim) + 0.5 * Δt * A) * states[:, j-1] + B * U[j-1] * Δt)
     end
@@ -161,7 +161,7 @@ function semiImplicitEuler(A, B, F, U, tdata, IC)
     state = zeros(Xdim, Tdim)
     state[:, 1] = IC
 
-    for j in 2:Tdim
+    @inbounds @views for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
         # state2 = vech(state[:, j-1] * state[:, j-1]')
         state2 = state[:, j-1] ⊘ state[:, j-1]
@@ -194,14 +194,14 @@ function semiImplicitEuler(A, B, F_or_H, U, tdata, IC, options)
     state[:, 1] = IC
     
     if options.which_quad_term == "F"
-        for j in 2:Tdim
+        @inbounds @views for j in 2:Tdim
             Δt = tdata[j] - tdata[j-1]
             # state2 = vech(state[:, j-1] * state[:, j-1]')
             state2 = state[:, j-1] ⊘ state[:, j-1]
             state[:, j] = (I(Xdim) - Δt * A) \ (state[:, j-1] + F_or_H * state2 * Δt + B * U[j-1] * Δt)
         end
     elseif options.which_quad_term == "H"
-        for j in 2:Tdim
+        @inbounds @views for j in 2:Tdim
             Δt = tdata[j] - tdata[j-1]
             state2 = vec(state[:, j-1] * state[:, j-1]')
             state[:, j] = (I(Xdim) - Δt * A) \ (state[:, j-1] + F_or_H * state2 * Δt + B * U[j-1] * Δt)

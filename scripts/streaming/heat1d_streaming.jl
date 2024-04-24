@@ -109,10 +109,10 @@ A, B = heat1d.generateABmatrix(heat1d.Xdim, μ, heat1d.Δx)
 C = ones(1, heat1d.Xdim) / heat1d.Xdim
 op_heat = LnL.operators(A=A, B=B, C=C)
 
-# Compute the state snapshot data with backward Euler
+## Compute the state snapshot data with backward Euler
 X = LnL.backwardEuler(A, B, U, heat1d.t, heat1d.IC)
 
-# Compute the SVD for the POD basis
+## Compute the SVD for the POD basis
 r = 15  # order of the reduced form
 Vr = svd(X).U[:, 1:r]
 
@@ -151,8 +151,7 @@ idx = 2:heat1d.Tdim
 X = X[:, idx]  # fix the index of states
 U = U[idx, :]  # fix the index of inputs
 Y = Y[:, idx]  # fix the index of outputs
-R = Vr' * Xdot  # Reduced form of the derivative data
-op_inf = LnL.inferOp(X, U, Y, Vr, R, options)
+op_inf = LnL.inferOp(X, U, Y, Vr, Xdot, options)
 
 ###################
 ## Streaming-OpInf
@@ -170,7 +169,7 @@ end
 Xhat_batch = batchify(Vr' * X, batchsize)
 U_batch = batchify(U, batchsize)
 Y_batch = batchify(Y', batchsize)
-R_batch = batchify(R', batchsize)
+R_batch = batchify((Vr' * Xdot)', batchsize)
 
 ## Initialize the stream
 # INFO: Remember to make data matrices a tall matrix except X matrix
