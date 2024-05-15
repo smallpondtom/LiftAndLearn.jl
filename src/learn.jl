@@ -64,14 +64,14 @@ end
 
 
 """
-    getDataMat(Xhat::Matrix, Xhat_t::Union{Matrix,Transpose}, U::Matrix,
+    getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix,
         dims::Dict, options::Abstract_Option) → D
 
 Get the data matrix for the regression problem
 
 ## Arguments
-- `Xhat::Matrix`: projected data matrix
-- `Xhat_t::Union{Matrix,Transpose}`: projected data matrix (transposed)
+- `Xhat::AbstractArray`: projected data matrix
+- `Xhat_t::AbstractArray`: projected data matrix (transposed)
 - `U::Matrix`: input data matrix
 - `dims::Dict`: dictionary including important dimensions
 - `options::Abstract_Option`: options for the operator inference set by the user
@@ -79,7 +79,7 @@ Get the data matrix for the regression problem
 ## Returns
 - `D`: data matrix for the regression problem
 """
-function getDataMat(Xhat::Matrix, Xhat_t::Union{Matrix,Transpose}, U::Matrix,
+function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix,
     dims::Dict, options::Abstract_Option)
     flag = false
 
@@ -153,6 +153,15 @@ function getDataMat(Xhat::Matrix, Xhat_t::Union{Matrix,Transpose}, U::Matrix,
 
     return D
 end
+
+
+"""
+    getDataMat(Xhat::AbstractArray, U::Matrix,
+        dims::Dict, options::Abstract_Option) → D
+
+Dispatch to avoid having tranpose data matrix in function argument.
+"""
+getDataMat(Xhat::AbstractArray, U::Matrix, dims::Dict, options::Abstract_Option) = getDataMat(Xhat, transpose(Xhat), U, dims, options)
 
 
 """
@@ -322,7 +331,11 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     if options.system.has_output
         Chat_t = zeros(n, q)
         Yt = transpose(Y)
-        Chat_t = Xhat_t \ Yt
+        if options.with_reg && options.λ.output != 0
+            Chat_t = (Xhat_t' * Xhat_t + options.λ.output * I) \ (Xhat_t' * Yt)
+        else
+            Chat_t = Xhat_t \ Yt
+        end
         Chat = transpose(Chat_t)
     else
         Chat = 0

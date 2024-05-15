@@ -16,9 +16,14 @@ mutable struct Streaming_InferOp
     Py_k::Union{AbstractArray{Float64,2}, Nothing}  # projection matrix
     Ky_k::Union{AbstractArray{Float64,2}, Nothing}  # gain matrix
 
-    tol::Union{Float64,Nothing}                  # tolerance of the pseudo-inverse
+    # Regularization terms (state and output)
+    α_k::Union{Real, Nothing}
+    β_k::Union{Real, Nothing}
+
+    tol::Union{Real,Array{<:Real},Nothing}       # tolerance of the pseudo-inverse for state and output
     dims::Dict{Symbol,Int}                       # dimensions
     options::Abstract_Option                     # options
+    variable_regularize::Bool                    # variable regularization flag
     init!::Function
     stream!::Function
     stream_output!::Function
@@ -26,7 +31,12 @@ mutable struct Streaming_InferOp
 end
 
 
-function Streaming_InferOp(options::Abstract_Option; tol::Union{Float64,Nothing}=nothing)
+function Streaming_InferOp(options::Abstract_Option; variable_regularize::Bool=false,
+                           tol::Union{Real,Array{<:Real},Nothing}=nothing)
+    if !isnothing(tol)
+        @assert length(tol) <= 2 "The length of the tolerance should be at most 2."
+    end
+
     dims = Dict(
         :n => 0, :m => 0, :p => 0, :q => 0, 
         :s => 0, :v => 0, :s3 => 0, :v3 => 0,
@@ -41,13 +51,19 @@ function Streaming_InferOp(options::Abstract_Option; tol::Union{Float64,Nothing}
     Py_k = nothing
     Ky_k = nothing
 
-    return Streaming_InferOp(O_k, P_k, K_k, C_k, Py_k, Ky_k, tol, dims, options, 
-                                init!, stream!, stream_output!, unpack_operators)
+    α_k = 0.0
+    β_k = 0.0
+
+    return Streaming_InferOp(
+        O_k, P_k, K_k, C_k, Py_k, Ky_k, α_k, β_k, tol, dims, options, variable_regularize,
+        init!, stream!, stream_output!, unpack_operators
+    )
 end
 
 
 function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractArray{T},
-                R_k::AbstractArray{T}, Q_k::Union{AbstractArray{T}, Nothing}=nothing) where T<:Real
+               R_k::AbstractArray{T}, α_k::Union{Real,Nothing}=0.0, 
+               Q_k::Union{AbstractArray{T}, T, Nothing}=nothing) where T<:Real
 
     # Obtain the dimensions
     stream.dims[:n], stream.dims[:m] = size(X_k)
@@ -65,16 +81,25 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractAr
     D_k = getDataMat(X_k, transpose(X_k), U_k, stream.dims, stream.options)
 
     # Aggregated data matrix and Operator matrix
-    stream.P_k = (D_k' * Q_k_inv * D_k) \ I
+    tmp = D_k' * Q_k_inv * D_k + α_k * I
+    if isnothing(stream.tol)
+        stream.P_k = (tmp) \ I
+    else
+        stream.P_k = pinv(tmp; atol=stream.tol[1])
+    end
     stream.O_k = P_k * D_k' * Q_k_inv * R_k
+
+    if variable_regularize # if variable regularization is enabled
+        stream.α_k = α_k
+    end
 
     return D_k
 end 
 
 
-function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractArray{T}, Y_k::AbstractArray{T},
-                R_k::AbstractArray{T}, Q_k::Union{AbstractArray{T}, Nothing}=nothing, 
-                Z_k::Union{AbstractArray{T}, Nothing}=nothing) where T<:Real
+function init!(stream::Streaming_InferOp, X_k::AbstractArray{}, U_k::AbstractArray{T}, Y_k::AbstractArray{T},
+                R_k::AbstractArray{T}, α_k::Union{Real,Nothing}=0.0, β_k::Union{Real,Nothing}=0.0,
+                Q_k::Union{AbstractArray{T}, T, Nothing}=nothing, Z_k::Union{AbstractArray{T}, T, Nothing}=nothing) where T<:Real
 
     # Obtain the dimensions
     n, K = size(X_k)
@@ -96,9 +121,9 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractAr
 
     # Aggregated data matrix and Operator matrix
     if isnothing(stream.tol)
-        stream.P_k = (D_k' * Q_k_inv * D_k) \ I
+        stream.P_k = (D_k' * Q_k_inv * D_k + α_k * I) \ I
     else
-        stream.P_k = pinv(D_k' * Q_k_inv * D_k; atol=stream.tol)
+        stream.P_k = pinv(D_k' * Q_k_inv * D_k + α_k * I; atol=stream.tol[1])
     end
     stream.O_k = stream.P_k * D_k' * Q_k_inv * R_k
 
@@ -109,11 +134,20 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray{T}, U_k::AbstractAr
     # Aggregated data matrix and Output matrix
     Xt_k = transpose(X_k)
     if isnothing(stream.tol)
-        stream.Py_k = (Xt_k' * Z_k_inv * Xt_k) \ I
+        stream.Py_k =  (Xt_k' * Z_k_inv * Xt_k + β_k * I) \ I
     else
-        stream.Py_k = pinv(Xt_k' * Z_k_inv * Xt_k; atol=stream.tol)
+        if length(stream.tol) == 1  # use same tolerance for both state and output
+            stream.Py_k = pinv(Xt_k' * Z_k_inv * Xt_k + β_k * I; atol=stream.tol[1])
+        else  # use different tolerance for state and output
+            stream.Py_k = pinv(Xt_k' * Z_k_inv * Xt_k + β_k * I; atol=stream.tol[2])
+        end
     end
     stream.C_k = stream.Py_k * Xt_k' * Z_k_inv * Y_k
+
+    if stream.variable_regularize # if variable regularization is enabled
+        stream.α_k = α_k
+        stream.β_k = β_k
+    end
 
     return D_k
 end 
@@ -126,7 +160,7 @@ $(SIGNATURES)
 Update the streaming operator inference with new data.
 """
 function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, U_kp1::AbstractArray{T},
-                        R_kp1::AbstractArray{T}, Q_kp1::Union{AbstractArray{T}, Nothing}=nothing) where T<:Real
+                 R_kp1::AbstractArray{T}, Q_kp1::Union{AbstractArray{T}, T, Nothing}=nothing) where T<:Real
 
     K = size(X_kp1,2)
     if stream.dims[:m] != K
@@ -137,23 +171,32 @@ function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, U_kp1::Abst
     D_kp1 = getDataMat(X_kp1, transpose(X_kp1), U_kp1, stream.dims, stream.options)
 
     if !isnothing(Q_kp1)
-        Q_k_inv = Q_kp1 \ I
-        if isnothing(stream.tol)
-            stream.P_k -= stream.P_k * D_kp1' * ((Q_kp1 + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+        if K == 1  # rank-1 update
+            u = stream.P_k * D_kp1'
+            stream.P_k -= u * u' / (Q_kp1 + dot(D_kp1, u))
         else
-            stream.P_k -= stream.P_k * D_kp1' * (pinv(Q_kp1 + D_kp1 * stream.P_k * D_kp1'; atol=stream.tol) * D_kp1) * stream.P_k
+            Q_k_inv = Q_kp1 \ I
+            if isnothing(stream.tol)
+                stream.P_k -= stream.P_k * D_kp1' * ((Q_kp1 + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+            else
+                stream.P_k -= stream.P_k * D_kp1' * (pinv(Q_kp1 + D_kp1 * stream.P_k * D_kp1'; atol=stream.tol[1]) * D_kp1) * stream.P_k
+            end
         end
         stream.K_k = stream.P_k * D_kp1' * Q_k_inv
-        stream.O_k += stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
     else
-        if isnothing(stream.tol)
-            stream.P_k -= stream.P_k * D_kp1' * ((1.0I(K) + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+        if K == 1  # rank-1 update
+            u = stream.P_k * D_kp1'
+            stream.P_k -= u * u' / (1.0 + dot(D_kp1, u))
         else
-            stream.P_k -= stream.P_k * D_kp1' * (pinv(1.0I(K) + D_kp1 * stream.P_k * D_kp1'; atol=stream.tol) * D_kp1) * stream.P_k
+            if isnothing(stream.tol)
+                stream.P_k -= stream.P_k * D_kp1' * ((1.0I(K) + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+            else
+                stream.P_k -= stream.P_k * D_kp1' * (pinv(1.0I(K) + D_kp1 * stream.P_k * D_kp1'; atol=stream.tol[1]) * D_kp1) * stream.P_k
+            end
         end
         stream.K_k = stream.P_k * D_kp1'
-        stream.O_k += stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
     end
+    stream.O_k += stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
 
     return D_kp1
 end
@@ -162,19 +205,90 @@ end
 """
 $(SIGNATURES)
 
+Update the variable regularized streaming operator inference with new data.
+"""
+function reg_stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, U_kp1::AbstractArray{T},
+                 R_kp1::AbstractArray{T}, α_kp1::Union{Real,Nothing}=0.0,
+                 Q_kp1::Union{AbstractArray{T}, T, Nothing}=nothing) where T<:Real
+
+    K = size(X_kp1,2)
+    if stream.dims[:m] != K
+        stream.dims[:m] = K
+    end
+
+    # Construct the data matrix
+    D_kp1 = getDataMat(X_kp1, transpose(X_kp1), U_kp1, stream.dims, stream.options)
+
+    if !isnothing(Q_kp1)
+        if K == 1  # rank-1 update
+            u = stream.P_k * D_kp1'
+            T_k = stream.P_k - u * u' / (Q_kp1 + dot(D_kp1, u))
+            stream.P_k = (I - (α_kp1 - stream.α_k) * T_k) * T_k
+        else
+            Q_k_inv = Q_kp1 \ I
+            if isnothing(stream.tol)
+                T_k = stream.P_k - stream.P_k * D_kp1' * ((Q_kp1 + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k 
+                stream.P_k = (I - (α_kp1 - stream.α_k) * T_k) * T_k
+            else
+                T_k = stream.P_k - stream.P_k * D_kp1' * (pinv(Q_kp1 + D_kp1 * stream.P_k * D_kp1'; atol=stream.tol[1]) * D_kp1) * stream.P_k
+                stream.P_k = (I - (α_kp1 - stream.α_k) * T_k) * T_k
+            end
+        end
+        stream.K_k = stream.P_k * D_kp1' * Q_k_inv
+    else
+        if K == 1  # rank-1 update
+            u = stream.P_k * D_kp1'
+            T_k = stream.P_k - u * u' / (1.0 + dot(D_kp1, u))
+            stream.P_k = (I - (α_kp1 - stream.α_k) * T_k) * T_k
+        else
+            if isnothing(stream.tol)
+                T_k = stream.P_k - stream.P_k * D_kp1' * ((1.0I(K) + D_kp1 * stream.P_k * D_kp1') \ D_kp1) * stream.P_k
+                stream.P_k = (I - (α_kp1 - stream.α_k) * T_k) * T_k
+            else
+                T_k = stream.P_k - stream.P_k * D_kp1' * (pinv(1.0I(K) + D_kp1 * stream.P_k * D_kp1'; atol=stream.tol[1]) * D_kp1) * stream.P_k
+                stream.P_k = (I - (α_kp1 - stream.α_k) * T_k) * T_k
+            end
+        end
+        stream.K_k = stream.P_k * D_kp1'
+    end
+    stream.O_k = (I - (α_kp1 - stream.α_k) * stream.P_k) * stream.O_k + stream.K_k * (R_kp1 - D_kp1 * stream.O_k)
+    stream.α_k = α_kp1 # update the regularization term
+
+    return D_kp1
+end
+
+
+
+"""
+$(SIGNATURES)
+
 Update the streaming operator inference with new data for multiple batches of data matrices.
 """
 function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{<:AbstractArray{T}}, U_kp1::AbstractArray{<:AbstractArray{T}},
-                    R_kp1::AbstractArray{<:AbstractArray{T}}, Q_kp1::Union{AbstractArray{<:AbstractArray{T}}, Nothing}=nothing) where T<:Real
+                 R_kp1::AbstractArray{<:AbstractArray{T}}, α_kp1::Union{AbstractArray{T},Nothing}=nothing,
+                 Q_kp1::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Nothing}=nothing) where T<:Real
     N = length(X_kp1)
     D_kp1 = nothing
     if !isnothing(Q_kp1)
-        for i in 1:N
-            D_kp1 = stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i], Q_kp1[i])
+        # if both is true so that we can choose to do fixed/variable regularization for the state and/or the output
+        if stream.variable_regularize && !isnothing(α_kp1)  
+            for i in 1:N
+                D_kp1 = reg_stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i], α_kp1[i], Q_kp1[i])
+            end
+        else
+            for i in 1:N
+                D_kp1 = stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i], Q_kp1[i])
+            end
         end
     else
-        for i in 1:N
-            D_kp1 = stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i])
+        if stream.variable_regularize && !isnothing(α_kp1)
+            for i in 1:N
+                D_kp1 = reg_stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i], α_kp1[i])
+            end
+        else
+            for i in 1:N
+                D_kp1 = stream!(stream, X_kp1[i], U_kp1[i], R_kp1[i])
+            end
         end
     end
     return D_kp1
@@ -182,7 +296,7 @@ end
 
 
 function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, Y_kp1::AbstractArray{T}, 
-                            Z_kp1::Union{AbstractArray{T}, Nothing}=nothing) where T<:Real
+                        Z_kp1::Union{AbstractArray{T}, T, Nothing}=nothing) where T<:Real
     K, q = size(Y_kp1)
     @assert K == size(X_kp1, 2) "The number of data points should be the same."
     Xt_kp1 = transpose(X_kp1)
@@ -196,36 +310,130 @@ function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, Y_kp
     end
 
     if !isnothing(Z_kp1)
-        Z_k_inv = Z_kp1 \ I
-        if isnothing(stream.tol)
-            stream.Py_k -= stream.Py_k * Xt_kp1' * ((Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+        if K == 1  # rank-1 update
+            u = stream.Py_k * Xt_kp1'
+            stream.Py_k -= u * u' / (Z_kp1 + dot(Xt_kp1, u))
         else
-            stream.Py_k -= stream.Py_k * Xt_kp1' * (pinv(Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol) * Xt_kp1) * stream.Py_k
+            Z_k_inv = Z_kp1 \ I
+            if isnothing(stream.tol)
+                stream.Py_k -= stream.Py_k * Xt_kp1' * ((Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+            else
+                if length(stream.tol) == 1
+                    stream.Py_k -= stream.Py_k * Xt_kp1' * (pinv(Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol[1]) * Xt_kp1) * stream.Py_k
+                else
+                    stream.Py_k -= stream.Py_k * Xt_kp1' * (pinv(Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol[2]) * Xt_kp1) * stream.Py_k
+                end
+            end
         end
         stream.Ky_k = stream.Py_k * Xt_kp1' * Z_k_inv
-        stream.C_k += stream.Ky_k * (Y_kp1 - Xt_kp1 * stream.C_k)
     else
-        if isnothing(stream.tol)
-            stream.Py_k -= stream.Py_k * Xt_kp1' * ((1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+        if K == 1 # rank-1 update
+            u = stream.Py_k * Xt_kp1'
+            stream.Py_k -= u * u' / (1.0 + dot(Xt_kp1, u))
         else
-            stream.Py_k -= stream.Py_k * Xt_kp1' * (pinv(1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol) * Xt_kp1) * stream.Py_k
+            if isnothing(stream.tol)
+                stream.Py_k -= stream.Py_k * Xt_kp1' * ((1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+            else
+                if length(stream.tol) == 1
+                    stream.Py_k -= stream.Py_k * Xt_kp1' * (pinv(1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol[1]) * Xt_kp1) * stream.Py_k
+                else
+                    stream.Py_k -= stream.Py_k * Xt_kp1' * (pinv(1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol[2]) * Xt_kp1) * stream.Py_k
+                end
+            end
         end
         stream.Ky_k = stream.Py_k * Xt_kp1'
-        stream.C_k += stream.Ky_k * (Y_kp1 - Xt_kp1 * stream.C_k)
     end
+    stream.C_k += stream.Ky_k * (Y_kp1 - Xt_kp1 * stream.C_k)
 end
 
 
+function reg_stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, Y_kp1::AbstractArray{T}, 
+                            β_kp1::Union{Real,Nothing}=0.0,
+                            Z_kp1::Union{AbstractArray{T}, T, Nothing}=nothing) where T<:Real
+    K, q = size(Y_kp1)
+    @assert K == size(X_kp1, 2) "The number of data points should be the same."
+    Xt_kp1 = transpose(X_kp1)
+
+    if stream.dims[:q] != q
+        stream.dims[:q] = q
+    end
+
+    if stream.dims[:m] != K
+        stream.dims[:m] = K
+    end
+
+    if !isnothing(Z_kp1)
+        if K == 1  # rank-1 update
+            u = stream.Py_k * Xt_kp1'
+            T_k = stream.Py_k - u * u' / (Z_kp1 + dot(Xt_kp1, u))
+            stream.Py_k = (I - (β_kp1 - stream.β_k) * T_k) * T_k
+        else
+            Z_k_inv = Z_kp1 \ I
+            if isnothing(stream.tol)
+                T_k = stream.Py_k - stream.Py_k * Xt_kp1' * ((Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+                stream.Py_k = (I - (β_kp1 - stream.β_k) * T_k) * T_k
+            else
+                if length(stream.tol) == 1
+                    T_k = stream.Py_k - stream.Py_k * Xt_kp1' * (pinv(Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol[1]) * Xt_kp1) * stream.Py_k
+                    stream.Py_k = (I - (β_kp1 - stream.β_k) * T_k) * T_k
+                else
+                    T_k = stream.Py_k - stream.Py_k * Xt_kp1' * (pinv(Z_kp1 + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol[2]) * Xt_kp1) * stream.Py_k
+                    stream.Py_k = (I - (β_kp1 - stream.β_k) * T_k) * T_k
+                end
+            end
+        end
+        stream.Ky_k = stream.Py_k * Xt_kp1' * Z_k_inv
+    else
+        if K == 1 # rank-1 update
+            u = stream.Py_k * Xt_kp1'
+            T_k = stream.Py_k - u * u' / (1.0 + dot(Xt_kp1, u))
+            stream.Py_k = (I - (β_kp1 - stream.β_k) * T_k) * T_k
+        else
+            if isnothing(stream.tol)
+                T_k = stream.Py_k - stream.Py_k * Xt_kp1' * ((1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1') \ Xt_kp1) * stream.Py_k
+                stream.Py_k = (I - (β_kp1 - stream.β_k) * T_k) * T_k
+            else
+                if length(stream.tol) == 1
+                    T_k = stream.Py_k - stream.Py_k * Xt_kp1' * (pinv(1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol[1]) * Xt_kp1) * stream.Py_k
+                    stream.Py_k = (I - (β_kp1 - stream.β_k) * T_k) * T_k
+                else
+                    T_k = stream.Py_k - stream.Py_k * Xt_kp1' * (pinv(1.0I(K) + Xt_kp1 * stream.Py_k * Xt_kp1'; atol=stream.tol[2]) * Xt_kp1) * stream.Py_k
+                    stream.Py_k = (I - (β_kp1 - stream.β_k) * T_k) * T_k
+                end
+            end
+        end
+        stream.Ky_k = stream.Py_k * Xt_kp1'
+    end
+    stream.C_k = (I - (β_kp1 - stream.β_k) * stream.Py_k) * stream.C_k + stream.Ky_k * (Y_kp1 - Xt_kp1 * stream.C_k)
+    stream.β_k = β_kp1 # update the regularization term
+end
+
+
+
 function stream_output!(stream::Streaming_InferOp, X_kp1::AbstractArray{<:AbstractArray{T}}, Y_kp1::AbstractArray{<:AbstractArray{T}},
-                            Z_kp1::Union{AbstractArray{<:AbstractArray{T}}, Nothing}=nothing) where T<:Real
+                        β_kp1::Union{AbstractArray{T},Nothing}=nothing,
+                        Z_kp1::Union{AbstractArray{<:AbstractArray{T}}, T, Nothing}=nothing) where T<:Real
     N = length(X_kp1)
     if !isnothing(Z_kp1)
-        for i in 1:N
-            stream_output!(stream, X_kp1[i], Y_kp1[i], Z_kp1[i])
+        # if both is true so that we can choose to do fixed/variable regularization for the state and/or the output
+        if stream.variable_regularize && !isnothing(β_kp1) 
+            for i in 1:N
+                reg_stream_output!(stream, X_kp1[i], Y_kp1[i], β_kp1[i], Z_kp1[i])
+            end
+        else
         end
+            for i in 1:N
+                stream_output!(stream, X_kp1[i], Y_kp1[i], Z_kp1[i])
+            end
     else
-        for i in 1:N
-            stream_output!(stream, X_kp1[i], Y_kp1[i])
+        if stream.variable_regularize && !isnothing(β_kp1)
+            for i in 1:N
+                reg_stream_output!(stream, X_kp1[i], Y_kp1[i], β_kp1[i])
+            end
+        else
+            for i in 1:N
+                stream_output!(stream, X_kp1[i], Y_kp1[i])
+            end
         end
     end
 end

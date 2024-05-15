@@ -13,17 +13,32 @@ Plots the relative state and output errors of the intrusive, inferred, and strea
 A figure containing the plot.
 """
 function plot_rse(rel_state_err::Matrix, rel_output_err::Matrix, r::Int, theme::CairoMakie.Attributes)
+    n = size(rel_state_err, 2)
     with_theme(theme) do
         fig2 = Figure(fontsize=20, size=(1200,600))
         ax1 = Axis(fig2[1, 1], xlabel="r", ylabel="Relative Error", title="Relative State Error", yscale=log10)
         scatterlines!(ax1, 1:r, rel_state_err[:, 1], label="Intrusive")
         scatterlines!(ax1, 1:r, rel_state_err[:, 2], label="OpInf")
-        scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="Streaming-OpInf")
+        if n == 3
+            scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="Streaming-OpInf")
+        else
+            scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="TR-OpInf")
+            scatterlines!(ax1, 1:r, rel_state_err[:, 4], label="Streaming-OpInf")
+        end
         ax2 = Axis(fig2[1, 2], xlabel="r", ylabel="Relative Error", title="Relative Output Error", yscale=log10)
         l1 = scatterlines!(ax2, 1:r, rel_output_err[:, 1], label="Intrusive")
         l2 = scatterlines!(ax2, 1:r, rel_output_err[:, 2], label="OpInf")
-        l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="Streaming-OpInf")
-        Legend(fig2[2, 1:2], [l1, l2, l3], ["Intrusive", "OpInf", "Streaming-OpInf"],
+        if n == 3
+            l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="Streaming-OpInf")
+            labels = ["Intrusive", "OpInf", "Streaming-OpInf"]
+            lines = [l1, l2, l3]
+        else
+            l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="TR-OpInf")
+            l4 = scatterlines!(ax2, 1:r, rel_output_err[:, 4], label="Streaming-OpInf")
+            labels = ["Intrusive", "OpInf", "TR-OpInf", "Streaming-OpInf"]
+            lines = [l1, l2, l3, l4]
+        end
+        Legend(fig2[2, 1:2], lines, labels,
                 orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
         return fig2
     end
@@ -48,14 +63,18 @@ Plots the relative state and output errors of the intrusive, inferred, and strea
 A figure containing the plot.
 """
 function plot_rse_per_stream(rel_state_err_stream::Matrix, rel_output_err_stream::Matrix, r_select::Vector{<:Int},
-         theme::CairoMakie.Attributes; CONST_BATCH::Bool=false)
-    M = CONST_BATCH ? size(X,2)÷batchsize : length(batchsize)
+         theme::CairoMakie.Attributes, num_of_batches::Int)
+    M = num_of_batches
 
     with_theme(theme) do
         fig3 = Figure(fontsize=20, size=(1200,600))
-        xtick_vals = CONST_BATCH ? (1:M) : (1:(M÷10):M)
+        xtick_vals = (M > 30) ? (1:(M÷10):M) : (1:M)
         ax1 = Axis(fig3[1, 1], xlabel="Stream Update", ylabel="Relative Error", title="Relative State Error", yscale=log10, xticks=xtick_vals)
         ax2 = Axis(fig3[1, 2], xlabel="Stream Update", ylabel="Relative Error", title="Relative Output Error", yscale=log10, xticks=xtick_vals)
+        min1 = minimum(x->isnan(x) ? Inf : x, rel_state_err_stream)
+        min2 = minimum(x->isnan(x) ? Inf : x, rel_output_err_stream)
+        ylims!(ax1, min1 / 10, 10^5)
+        ylims!(ax2, min2 / 10, 10^5)
         lines_ = []
         labels_ = []
         for (j,ri) in enumerate(r_select)
@@ -87,24 +106,24 @@ Plots the state and output error factors per stream update.
 A figure containing the plot.
 """
 function plot_error_acc_per_stream(err_state_acc_stream::Matrix, err_output_acc_stream::Matrix, 
-        theme::CairoMakie.Attributes; CONST_BATCH::Bool=false)
-    M = CONST_BATCH ? size(X,2)÷batchsize : length(batchsize)
+        theme::CairoMakie.Attributes, num_of_batches::Int)
+    M = num_of_batches
 
     with_theme(theme) do
         fig4 = Figure(size=(1200,600), fontsize=20)
-        xtick_vals = CONST_BATCH ? (1:M) : (1:(M÷10):M)
+        xtick_vals = (M > 30) ? (1:(M÷10):M) : (1:M)
         ax1 = Axis(fig4[1, 1], xlabel=L"Stream Update, $k$", 
                     ylabel="Factor",
                     title="State Error Factor", xticks=xtick_vals, yscale=log10)
         ax2 = Axis(fig4[1, 2], xlabel=L"Stream Update, $k$", 
                     ylabel="Factor",
                     title="Output Error Factor", xticks=xtick_vals, yscale=log10)
-        scatterlines!(ax1, 1:M, err_state_acc_stream[:,1])
-        l1 = scatterlines!(ax2, 1:M, err_output_acc_stream[:,1])
-        scatterlines!(ax1, 1:M, err_state_acc_stream[:,2])
-        l2 = scatterlines!(ax2, 1:M, err_output_acc_stream[:,2])
-        scatterlines!(ax1, 1:M, 10 .^ mean(log10.(err_state_acc_stream), dims=2)[:,1], linestyle=:dash, linewidth=2)
-        l3 = scatterlines!(ax2, 1:M, 10 .^ mean(log10.(err_output_acc_stream), dims=2)[:,1], linestyle=:dash, linewidth=2)
+        scatterlines!(ax1, 2:M, err_state_acc_stream[2:end,1])
+        l1 = scatterlines!(ax2, 2:M, err_output_acc_stream[2:end,1])
+        scatterlines!(ax1, 2:M, err_state_acc_stream[2:end,2])
+        l2 = scatterlines!(ax2, 2:M, err_output_acc_stream[2:end,2])
+        scatterlines!(ax1, 2:M, 10 .^ mean(log10.(err_state_acc_stream), dims=2)[2:end,1], linestyle=:dash, linewidth=2)
+        l3 = scatterlines!(ax2, 2:M, 10 .^ mean(log10.(err_output_acc_stream), dims=2)[2:end,1], linestyle=:dash, linewidth=2)
         Legend(fig4[2, 1:2], [l1, l2, l3], [L"Upper Bound: $\Vert \mathbf{I}-\mathbf{K}_k\mathbf{D}_k\Vert_2$", 
                 L"Lower Bound: $\sigma_{\text{min}}(\mathbf{I}-\mathbf{K}_k\mathbf{D}_k)$", "Mean"],
                 orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
@@ -141,8 +160,8 @@ function plot_error_condition(err_state_cond::Vector, err_output_cond::Vector,
         ax2 = Axis(fig4[1, 2], xlabel=L"Stream Update, $k$", 
                     ylabel=L"\kappa(\mathbf{I}-\mathbf{K}_{y_k}\hat{\mathbf{X}}_k)",
                     title="Output Error Factor", xticks=xtick_vals, yscale=log10)
-        scatterlines!(ax1, 1:M, err_state_cond)
-        scatterlines!(ax2, 1:M, err_output_cond)
+        scatterlines!(ax1, 2:M, err_state_cond[2:end])
+        scatterlines!(ax2, 2:M, err_output_cond[2:end])
         return fig4
     end
 end

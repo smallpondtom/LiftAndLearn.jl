@@ -28,7 +28,7 @@ Unique_Kronecker(x, x) = \\begin{bmatrix}
 ## Returns
 - `result`: unique Kronecker product
 """
-@inline function Unique_Kronecker(x::AbstractArray{T}, y::AbstractArray{T}) where {T<:Number}
+@inline function Unique_Kronecker(x::AbstractArray{T}, y::AbstractArray{T}) where {T}
     n = length(x)
     m = length(y)
     result = Array{T}(undef, n*(n+1) ÷ 2)
@@ -55,7 +55,7 @@ Unique Kronecker product operation for triple Kronecker product.
 ## Returns
 - `result`: unique Kronecker product
 """
-@inline function Unique_Kronecker(x::AbstractArray{T}, y::AbstractArray{T}, z::AbstractArray{T}) where {T<:Number}
+@inline function Unique_Kronecker(x::AbstractArray{T}, y::AbstractArray{T}, z::AbstractArray{T}) where {T}
     n = length(x)
     result = Array{T}(undef, n*(n+1)*(n+2) ÷ 6)
     l = 1
@@ -82,7 +82,7 @@ Unique Kronecker product operation (dispatch)
 ## Returns
 - `result`: unique Kronecker product
 """
-@inline function Unique_Kronecker(x::AbstractArray{T}) where {T<:Number}
+@inline function Unique_Kronecker(x::AbstractArray{T}) where {T}
     n = length(x)
     result = Array{T}(undef, n*(n+1) ÷ 2)
     k = 1
@@ -108,5 +108,5 @@ Unique Kronecker product operation
 ## Returns
 - unique Kronecker product
 """
-⊘(x::AbstractArray{T}, y::AbstractArray{T}) where {T<:Number} = Unique_Kronecker(x, y)
-⊘(x::AbstractArray{T}, y::AbstractArray{T}, z::AbstractArray{T}) where {T<:Number} = Unique_Kronecker(x,y,z)
+⊘(x::AbstractArray{T}, y::AbstractArray{T}) where {T} = Unique_Kronecker(x, y)
+⊘(x::AbstractArray{T}, y::AbstractArray{T}, z::AbstractArray{T}) where {T} = Unique_Kronecker(x,y,z)

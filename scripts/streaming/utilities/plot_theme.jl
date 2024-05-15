@@ -1,8 +1,8 @@
 ace_light = CairoMakie.merge(Theme(
     fontsize = 20,
-    backgroundcolor = "#F2F2F2",
+    backgroundcolor = "#FFFFFF",
     Axis = (
-        backgroundcolor = "#F2F2F2",
+        backgroundcolor = "#FFFFFF",
         xlabelsize = 20, xlabelpaddingg=-5,
         xgridstyle = :dash, ygridstyle = :dash,
         xtickalign = 1, ytickalign = 1,
@@ -10,6 +10,6 @@ ace_light = CairoMakie.merge(Theme(
         rightspinevisible = false, topspinevisible = false,
     ),
     Legend = (
-        backgroundcolor = "#F2F2F2",
+        backgroundcolor = "#FFFFFF",
     ),
 ), theme_latexfonts())

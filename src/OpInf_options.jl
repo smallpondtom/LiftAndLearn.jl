@@ -104,6 +104,7 @@ Tikhonov regularization parameters.
 - `quad::Float64`: the Tikhonov regularization parameter for quadratic state operator
 - `ctrl::Float64`: the Tikhonov regularization parameter for control operator
 - `bilin::Float64`: the Tikhonov regularization parameter for bilinear state operator
+- `output::Float64`: the Tikhonov regularization parameter for output operator
 """
 @with_kw struct λtik
     lin::Union{Real, AbstractArray{Real}} = 0.0
@@ -111,6 +112,7 @@ Tikhonov regularization parameters.
     cubic::Real = 0.0
     ctrl::Real = 0.0
     bilin::Real = 0.0
+    output::Real = 0.0
 end
 
 
