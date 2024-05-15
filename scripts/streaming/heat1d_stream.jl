@@ -230,3 +230,44 @@ init_rse, init_roe = compute_inital_stream_error(batchsizes, Vr, X, U, Y, Vr' * 
 ## Plot
 fig5 = plot_initial_error(batchsizes, init_rse, init_roe, ace_light)
 display(fig5)
+
+
+
+###################################################
+## Trying to compute heuristic regularization term
+###################################################
+using JuMP
+using Ipopt
+
+##
+function hanke_raus(D, R, α_km1)
+    model = JuMP.Model(Ipopt.Optimizer; add_bridges = false)
+    JuMP.@variable(model, α >= 0)
+    JuMP.set_start_value(α, α_km1)
+    d = size(D, 2)
+    r = size(R, 2)
+
+    U, S, V = svd(D)
+
+    x0 = Matrix{JuMP.NonlinearExpr}(undef, d, r)
+    for i in 1:r
+        x0[:,i] .= sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R[:,i]) * V[:,j] for j in 1:r)
+    end
+    R0 = R - D * x0
+    x1 = Matrix{JuMP.NonlinearExpr}(undef, d, r)
+    for i in 1:r
+        x1[:,i] .= x0[:,i] + sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R0[:,i]) * V[:,j] for j in 1:r)
+    end
+    R1 = R - D * x1
+
+    JuMP.@objective(model, Min, sqrt(1 + 1/α) * sqrt(sum((R1[:,i]' * R0[:,i]) for i in 1:r)))
+    JuMP.optimize!(model)
+    return JuMP.value(α)
+end
+
+##
+D = hcat(Xhat_batch[10]', U_batch[10])
+R = R_batch[10]
+
+## 
+α_star = hanke_raus(D, R, 1e-3)
