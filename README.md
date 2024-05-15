@@ -13,7 +13,8 @@
 [![Powered by ACE Lab](https://img.shields.io/badge/powered%20by-ACE%20Lab-pink)](https://sites.google.com/view/elizabeth-qian/research/ace-group)
 [![CI](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/smallpondtom/LiftAndLearn.jl/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl/graph/badge.svg?token=4MJJ4716UA)](https://codecov.io/gh/smallpondtom/LiftAndLearn.jl)
-[![Doc](https://img.shields.io/badge/docs-dev-blue.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/dev)
+[![Doc](https://img.shields.io/badge/docs-stable-blue.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/stable)
+[![Doc](https://img.shields.io/badge/docs-dev-green.svg)](https://smallpondtom.github.io/LiftAndLearn.jl/dev)
 [![DOI](https://zenodo.org/badge/657587865.svg)](https://zenodo.org/doi/10.5281/zenodo.10826114)
 </div>
 
