@@ -242,32 +242,40 @@ using Ipopt
 ##
 function hanke_raus(D, R, α_km1)
     model = JuMP.Model(Ipopt.Optimizer; add_bridges = false)
-    JuMP.@variable(model, α >= 0)
+    JuMP.set_optimizer_attribute(model, "max_iter", 100)
+    JuMP.@variable(model, 1 >= α >= 0)
     JuMP.set_start_value(α, α_km1)
+    # JuMP.set_silent(model)
     d = size(D, 2)
     r = size(R, 2)
 
     U, S, V = svd(D)
+    m = length(S)
+    println(size(U))
+    println(size(S))
+    println(size(V))
 
     x0 = Matrix{JuMP.NonlinearExpr}(undef, d, r)
     for i in 1:r
-        x0[:,i] .= sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R[:,i]) * V[:,j] for j in 1:r)
+        x0[:,i] .= sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R[:,i]) * V[:,j] for j in 1:m)
     end
     R0 = R - D * x0
     x1 = Matrix{JuMP.NonlinearExpr}(undef, d, r)
     for i in 1:r
-        x1[:,i] .= x0[:,i] + sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R0[:,i]) * V[:,j] for j in 1:r)
+        x1[:,i] .= x0[:,i] + sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R0[:,i]) * V[:,j] for j in 1:m)
     end
     R1 = R - D * x1
 
-    JuMP.@objective(model, Min, sqrt(1 + 1/α) * sqrt(sum((R1[:,i]' * R0[:,i]) for i in 1:r)))
+    # JuMP.@objective(model, Min, sqrt(1 + 1/α) * sqrt(sum((R1[:,i]' * R0[:,i]) for i in 1:r)))
+    JuMP.@objective(model, Min, (1 + 1/α) * ((sum ∘ diag)(R1' * R0)))
     JuMP.optimize!(model)
     return JuMP.value(α)
 end
 
 ##
-D = hcat(Xhat_batch[10]', U_batch[10])
-R = R_batch[10]
+idx = rand(1:10)
+D = hcat(Xhat_batch[idx]', U_batch[idx])
+R = R_batch[idx]
 
 ## 
 α_star = hanke_raus(D, R, 1e-3)
