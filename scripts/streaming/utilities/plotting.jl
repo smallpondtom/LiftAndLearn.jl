@@ -183,17 +183,27 @@ Plots the initial relative errors of the state and output matrices over differen
 # Returns
 A figure containing the plot.
 """
-function plot_initial_error(batchsizes::Union{AbstractArray{<:Int},Int}, initial_errs::Array, initial_output_errs::Array, theme::CairoMakie.Attributes)
+function plot_initial_error(batchsizes::Union{AbstractArray{<:Int},Int}, initial_errs::Array, initial_output_errs::Array, theme::CairoMakie.Attributes,
+                            orders::Union{Int,AbstractArray{<:Int}})
     with_theme(theme) do
         fig5 = Figure(fontsize=20, size=(1200,600))
         ax1 = Axis(fig5[1, 1], xlabel="batch-size", 
                     ylabel=L"\Vert \mathbf{O}_* - \mathbf{O}_0 \Vert_F ~/~ \Vert \mathbf{O}_* \Vert_F", 
                     title=L"Initial Relative Error of $\mathbf{O}_0$", yscale=log10)
-        scatterlines!(ax1, batchsizes, initial_errs)
         ax2 = Axis(fig5[1, 2], xlabel="batch-size", 
                     ylabel=L"\Vert \hat{\mathbf{C}}_* - \hat{\mathbf{C}}_0\Vert ~/~ \Vert \hat{\mathbf{C}}_* \Vert", 
                     title=L"Initial Relative Error of $\hat{\mathbf{C}}_0$", yscale=log10)
-        scatterlines!(ax2, batchsizes, initial_output_errs)
+
+        colors = Makie.resample_cmap(:viridis, length(orders))
+        lines = []
+        labels = []
+        for (i,r) in enumerate(orders)
+            l = scatterlines!(ax1, batchsizes, initial_errs[:,i], color=colors[i])
+            scatterlines!(ax2, batchsizes, initial_output_errs[:,i], color=colors[i])
+            push!(labels, "r = $r")
+            push!(lines, l)
+        end
+        Legend(fig5[1, end+1], lines, labels, orientation=:vertical, tellwidth=true, tellheight=true)
         return fig5
     end
 end

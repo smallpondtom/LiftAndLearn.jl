@@ -224,11 +224,11 @@ display(fig4)
 ################################
 ## Initial error over batchsize
 ################################
-batchsizes = 100:50:1000
-init_rse, init_roe = compute_inital_stream_error(batchsizes, Vr, X, U, Y, Vr' * Xdot, op_inf, options, tol, α=α, β=β)
+batchsizes = 1:50:2000
+init_rse, init_roe = compute_inital_stream_error(batchsizes, Vr, X, U, Y, Vr' * Xdot, op_inf, options, tol, α=1e-8, β=1e-5, orders=1:15)
 
 ## Plot
-fig5 = plot_initial_error(batchsizes, init_rse, init_roe, ace_light)
+fig5 = plot_initial_error(batchsizes, init_rse, init_roe, ace_light, 1:15)
 display(fig5)
 
 

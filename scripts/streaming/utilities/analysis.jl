@@ -97,8 +97,8 @@ function compute_rse_per_stream(Xhat_batch::Array{<:Array}, U_batch::Array{<:Arr
     err_output_acc_stream = zeros(M,2)
     err_state_cond = zeros(M)
     err_output_cond = zeros(M)
-
-    trace_cov = zeros(M)
+    op_err_state = zeros(M, length(r_select))
+    op_err_output = zeros(M, length(r_select))
 
     err_state_acc_stream[1,:] .= 1.0  # Iteration 0 is 1
     err_output_acc_stream[1,:] .= 1.0  # Iteration 0 is 1
@@ -108,33 +108,33 @@ function compute_rse_per_stream(Xhat_batch::Array{<:Array}, U_batch::Array{<:Arr
     stream = isnothing(tol) ? LnL.Streaming_InferOp(options; variable_regularize=VR) : LnL.Streaming_InferOp(options; tol=tol, variable_regularize=VR)
     for (j,ri) in enumerate(r_select)
         for i in 1:M
-            if i == 1
+            if i == 1  # First iteration
                 _ = stream.init!(stream, Xhat_batch[i], U_batch[i], Y_batch[i], R_batch[i], α[i], β[i])
-            else 
-                if VR
+            else  # Subsequent iterations
+                if VR  # Variable regularization
                     D_k = stream.stream!(stream, Xhat_batch[i], U_batch[i], R_batch[i], α[i], β[i])
                     stream.stream_output!(stream, Xhat_batch[i], Y_batch[i])
-                else
+                else  # Constant regularization or no regularization
                     D_k = stream.stream!(stream, Xhat_batch[i], U_batch[i], R_batch[i])
                     stream.stream_output!(stream, Xhat_batch[i], Y_batch[i])
                 end
 
-                if j == length(r_select)
-                    # Store the error factor ||I - K_k * D_k||_2
-                    err_state_acc_stream[i,1] = opnorm(I - stream.K_k * D_k, 2)
-                    err_output_acc_stream[i,1] = opnorm(I - stream.Ky_k * Xhat_batch[i]', 2)
+                if j == length(r_select)  # do this for only the last r
+                    foo = I - stream.K_k * D_k
+                    bar = I - stream.Ky_k * Xhat_batch[i]'
 
-                    err_state_acc_stream[i,2] = minimum(svd(I - stream.K_k * D_k).S)
-                    err_output_acc_stream[i,2] = minimum(svd(I - stream.Ky_k * Xhat_batch[i]').S)
+                    err_state_acc_stream[i,1] = opnorm(foo, 2)
+                    err_output_acc_stream[i,1] = opnorm(bar, 2)
 
-                    # condition numbers
-                    err_state_cond[i] = cond(I - stream.K_k * D_k)
-                    err_output_cond[i] = cond(I - stream.Ky_k * Xhat_batch[i]')
+                    err_state_acc_stream[i,2] = minimum(svd(foo).S)
+                    err_output_acc_stream[i,2] = minimum(svd(bar).S)
 
-                    # trace of covariance
-                    d = size(stream.O_k,1)
-                    cov = stream.O_k * stream.O_k' / (d - 1)
-                    trace_cov[i] = sum(diag(cov))
+                    err_state_cond[i] = cond(foo)
+                    err_output_cond[i] = cond(bar)
+                    
+                    foo_r = foo[1:(ri+1), 1:(ri+1)]
+                    bar_r = bar[1:(ri+1), 1:(ri+1)]
+                    op_err_state[i,j] = opnorm(ops.A[1:ri, 1:ri] - foo_r, 2)
                 end
             end
             op_stream = stream.unpack_operators(stream)
@@ -191,44 +191,47 @@ A tuple containing the initial state errors and the initial output errors.
 """
 function compute_inital_stream_error(batchsizes::Union{AbstractArray{<:Int},Int}, Vr::Matrix, X::Matrix, U::Matrix, 
         Y::Matrix, R::Matrix, op_inf::LnL.operators, options::LnL.Abstract_Option, tol::Union{Real,Array{<:Real},Nothing}=nothing;
-        α::Union{Real,Array{<:Real}}=0.0, β::Union{Real,Array{<:Real}}=0.0)
+        α::Union{Real,Array{<:Real}}=0.0, β::Union{Real,Array{<:Real}}=0.0, orders::Union{Int,AbstractArray{<:Int}}=size(Vr,2))
 
-    initial_errs = zeros(length(batchsizes))
-    initial_output_errs = zeros(length(batchsizes))
+    initial_errs = zeros(length(batchsizes), length(orders))
+    initial_output_errs = zeros(length(batchsizes), length(orders))
 
     O_star = [op_inf.A'; op_inf.B']
     for (i, batchsize) in enumerate(batchsizes)
-        # Xhat_batch = LnL.batchify(Vr' * X, batchsize)
-        # U_batch = LnL.batchify(U, batchsize)
-        # Y_batch = LnL.batchify(Y', batchsize)
-        # R_batch = LnL.batchify(R', batchsize)
-        Xhat_batch = (Vr' * X)[:, 1:batchsize]
-        U_batch = U[1:batchsize, :]
-        Y_batch = Y[:, 1:batchsize]'
-        R_batch = R[:, 1:batchsize]'
+        Xhat_i = (Vr' * X)[:, 1:batchsize]
+        U_i = U[1:batchsize, :]
+        Y_i = Y[:, 1:batchsize]'
+        R_i = R[:, 1:batchsize]'
 
         # Initialize the stream
         # INFO: Remember to make data matrices a tall matrix except X matrix
         stream = isnothing(tol) ? LnL.Streaming_InferOp(options) : LnL.Streaming_InferOp(options; tol=tol)
 
-        # _ = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1], R_batch[1], α[i], β[i])
-        _ = stream.init!(stream, Xhat_batch, U_batch, Y_batch, R_batch, α, β)
+        _ = stream.init!(stream, Xhat_i, U_i, Y_i, R_i, α, β)
 
-        # Stream all at once
-        # if variable_regularize
-        #     _ = stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch[2:end], α[i], β[i])
-        #     stream.stream_output!(stream, Xhat_batch[2:end], Y_batch[2:end])
-        # else
-        #     _ = stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch[2:end])
-        #     stream.stream_output!(stream, Xhat_batch[2:end], Y_batch[2:end])
-        # end
+        if length(orders) == 1
+            # Compute state error
+            initial_errs[i] = norm(O_star[] - stream.O_k, 2) / norm(O_star, 2)
 
-        # Compute state error
-        initial_errs[i] = norm(O_star - stream.O_k, 2) / norm(O_star, 2)
+            # Compute output error
+            initial_output_errs[i] = norm(op_inf.C' - stream.C_k, 2) / norm(op_inf.C', 2)
+        else
+            ops = stream.unpack_operators(stream)
+            for (j, r) in enumerate(orders)
+                O_star_r = [op_inf.A[1:r, 1:r]'; op_inf.B[1:r, :]']
+                O_tmp = [ops.A[1:r, 1:r]'; ops.B[1:r, :]']
 
-        # Compute output error
-        initial_output_errs[i] = norm(op_inf.C' - stream.C_k, 2) / norm(op_inf.C', 2)
+                # Compute state error
+                initial_errs[i,j] = norm(O_star_r - O_tmp, 2) / norm(O_star_r, 2)
+
+                # Compute output error
+                C_tmp = ops.C[:, 1:r]'
+                initial_output_errs[i,j] = norm(op_inf.C[:,1:r]' - C_tmp, 2) / norm(op_inf.C[:,1:r]', 2)
+            end
+        end
     end
 
     return initial_errs, initial_output_errs
 end
+
+function compute_operator_error()
