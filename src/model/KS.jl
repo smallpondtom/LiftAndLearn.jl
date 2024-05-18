@@ -8,7 +8,7 @@ using FFTW
 using LinearAlgebra
 using SparseArrays
 
-import ..LiftAndLearn: Abstract_Model, vech, ⊘, operators, elimat
+import ..LiftAndLearn: AbstractModel, vech, ⊘, operators, elimat
 
 export ks
 
@@ -49,7 +49,7 @@ where ``u`` is the state variable and ``\\mu`` is the viscosity coefficient.
 - `integrate_PS_ew::Function`: integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
 - `integrate_SG::Function`: integrator for second method of Fourier Transform without FFT
 """
-mutable struct ks <: Abstract_Model
+mutable struct ks <: AbstractModel
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain

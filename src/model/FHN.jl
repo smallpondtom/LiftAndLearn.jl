@@ -7,7 +7,7 @@ using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
-import ..LiftAndLearn: Abstract_Model
+import ..LiftAndLearn: AbstractModel
 
 export fhn
 
@@ -49,7 +49,7 @@ where ``\\alpha`` and ``\\beta`` are the parameters that are going to be varied 
 - `generateFHNmatrices::Function`: function to generate the full order operators for the intrusive model operators
 
 """
-mutable struct fhn <: Abstract_Model
+mutable struct fhn <: AbstractModel
     Ω::Vector{Float64}  # spatial domain 
     T::Vector{Float64}  # temporal domain
     αD::Vector{Float64}  # alpha parameter domain

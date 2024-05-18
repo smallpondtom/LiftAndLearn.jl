@@ -7,7 +7,7 @@ using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
-import ..LiftAndLearn: Abstract_Model, vech, ⊘, operators
+import ..LiftAndLearn: AbstractModel, vech, ⊘, operators
 
 export burgers
 
@@ -41,7 +41,7 @@ Viscous Burgers' equation model
 - `generateEPmatrix::Function`: function to generate A, F matrices for the Burgers' equation. (Energy-preserving form)
 - `semiImplicitEuler::Function`: function to integrate the system using semi-implicit Euler scheme
 """
-mutable struct burgers <: Abstract_Model
+mutable struct burgers <: AbstractModel
     Omega::Vector{Float64}  # spatial domain
     T::Vector{Float64}  # temporal domain
     D::Vector{Float64}  # parameter domain

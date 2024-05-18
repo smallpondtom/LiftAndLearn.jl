@@ -22,7 +22,7 @@ mutable struct Streaming_InferOp
 
     tol::Union{Real,Array{<:Real},Nothing}       # tolerance of the pseudo-inverse for state and output
     dims::Dict{Symbol,Int}                       # dimensions
-    options::Abstract_Option                     # options
+    options::AbstractOption                     # options
     variable_regularize::Bool                    # variable regularization flag
     init!::Function
     stream!::Function
@@ -31,7 +31,7 @@ mutable struct Streaming_InferOp
 end
 
 
-function Streaming_InferOp(options::Abstract_Option; variable_regularize::Bool=false,
+function Streaming_InferOp(options::AbstractOption; variable_regularize::Bool=false,
                            tol::Union{Real,Array{<:Real},Nothing}=nothing)
     if !isnothing(tol)
         @assert length(tol) <= 2 "The length of the tolerance should be at most 2."

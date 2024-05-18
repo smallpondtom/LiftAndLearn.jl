@@ -217,7 +217,7 @@ Compute the Lyapunov exponents of a dynamical system using the algorirhtm in [^e
 is a dispatched function for the case when the reduced model is used.
 
 ## Arguments
-- `model::Abstract_Models`: the dynamical model
+- `model::AbstractModel`: the dynamical model
 - `ops::operators`: operators for the reduced model
 - `integrator::Function`: integrator for the model
 - `Vr::AbstractArray`: basis for the reduced model

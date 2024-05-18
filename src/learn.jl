@@ -1,19 +1,19 @@
 export inferOp, choose_ro
 
 """
-    dtApprox(X::VecOrMat, options::Abstract_Option) → dXdt, idx
+    dtApprox(X::VecOrMat, options::AbstractOption) → dXdt, idx
 
 Approximating the derivative values of the data with different integration schemes
 
 ## Arguments
 - `X::VecOrMat`: data matrix
-- `options::Abstract_Option`: operator inference options
+- `options::AbstractOption`: operator inference options
 
 ## Returns
 - `dXdt`: derivative data
 - `idx`: index for the specific integration scheme (important for later use)
 """
-function dtApprox(X::VecOrMat, options::Abstract_Option)
+function dtApprox(X::VecOrMat, options::AbstractOption)
     N = size(X, 2)
     choice = options.data.deriv_type
 
@@ -65,7 +65,7 @@ end
 
 """
     getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix,
-        dims::Dict, options::Abstract_Option) → D
+        dims::Dict, options::AbstractOption) → D
 
 Get the data matrix for the regression problem
 
@@ -73,12 +73,12 @@ Get the data matrix for the regression problem
 - `Xhat::AbstractArray`: projected data matrix
 - `Xhat_t::AbstractArray`: projected data matrix (transposed)
 - `U::Matrix`: input data matrix
-- `options::Abstract_Option`: options for the operator inference set by the user
+- `options::AbstractOption`: options for the operator inference set by the user
 
 ## Returns
 - `D`: data matrix for the regression problem
 """
-function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix, options::Abstract_Option)
+function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix, options::AbstractOption)
     flag = false
 
     if options.system.is_lin
@@ -155,11 +155,11 @@ end
 
 """
     getDataMat(Xhat::AbstractArray, U::Matrix,
-        dims::Dict, options::Abstract_Option) → D
+        dims::Dict, options::AbstractOption) → D
 
 Dispatch to avoid having tranpose data matrix in function argument.
 """
-getDataMat(Xhat::AbstractArray, U::Matrix, options::Abstract_Option) = getDataMat(Xhat, transpose(Xhat), U, options)
+getDataMat(Xhat::AbstractArray, U::Matrix, options::AbstractOption) = getDataMat(Xhat, transpose(Xhat), U, options)
 
 
 """
@@ -201,18 +201,18 @@ end
 
 
 """
-    tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Option)
+    tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::AbstractOption)
 
 Construct the Tikhonov matrix
 
 ## Arguments
 - `Γ::AbstractArray`: Tikhonov matrix (pass by reference)
-- `options::Abstract_Option`: options for the operator inference set by the user
+- `options::AbstractOption`: options for the operator inference set by the user
 
 ## Returns
 - `Γ`: Tikhonov matrix (pass by reference)
 """
-function tikhonovMatrix!(Γ::AbstractArray, options::Abstract_Option)
+function tikhonovMatrix!(Γ::AbstractArray, options::AbstractOption)
     n = options.system.dims[:n]
     p = options.system.dims[:p]
     s2 = options.system.dims[:s2]
@@ -267,7 +267,7 @@ end
 
 """
     LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix, Xhat_t::Union{Matrix,Transpose}, 
-        dims::Dict, options::Abstract_Option) → Ahat, Bhat, Chat, Fhat, Hhat, Nhat, Khat
+        dims::Dict, options::AbstractOption) → Ahat, Bhat, Chat, Fhat, Hhat, Nhat, Khat
 
 Solve the standard Operator Inference with/without regularization
 
@@ -276,13 +276,13 @@ Solve the standard Operator Inference with/without regularization
 - `Rt::Union{Matrix,Transpose}`: derivative data matrix (transposed)
 - `Y::Matrix`: output data matrix
 - `Xhat_t::Union{Matrix,Transpose}`: projected data matrix (transposed)
-- `options::Abstract_Option`: options for the operator inference set by the user
+- `options::AbstractOption`: options for the operator inference set by the user
 
 ## Returns
 - All learned operators A, B, C, F, H, N, K
 """
 function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
-    Xhat_t::Union{Matrix,Transpose}, options::Abstract_Option)
+    Xhat_t::Union{Matrix,Transpose}, options::AbstractOption)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
     p = options.system.dims[:p]
@@ -422,7 +422,7 @@ end
 
 """
     run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
-        Xhat_t::AbstractArray, dims::Dict, options::Abstract_Option,
+        Xhat_t::AbstractArray, dims::Dict, options::AbstractOption,
         IG::operators=operators()) → op::operators
 
 Run the optimizer of choice.
@@ -432,14 +432,14 @@ Run the optimizer of choice.
 - `Rt::AbstractArray`: derivative data matrix (transposed)
 - `Y::AbstractArray`: output data matrix
 - `Xhat_t::AbstractArray`: projected data matrix (transposed)
-- `options::Abstract_Option`: options for the operator inference set by the user
+- `options::AbstractOption`: options for the operator inference set by the user
 - `IG::operators`: initial guesses for optimization
 
 ## Returns
 - `op::operators`: All learned operators 
 """
 function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
-    Xhat_t::AbstractArray, options::Abstract_Option,
+    Xhat_t::AbstractArray, options::AbstractOption,
     IG::operators=operators())
 
     if options.method == "LS"
@@ -519,7 +519,7 @@ end
 
 """
     inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, R::Matrix,
-        options::Abstract_Option, IG::operators=operators()) → op::operators
+        options::AbstractOption, IG::operators=operators()) → op::operators
 
 Infer the operators with derivative data given
 
@@ -529,7 +529,7 @@ Infer the operators with derivative data given
 - `Y::VecOrMat`: output data matix
 - `Vn::Matrix`: POD basis
 - `R::Matrix`: derivative data matrix
-- `options::Abstract_Option`: options for the operator inference defined by the user
+- `options::AbstractOption`: options for the operator inference defined by the user
 - `IG::operators`: initial guesses for optimization
 
 ## Returns
@@ -551,7 +551,7 @@ end
 
 """
     inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
-        options::Abstract_Option, IG::operators=operators()) → op::operators
+        options::AbstractOption, IG::operators=operators()) → op::operators
 
 Infer the operators without derivative data (dispatch)
 
@@ -560,14 +560,14 @@ Infer the operators without derivative data (dispatch)
 - `U::Matrix`: input data matrix
 - `Y::VecOrMat`: output data matix
 - `Vn::Matrix`: POD basis
-- `options::Abstract_Option`: options for the operator inference defined by the user
+- `options::AbstractOption`: options for the operator inference defined by the user
 - `IG::operators`: initial guesses for optimization
 
 ## Returns
 - `op::operators`: inferred operators
 """
 function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
-    options::Abstract_Option, IG::operators=operators())::operators
+    options::AbstractOption, IG::operators=operators())::operators
 
     # Approximate the derivative data with finite difference
     Xdot, idx = dtApprox(X, options)
@@ -590,7 +590,7 @@ end
 
 """
     inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
-        full_op::operators, options::Abstract_Option, IG::operators=operators()) → op::operators
+        full_op::operators, options::AbstractOption, IG::operators=operators()) → op::operators
 
 Infer the operators with reprojection method (dispatch)
 
@@ -600,14 +600,14 @@ Infer the operators with reprojection method (dispatch)
 - `Y::VecOrMat`: output data matix
 - `Vn::Matrix`: POD basis
 - `full_op::operators`: full order model operators
-- `options::Abstract_Option`: options for the operator inference defined by the user
+- `options::AbstractOption`: options for the operator inference defined by the user
 - `IG::operators`: initial guesses for optimization
 
 ## Returns
 - `op::operators`: inferred operators
 """
 function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
-    full_op::operators, options::Abstract_Option, IG::operators=operators())::operators
+    full_op::operators, options::AbstractOption, IG::operators=operators())::operators
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
 
@@ -625,7 +625,7 @@ end
 
 """
     inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
-        lm::lifting, full_op::operators, options::Abstract_Option, 
+        lm::lifting, full_op::operators, options::AbstractOption, 
         IG::operators=operators()) → op::operators
 
 Infer the operators for Lift And Learn for reprojected data (dispatch)
@@ -637,14 +637,14 @@ Infer the operators for Lift And Learn for reprojected data (dispatch)
 - `Vn::Union{Matrix,BlockDiagonal}`: POD basis
 - `lm::lifting`: struct of the lift map
 - `full_op::operators`: full order model operators
-- `options::Abstract_Option`: options for the operator inference defined by the user
+- `options::AbstractOption`: options for the operator inference defined by the user
 - `IG::operators`: initial guesses for optimization
 
 ## Returns
 - `op::operators`: inferred operators
 """
 function inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
-    lm::lifting, full_op::operators, options::Abstract_Option, IG::operators=operators())::operators
+    lm::lifting, full_op::operators, options::AbstractOption, IG::operators=operators())::operators
 
     # Project
     What = Vn' * W
@@ -675,7 +675,7 @@ end
 
 """
     reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
-        op::operators, options::Abstract_Option) → Rhat::Matrix
+        op::operators, options::AbstractOption) → Rhat::Matrix
 
 Reprojecting the data to minimize the error affected by the missing orders of the POD basis
 
@@ -684,13 +684,13 @@ Reprojecting the data to minimize the error affected by the missing orders of th
 - `V::Union{VecOrMat,BlockDiagonal}`: POD basis
 - `U::VecOrMat`: input data matrix
 - `op::operators`: full order model operators
-- `options::Abstract_Option`: options for the operator inference defined by the user
+- `options::AbstractOption`: options for the operator inference defined by the user
 
 ## Return
 - `Rhat::Matrix`: R matrix (transposed) for the regression problem
 """
 function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
-    op::operators, options::Abstract_Option)::Matrix
+    op::operators, options::AbstractOption)::Matrix
     
     # Just a simple error detection
     if options.system.is_quad && options.optim.which_quad_term=="F"
@@ -733,7 +733,7 @@ end
 
 """
     reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
-        lm::lifting, op::operators, options::Abstract_Option) → Rhat::Matrix
+        lm::lifting, op::operators, options::AbstractOption) → Rhat::Matrix
 
 Reprojecting the lifted data
 
@@ -743,13 +743,13 @@ Reprojecting the lifted data
 - `U::VecOrMat`: input data matrix
 - `lm::lifting`: struct of the lift map
 - `op::operators`: full order model operators
-- `options::Abstract_Option`: options for the operator inference defined by the user
+- `options::AbstractOption`: options for the operator inference defined by the user
 
 ## Returns
 - `Rhat::Matrix`: R matrix (transposed) for the regression problem
 """
 function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
-    lm::lifting, op::operators, options::Abstract_Option)::Matrix
+    lm::lifting, op::operators, options::AbstractOption)::Matrix
 
     tmp = size(V, 1)
     n = tmp / options.vars.N_lift

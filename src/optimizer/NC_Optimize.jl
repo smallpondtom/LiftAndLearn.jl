@@ -2,7 +2,7 @@ export NC_Optimize, NC_Optimize_output
 
 """
     NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, 
-        options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+        options::AbstractOption, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Optimization version of Standard Operator Inference (NC)
 
@@ -17,7 +17,7 @@ Optimization version of Standard Operator Inference (NC)
 
 """
 function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, 
-        options::Abstract_Option, IG::operators)
+        options::AbstractOption, IG::operators)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
     p = options.system.dims[:p]
@@ -140,7 +140,7 @@ end
 
 
 """
-    NC_Optimize_output(Y::Matrix, Xt_hat::Union{Matrix, Transpose}, options::Abstract_Option) → C
+    NC_Optimize_output(Y::Matrix, Xt_hat::Union{Matrix, Transpose}, options::AbstractOption) → C
 
 Output optimization for the standard operator inference (for operator `C`)
 
@@ -152,7 +152,7 @@ Output optimization for the standard operator inference (for operator `C`)
 - the output state matrix `C`
 """
 function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose}, 
-        options::Abstract_Option)
+        options::AbstractOption)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
     q = options.system.dims[:q]

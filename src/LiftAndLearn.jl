@@ -19,13 +19,13 @@ using FFTW
 using DocStringExtensions
 
 """
-    Abstract_Option
+    AbstractOption
 
 Abstract type for the options.
 """
 abstract type AbstractOption end
 """
-    Abstract_Model
+    AbstractModel
 
 Abstract type for the model.
 """

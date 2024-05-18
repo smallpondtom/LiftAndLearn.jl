@@ -14,7 +14,7 @@ Perform intrusive model reduction using Proper Orthogonal Decomposition (POD)
 # Return
 - `op_new`: new operator projected onto the basis
 """
-function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, options::Abstract_Option)
+function intrusiveMR(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, options::AbstractOption)
     Ahat = Vr' * op.A * Vr
     Bhat = Vr' * op.B
     Chat = op.C * Vr

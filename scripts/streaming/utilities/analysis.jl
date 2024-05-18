@@ -1,6 +1,6 @@
 """
     compute_rse(op_int::LnL.operators, op_inf::LnL.operators, op_stream::LnL.operators, 
-        model::LnL.Abstract_Model, Vr::Matrix, Xf::Matrix, Uf::Matrix, Yf::Matrix)
+        model::LnL.AbstractModel, Vr::Matrix, Xf::Matrix, Uf::Matrix, Yf::Matrix)
 
 Computes the relative state and output errors of the intrusive, inferred, and streaming inferred models.
 
@@ -8,7 +8,7 @@ Computes the relative state and output errors of the intrusive, inferred, and st
 - `op_int::LnL.operators`: The intrusive model operators.
 - `op_inf::LnL.operators`: The inferred model operators.
 - `op_stream::LnL.operators`: The streaming inferred model operators.
-- `model::LnL.Abstract_Model`: The model to simulate.
+- `model::LnL.AbstractModel`: The model to simulate.
 - `Vr::Matrix`: The reduced basis.
 - `Xf::Matrix`: The full state matrix.
 - `Uf::Matrix`: The input matrix.
@@ -18,7 +18,7 @@ Computes the relative state and output errors of the intrusive, inferred, and st
 A tuple containing the relative state errors and the relative output errors.
 """
 function compute_rse(op_int::LnL.operators, op_inf::LnL.operators, op_stream::LnL.operators, 
-        model::LnL.Abstract_Model, Vr::Matrix, Xf::Matrix, Uf::Matrix, Yf::Matrix;
+        model::LnL.AbstractModel, Vr::Matrix, Xf::Matrix, Uf::Matrix, Yf::Matrix;
         op_inf_reg::Union{LnL.operators,Nothing}=nothing)
     r = size(Vr, 2)
     if isnothing(op_inf_reg)
@@ -68,7 +68,7 @@ end
 
 """
     compute_rse_per_stream(Xhat_batch::Array{<:Array}, U_batch::Array{<:Array}, Y_batch::Array{<:Array},
-        R_batch::Array{<:Array}, batchsize::Union{Int,Array{<:Int}}, r_select::Vector{<:Int}, options::LnL.Abstract_Option; CONST_BATCH::Bool=true)
+        R_batch::Array{<:Array}, batchsize::Union{Int,Array{<:Int}}, r_select::Vector{<:Int}, options::LnL.AbstractOption; CONST_BATCH::Bool=true)
 
 Computes the relative state and output errors of the intrusive, inferred, and streaming inferred models per stream update.
 
@@ -79,14 +79,14 @@ Computes the relative state and output errors of the intrusive, inferred, and st
 - `R_batch::Array{<:Array}`: The residual data.
 - `batchsize::Union{Int,Array{<:Int}}`: The batch size.
 - `r_select::Vector{<:Int}`: The reduced basis sizes.
-- `options::LnL.Abstract_Option`: The options for the streaming inference.
+- `options::LnL.AbstractOption`: The options for the streaming inference.
 
 # Returns
 A tuple containing the relative state errors, the relative output errors, the state error accuracy, the output error accuracy, and error condition numbers.
 """
 function compute_rse_per_stream(Xhat_batch::Array{<:Array}, U_batch::Array{<:Array}, Y_batch::Array{<:Array},
          R_batch::Array{<:Array}, batchsize::Union{Int,Array{<:Int}}, r_select::Vector{<:Int}, 
-         options::LnL.Abstract_Option; tol::Union{Real,Array{<:Real},Nothing}=nothing, CONST_BATCH::Bool=true,
+         options::LnL.AbstractOption; tol::Union{Real,Array{<:Real},Nothing}=nothing, CONST_BATCH::Bool=true,
          VR::Bool=false, α::Union{Real,Array{<:Real}}=0.0, β::Union{Real,Array{<:Real}}=0.0)
 
     # Initialize the stream
@@ -172,7 +172,7 @@ end
 
 """
     compute_inital_stream_error(batchsizes::Union{AbstractArray{<:Int},Int}, Vr::Matrix, X::Matrix, U::Matrix, 
-        Y::Matrix, R::Matrix, op_inf::LnL.operators, options::LnL.Abstract_Option)
+        Y::Matrix, R::Matrix, op_inf::LnL.operators, options::LnL.AbstractOption)
 
 Computes the initial state and output errors of the streaming inferred model over different batch sizes.
 
@@ -184,13 +184,13 @@ Computes the initial state and output errors of the streaming inferred model ove
 - `Y::Matrix`: The output matrix.
 - `R::Matrix`: The residual matrix.
 - `op_inf::LnL.operators`: The inferred model operators.
-- `options::LnL.Abstract_Option`: The options for the streaming inference.
+- `options::LnL.AbstractOption`: The options for the streaming inference.
 
 # Returns
 A tuple containing the initial state errors and the initial output errors.
 """
 function compute_inital_stream_error(batchsizes::Union{AbstractArray{<:Int},Int}, Vr::Matrix, X::Matrix, U::Matrix, 
-        Y::Matrix, R::Matrix, op_inf::LnL.operators, options::LnL.Abstract_Option, tol::Union{Real,Array{<:Real},Nothing}=nothing;
+        Y::Matrix, R::Matrix, op_inf::LnL.operators, options::LnL.AbstractOption, tol::Union{Real,Array{<:Real},Nothing}=nothing;
         α::Union{Real,Array{<:Real}}=0.0, β::Union{Real,Array{<:Real}}=0.0, orders::Union{Int,AbstractArray{<:Int}}=size(Vr,2))
 
     initial_errs = zeros(length(batchsizes), length(orders))
