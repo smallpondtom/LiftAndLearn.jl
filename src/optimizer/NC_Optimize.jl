@@ -1,7 +1,7 @@
 export NC_Optimize, NC_Optimize_output
 
 """
-    NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, dims::Dict, 
+    NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, 
         options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Optimization version of Standard Operator Inference (NC)
@@ -9,7 +9,6 @@ Optimization version of Standard Operator Inference (NC)
 ## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
-- `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
@@ -18,13 +17,13 @@ Optimization version of Standard Operator Inference (NC)
 
 """
 function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, 
-        dims::Dict, options::Abstract_Option, IG::operators)
+        options::Abstract_Option, IG::operators)
     # Some dimensions to unpack for convenience
-    n = dims[:n]
-    p = dims[:p]
-    s = dims[:s]
-    v = dims[:v]
-    w = dims[:w]
+    n = options.system.dims[:n]
+    p = options.system.dims[:p]
+    s = options.system.dims[:s]
+    v = options.system.dims[:v]
+    w = options.system.dims[:w]
 
     @info "Initialize optimization model."
 
@@ -141,7 +140,7 @@ end
 
 
 """
-    NC_Optimize_output(Y::Matrix, Xt_hat::Union{Matrix, Transpose}, dims::Dict, options::Abstract_Option) → C
+    NC_Optimize_output(Y::Matrix, Xt_hat::Union{Matrix, Transpose}, options::Abstract_Option) → C
 
 Output optimization for the standard operator inference (for operator `C`)
 
@@ -153,10 +152,10 @@ Output optimization for the standard operator inference (for operator `C`)
 - the output state matrix `C`
 """
 function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose}, 
-        dims::Dict, options::Abstract_Option)
+        options::Abstract_Option)
     # Some dimensions to unpack for convenience
-    n = dims[:n]
-    q = dims[:q]
+    n = options.system.dims[:n]
+    q = options.system.dims[:q]
 
     Yt = transpose(Y)
 

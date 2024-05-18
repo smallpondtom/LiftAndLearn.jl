@@ -73,14 +73,12 @@ Get the data matrix for the regression problem
 - `Xhat::AbstractArray`: projected data matrix
 - `Xhat_t::AbstractArray`: projected data matrix (transposed)
 - `U::Matrix`: input data matrix
-- `dims::Dict`: dictionary including important dimensions
 - `options::Abstract_Option`: options for the operator inference set by the user
 
 ## Returns
 - `D`: data matrix for the regression problem
 """
-function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix,
-    dims::Dict, options::Abstract_Option)
+function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix, options::Abstract_Option)
     flag = false
 
     if options.system.is_lin
@@ -130,7 +128,7 @@ function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix,
 
     if options.system.is_bilin  # Bilinear term
         XU = Xhat_t .* U[:, 1]
-        for i in 2:dims[:p]
+        for i in 2:options.system.dims[:p]
             XU = hcat(XU, Xhat_t .* U[:, i])
         end
         if flag
@@ -142,7 +140,7 @@ function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix,
     end
 
     if options.system.has_const  # constant term
-        I = ones(dims[:m], 1)
+        I = ones(options.system.dims[:m], 1)
         if flag
             D = hcat(D, I)
         else
@@ -161,7 +159,7 @@ end
 
 Dispatch to avoid having tranpose data matrix in function argument.
 """
-getDataMat(Xhat::AbstractArray, U::Matrix, dims::Dict, options::Abstract_Option) = getDataMat(Xhat, transpose(Xhat), U, dims, options)
+getDataMat(Xhat::AbstractArray, U::Matrix, options::Abstract_Option) = getDataMat(Xhat, transpose(Xhat), U, options)
 
 
 """
@@ -209,14 +207,20 @@ Construct the Tikhonov matrix
 
 ## Arguments
 - `Γ::AbstractArray`: Tikhonov matrix (pass by reference)
-- `dims::Dict`: dictionary including important dimensions
 - `options::Abstract_Option`: options for the operator inference set by the user
 
 ## Returns
 - `Γ`: Tikhonov matrix (pass by reference)
 """
-function tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Option)
-    n = dims[:n]; p = dims[:p]; s = dims[:s]; v = dims[:v]; w = dims[:w]
+function tikhonovMatrix!(Γ::AbstractArray, options::Abstract_Option)
+    n = options.system.dims[:n]
+    p = options.system.dims[:p]
+    s2 = options.system.dims[:s2]
+    v2 = options.system.dims[:v2]
+    s3 = options.system.dims[:s3]
+    v3 = options.system.dims[:v3]
+    w1 = options.system.dims[:w1]
+
     λ = options.λ
     si = 0  # start index
     if n != 0
@@ -230,15 +234,15 @@ function tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Option
     end
 
     if options.optim.which_quad_term == "F"
-        if s != 0
-            Γ[si+1:si+s] .= λ.quad
+        if s2 != 0
+            Γ[si+1:si+s2] .= λ.quad
         end
-        si += s
+        si += s2
     else
-        if v != 0
-            Γ[si+1:si+v] .= λ.quad
+        if v2 != 0
+            Γ[si+1:si+v2] .= λ.quad
         end
-        si += v
+        si += v2
     end
 
     if options.system.is_cubic
@@ -255,8 +259,8 @@ function tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::Abstract_Option
         end
     end
 
-    if w != 0
-        Γ[si+1:si+w] .= λ.bilin
+    if w1 != 0
+        Γ[si+1:si+w1] .= λ.bilin
     end
 end
 
@@ -272,34 +276,38 @@ Solve the standard Operator Inference with/without regularization
 - `Rt::Union{Matrix,Transpose}`: derivative data matrix (transposed)
 - `Y::Matrix`: output data matrix
 - `Xhat_t::Union{Matrix,Transpose}`: projected data matrix (transposed)
-- `dims::Dict`: dictionary including important dimensions
 - `options::Abstract_Option`: options for the operator inference set by the user
 
 ## Returns
 - All learned operators A, B, C, F, H, N, K
 """
 function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
-    Xhat_t::Union{Matrix,Transpose}, dims::Dict, options::Abstract_Option)
+    Xhat_t::Union{Matrix,Transpose}, options::Abstract_Option)
     # Some dimensions to unpack for convenience
-    n = dims[:n]; p = dims[:p]; q = dims[:q]
-    s = dims[:s]; v = dims[:v]; w = dims[:w]
-    s3 = dims[:s3]; v3 = dims[:v3]
+    n = options.system.dims[:n]
+    p = options.system.dims[:p]
+    q = options.system.dims[:q]
+    s2 = options.system.dims[:s2]
+    v2 = options.system.dims[:v2]
+    s3 = options.system.dims[:s3]
+    v3 = options.system.dims[:v3]
+    w1 = options.system.dims[:w1]
 
     # Construct the Tikhonov matrix
     if options.optim.which_quad_term == "F"
         if options.optim.which_cubic_term == "E"
-            Γ = spzeros(n+p+s+s3+w)
+            Γ = spzeros(n+p+s2+s3+w1)
         else
-            Γ = spzeros(n+p+s+v3+w)
+            Γ = spzeros(n+p+s2+v3+w1)
         end
     else
         if options.optim.which_cubic_term == "E"
-            Γ = spzeros(n+p+v+s3+w)
+            Γ = spzeros(n+p+v2+s3+w1)
         else
-            Γ = spzeros(n+p+v+v3+w)
+            Γ = spzeros(n+p+v2+v3+w1)
         end
     end
-    tikhonovMatrix!(Γ, dims, options)
+    tikhonovMatrix!(Γ, options)
     Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
     # compute least squares (pseudo inverse)
@@ -424,7 +432,6 @@ Run the optimizer of choice.
 - `Rt::AbstractArray`: derivative data matrix (transposed)
 - `Y::AbstractArray`: output data matrix
 - `Xhat_t::AbstractArray`: projected data matrix (transposed)
-- `dims::Dict`: dictionary including important dimensions
 - `options::Abstract_Option`: options for the operator inference set by the user
 - `IG::operators`: initial guesses for optimization
 
@@ -432,33 +439,33 @@ Run the optimizer of choice.
 - `op::operators`: All learned operators 
 """
 function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
-    Xhat_t::AbstractArray, dims::Dict, options::Abstract_Option,
+    Xhat_t::AbstractArray, options::Abstract_Option,
     IG::operators=operators())
 
     if options.method == "LS"
-        Ahat, Bhat, Chat, Fhat, Hhat, Ehat, Ghat, Nhat, Khat = LS_solve(D, Rt, Y, Xhat_t, dims, options)
+        Ahat, Bhat, Chat, Fhat, Hhat, Ehat, Ghat, Nhat, Khat = LS_solve(D, Rt, Y, Xhat_t, options)
         Qhat = 0
     elseif options.method == "NC"  # Non-constrained
-        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = NC_Optimize(D, Rt, dims, options, IG)
-        Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
+        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = NC_Optimize(D, Rt, options, IG)
+        Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, options) : 0
         Qhat = 0
         Ghat = 0
         Ehat = 0
     elseif options.method == "EPHEC" || options.method == "EPHC"
-        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, dims, options, IG)
-        Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
+        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPHEC_Optimize(D, Rt, options, IG)
+        Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, options) : 0
         Qhat = H2Q(Hhat)
         Ghat = 0
         Ehat = 0
     elseif options.method == "EPSC" || options.method == "EPSIC"
-        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPSIC_Optimize(D, Rt, dims, options, IG)
-        Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
+        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPSIC_Optimize(D, Rt, options, IG)
+        Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, options) : 0
         Qhat = H2Q(Hhat)
         Ghat = 0
         Ehat = 0
     elseif options.method == "EPP"
-        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPP_Optimize(D, Rt, dims, options, IG)
-        Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, dims, options) : 0
+        Ahat, Bhat, Fhat, Hhat, Nhat, Khat = EPP_Optimize(D, Rt, options, IG)
+        Chat = options.system.has_output ? NC_Optimize_output(Y, Xhat_t, options) : 0
         Qhat = H2Q(Hhat)
         Ghat = 0
         Ehat = 0
@@ -481,6 +488,36 @@ end
 
 
 """
+    define_dimensions!(Xhat::Matrix, U::Matrix, Y::VecOrMat, options::AbstractOption)
+
+Define the dimensions of the system
+
+## Arguments
+- `Xhat::Matrix`: projected data matrix
+- `U::Matrix`: input data matrix
+- `Y::VecOrMat`: output data matrix
+- `options::AbstractOption`: options for the operator inference set by the user
+"""
+function define_dimensions!(Xhat::Matrix, U::Matrix, Y::VecOrMat, options::AbstractOption)
+    # Important dimensions
+    n, m = size(Xhat)
+    p = options.system.has_control ? size(U, 2) : 0  # make sure that the U-matrix is tall
+    q = options.system.has_output ? size(Y, 1) : 0
+    v2 = options.system.is_quad ? Int(n * n) : 0
+    s2 = options.system.is_quad ? Int(n * (n + 1) / 2) : 0
+    v3 = options.system.is_cubic ? Int(n * n * n) : 0
+    s3 = options.system.is_cubic ? Int(n * (n + 1) * (n + 2) / 6) : 0
+    w1 = options.system.is_bilin ? Int(n * p) : 0
+    options.system.dims = Dict(
+        :n => n, :m => m, :p => p, :q => q, 
+        :v2 => v2, :s2 => s2, :v3 => v3, :s3 => s3,
+        :w1 => w1
+    )  # create dimension dict
+    return nothing
+end
+
+
+"""
     inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, R::Matrix,
         options::Abstract_Option, IG::operators=operators()) → op::operators
 
@@ -499,28 +536,14 @@ Infer the operators with derivative data given
 - `op::operators`: inferred operators
 """
 function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix, R::Matrix,
-    options::Abstract_Option, IG::operators=operators())::operators
+    options::AbstractOption, IG::operators=operators())::operators
     Rt = transpose(Vn' * R)
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
 
-    # Important dimensions
-    n, m = size(Xhat)
-    p = options.system.has_control ? size(U, 2) : 0  # make sure that the U-matrix is tall
-    q = options.system.has_output ? size(Y, 1) : 0
-    s = options.system.is_quad ? Int(n * (n + 1) / 2) : 0
-    v = options.system.is_quad ? Int(n * n) : 0
-    s3 = options.system.is_cubic ? Int(n * (n + 1) * (n + 2) / 6) : 0
-    v3 = options.system.is_cubic ? Int(n * n * n) : 0
-    w = options.system.is_bilin ? Int(n * p) : 0
-    dims = Dict(
-        :n => n, :m => m, :p => p, :q => q, 
-        :s => s, :v => v, :s3 => s3, :v3 => v3,
-        :w => w
-    )  # create a dict
-
-    D = getDataMat(Xhat, Xhat_t, U, dims, options)
-    op = run_optimizer(D, Rt, Y, Xhat_t, dims, options, IG)
+    define_dimensions!(Xhat, U, Y, options)
+    D = getDataMat(Xhat, Xhat_t, U, options)
+    op = run_optimizer(D, Rt, Y, Xhat_t, options, IG)
 
     return op
 end
@@ -557,23 +580,9 @@ function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
 
-    # Important dimensions
-    n, m = size(Xhat)
-    p = options.system.has_control ? size(U, 2) : 0  # make sure that the U-matrix is tall
-    q = options.system.has_output ? size(Y, 1) : 0
-    s = options.system.is_quad ? Int(n * (n + 1) / 2) : 0
-    v = options.system.is_quad ? Int(n * n) : 0
-    s3 = options.system.is_cubic ? Int(n * (n + 1) * (n + 2) / 6) : 0
-    v3 = options.system.is_cubic ? Int(n * n * n) : 0
-    w = options.system.is_bilin ? Int(n * p) : 0
-    dims = Dict(
-        :n => n, :m => m, :p => p, :q => q, 
-        :s => s, :v => v, :s3 => s3, :v3 => v3,
-        :w => w
-    )  # create a dict
-
-    D = getDataMat(Xhat, Xhat_t, U, dims, options)
-    op = run_optimizer(D, Rt, Y, Xhat_t, dims, options, IG)
+    define_dimensions!(Xhat, U, Y, options)
+    D = getDataMat(Xhat, Xhat_t, U, options)
+    op = run_optimizer(D, Rt, Y, Xhat_t, options, IG)
 
     return op
 end
@@ -602,26 +611,13 @@ function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
 
-    # Important dimensions
-    n, m = size(Xhat)
-    p = options.system.has_control ? size(U, 2) : 0  # make sure that the U-matrix is tall
-    q = options.system.has_output ? size(Y, 1) : 0
-    s = options.system.is_quad ? Int(n * (n + 1) / 2) : 0
-    v = options.system.is_quad ? Int(n * n) : 0
-    s3 = options.system.is_cubic ? Int(n * (n + 1) * (n + 2) / 6) : 0
-    v3 = options.system.is_cubic ? Int(n * n * n) : 0
-    w = options.system.is_bilin ? Int(n * p) : 0
-    dims = Dict(
-        :n => n, :m => m, :p => p, :q => q, 
-        :s => s, :v => v, :s3 => s3, :v3 => v3,
-        :w => w
-    )  # create a dict
+    define_dimensions!(Xhat, U, Y, options)
 
     # Reproject
     Rt = reproject(Xhat, Vn, U, dims, full_op, options)
 
-    D = getDataMat(Xhat, Xhat_t, U, dims, options)
-    op = run_optimizer(D, Rt, Y, Xhat_t, dims, options, IG)
+    D = getDataMat(Xhat, Xhat_t, U, options)
+    op = run_optimizer(D, Rt, Y, Xhat_t, options, IG)
 
     return op
 end
@@ -654,24 +650,11 @@ function inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagon
     What = Vn' * W
     What_t = W' * Vn
 
-    # Important dimensions
-    n, m = size(What)
-    p = options.system.has_control ? size(U, 2) : 0
-    q = options.system.has_output ? size(Y, 1) : 0
-    s = options.system.is_quad ? Int(n * (n + 1) / 2) : 0
-    v = options.system.is_quad ? Int(n * n) : 0
-    s3 = options.system.is_cubic ? Int(n * (n + 1) * (n + 2) / 6) : 0
-    v3 = options.system.is_cubic ? Int(n * n * n) : 0
-    w = options.system.is_bilin ? Int(n * p) : 0
-    dims = Dict(
-        :n => n, :m => m, :p => p, :q => q, 
-        :s => s, :v => v, :s3 => s3, :v3 => v3,
-        :w => w
-    )  # create a dict
+    define_dimensions!(What, U, Y, options)
 
     # Generate R matrix from finite difference if not provided as a function argument
     if options.optim.reproject == true
-        Rt = reproject(What, Vn, U, dims, lm, full_op, options)
+        Rt = reproject(What, Vn, U, lm, full_op, options)
     else
         Wdot, idx = dtApprox(W, options)
         W = W[:, idx]  # fix the index of states
@@ -683,16 +666,16 @@ function inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagon
         What_t = W' * Vn
     end
 
-    D = getDataMat(What, What_t, U, dims, options)
-    op = run_optimizer(D, Rt, Y, What_t, dims, options, IG)
+    D = getDataMat(What, What_t, U, options)
+    op = run_optimizer(D, Rt, Y, What_t, options, IG)
 
     return op
 end
 
 
 """
-    inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
-        lm::lifting, options::Abstract_Option, IG::operators=operators()) → op::operators
+    reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
+        op::operators, options::Abstract_Option) → Rhat::Matrix
 
 Reprojecting the data to minimize the error affected by the missing orders of the POD basis
 
@@ -700,7 +683,6 @@ Reprojecting the data to minimize the error affected by the missing orders of th
 - `Xhat::Matrix`: state data matrix projected onto the basis
 - `V::Union{VecOrMat,BlockDiagonal}`: POD basis
 - `U::VecOrMat`: input data matrix
-- `dims::Dict`: dictionary including important dimensions
 - `op::operators`: full order model operators
 - `options::Abstract_Option`: options for the operator inference defined by the user
 
@@ -708,7 +690,7 @@ Reprojecting the data to minimize the error affected by the missing orders of th
 - `Rhat::Matrix`: R matrix (transposed) for the regression problem
 """
 function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
-    dims::Dict, op::operators, options::Abstract_Option)::Matrix
+    op::operators, options::Abstract_Option)::Matrix
     
     # Just a simple error detection
     if options.system.is_quad && options.optim.which_quad_term=="F"
@@ -721,11 +703,11 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
         end
     end
 
-    Rt = zeros(dims[:m], dims[:n])  # Left hand side of the regression problem
+    Rt = zeros(options.system.dims[:m], options.system.dims[:n])  # Left hand side of the regression problem
     if options.system.has_funcOp
         f = (x, u) -> op.A * x + op.f(x) + op.B * u + op.K
     else
-        p = dims[:p]
+        p = options.system.dims[:p]
 
         fA = (x) -> options.system.is_lin ? op.A * x : 0
         fB = (u) -> options.system.has_control ? op.B * u : 0
@@ -739,7 +721,7 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
         f = (x,u) -> fA(x) .+ fB(u) .+ fF(x) .+ fH(x) .+ fE(x) .+ fG(x) .+ fN(x,u) .+ fK
     end
 
-    for i in 1:dims[:m]  # loop thru all data
+    for i in 1:options.system.dims[:m]  # loop thru all data
         x = Xhat[:, i]  # julia automatically makes into column vec after indexing (still xrow-tcol)
         xrec = V * x
         states = f(xrec, U[i, :])
@@ -750,8 +732,8 @@ end
 
 
 """
-    inferOp(W::Matrix, U::Matrix, Y::VecOrMat, Vn::Union{Matrix,BlockDiagonal},
-        lm::lifting, options::Abstract_Option, IG::operators=operators()) → op::operators
+    reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
+        lm::lifting, op::operators, options::Abstract_Option) → Rhat::Matrix
 
 Reprojecting the lifted data
 
@@ -759,7 +741,6 @@ Reprojecting the lifted data
 - `Xhat::Matrix`: state data matrix projected onto the basis
 - `V::Union{VecOrMat,BlockDiagonal}`: POD basis
 - `U::VecOrMat`: input data matrix
-- `dims::Dict`: dictionary including important dimensions
 - `lm::lifting`: struct of the lift map
 - `op::operators`: full order model operators
 - `options::Abstract_Option`: options for the operator inference defined by the user
@@ -768,17 +749,17 @@ Reprojecting the lifted data
 - `Rhat::Matrix`: R matrix (transposed) for the regression problem
 """
 function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
-    dims::Dict, lm::lifting, op::operators, options::Abstract_Option)::Matrix
+    lm::lifting, op::operators, options::Abstract_Option)::Matrix
 
     tmp = size(V, 1)
     n = tmp / options.vars.N_lift
     dt = options.data.Δt
-    Rt = zeros(dims[:m], dims[:n])  # Left hand side of the regression problem
+    Rt = zeros(options.system.dims[:m], options.system.dims[:n])  # Left hand side of the regression problem
 
     if options.system.has_funcOp
         f = (x, u) -> op.A * x + op.f(x) + op.B * u + op.K
     else
-        p = dims[:p]
+        p = options.systems.dims[:p]
 
         fA = (x) -> options.system.is_lin ? op.A * x : 0
         fB = (u) -> options.system.has_control ? op.B * u : 0
@@ -792,7 +773,7 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
         f = (x,u) -> fA(x) .+ fB(u) .+ fF(x) .+ fH(x) .+ fE(x) .+ fG(x) .+ fN(x,u) .+ fK
     end
 
-    for i in 1:dims[:m]  # loop thru all data
+    for i in 1:options.systems.dims[:m]  # loop thru all data
         x = Xhat[:, i]  # julia automatically makes into column vec after indexing (still xrow-tcol)
         xrec = V * x
         states = f(xrec[1:Int(options.vars.N * n), :], U[i, :])
@@ -810,5 +791,3 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
     end
     return Rt
 end
-
-# TODO: Create another inferOp function with no full model operators provided.

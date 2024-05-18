@@ -23,13 +23,13 @@ using DocStringExtensions
 
 Abstract type for the options.
 """
-abstract type Abstract_Option end
+abstract type AbstractOption end
 """
     Abstract_Model
 
 Abstract type for the model.
 """
-abstract type Abstract_Model end
+abstract type AbstractModel end
 
 # Utilities
 include("utilities/unique_kronecker.jl")
