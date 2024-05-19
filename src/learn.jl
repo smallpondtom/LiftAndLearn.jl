@@ -354,15 +354,15 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     if options.system.is_quad
         if options.optim.which_quad_term == "F"
             # Fhat = O[:, n+p+1:n+p+s]
-            Fhat = O[:, TD+1:TD+s]
+            Fhat = O[:, TD+1:TD+s2]
             Hhat = F2Hs(Fhat)
-            TD += s
+            TD += s2
             # sv = s  # dummy dimension variable since we use F
         else
             # Hhat = O[:, n+p+1:n+p+v]
-            Hhat = O[:, TD+1:TD+v]
+            Hhat = O[:, TD+1:TD+v2]
             Fhat = H2F(Hhat)
-            TD += v
+            TD += v2
             # sv = v  # dummy dimension variable since we use H
         end
     else
@@ -396,17 +396,17 @@ function LS_solve(D::Matrix, Rt::Union{Matrix,Transpose}, Y::Matrix,
     if options.system.is_bilin
         if p == 1
             # Nhat = O[:, n+p+sv+1:n+p+sv+w]
-            Nhat = O[:, TD+1:TD+w]
+            Nhat = O[:, TD+1:TD+w1]
         else 
             Nhat = zeros(p,n,n)
             # tmp = O[:, n+p+sv+1:n+p+sv+w]
-            tmp = O[:, TD+1:TD+w]
+            tmp = O[:, TD+1:TD+w1]
             for i in 1:p
                 # Nhat[i,:,:] .= tmp[:, Int(n*(i-1)+1):Int(n*i)]
                 Nhat[:,:,i] .= tmp[:, Int(n*(i-1)+1):Int(n*i)]
             end
         end
-        TD += w
+        TD += w1
     else
         # Nhat = (p == 0) || (p == 1) ? 0 : zeros(p,n,n)
         Nhat = (p == 0) || (p == 1) ? 0 : zeros(n,n,p)
@@ -614,7 +614,7 @@ function inferOp(X::Matrix, U::Matrix, Y::VecOrMat, Vn::Matrix,
     define_dimensions!(Xhat, U, Y, options)
 
     # Reproject
-    Rt = reproject(Xhat, Vn, U, dims, full_op, options)
+    Rt = reproject(Xhat, Vn, U, full_op, options)
 
     D = getDataMat(Xhat, Xhat_t, U, options)
     op = run_optimizer(D, Rt, Y, Xhat_t, options, IG)
@@ -759,7 +759,7 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
     if options.system.has_funcOp
         f = (x, u) -> op.A * x + op.f(x) + op.B * u + op.K
     else
-        p = options.systems.dims[:p]
+        p = options.system.dims[:p]
 
         fA = (x) -> options.system.is_lin ? op.A * x : 0
         fB = (u) -> options.system.has_control ? op.B * u : 0
@@ -773,7 +773,7 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
         f = (x,u) -> fA(x) .+ fB(u) .+ fF(x) .+ fH(x) .+ fE(x) .+ fG(x) .+ fN(x,u) .+ fK
     end
 
-    for i in 1:options.systems.dims[:m]  # loop thru all data
+    for i in 1:options.system.dims[:m]  # loop thru all data
         x = Xhat[:, i]  # julia automatically makes into column vec after indexing (still xrow-tcol)
         xrec = V * x
         states = f(xrec[1:Int(options.vars.N * n), :], U[i, :])

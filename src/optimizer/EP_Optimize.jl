@@ -215,9 +215,9 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
     p = options.system.dims[:p]
-    s = options.system.dims[:s]
-    v = options.system.dims[:v]
-    w = options.system.dims[:w]
+    s = options.system.dims[:s2]
+    v = options.system.dims[:v2]
+    w = options.system.dims[:w1]
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
@@ -432,9 +432,9 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
     p = options.system.dims[:p]
-    s = options.system.dims[:s]
-    v = options.system.dims[:v]
-    w = options.system.dims[:w]
+    s = options.system.dims[:s2]
+    v = options.system.dims[:v2]
+    w = options.system.dims[:w1]
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
