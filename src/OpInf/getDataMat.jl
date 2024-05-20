@@ -1,5 +1,5 @@
 """
-    getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix,
+    getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::AbstractArray,
         options::AbstractOption) → D
 
 Get the data matrix for the regression problem
@@ -7,13 +7,13 @@ Get the data matrix for the regression problem
 ## Arguments
 - `Xhat::AbstractArray`: projected data matrix
 - `Xhat_t::AbstractArray`: projected data matrix (transposed)
-- `U::Matrix`: input data matrix
+- `U::AbstractArray`: input data matrix
 - `options::AbstractOption`: options for the operator inference set by the user
 
 ## Returns
 - `D`: data matrix for the regression problem
 """
-function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix, options::AbstractOption)
+function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::AbstractArray, options::AbstractOption)
     flag = false
 
     if options.system.is_lin
@@ -86,3 +86,9 @@ function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Matrix, optio
 
     return D
 end
+
+
+"""
+$(SIGNATURES)
+"""
+getDataMat(Xhat::AbstractArray, U::AbstractArray, options::AbstractOption) = getDataMat(Xhat, transpose(Xhat), U, options)

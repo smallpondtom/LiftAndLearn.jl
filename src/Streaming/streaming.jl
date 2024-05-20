@@ -118,7 +118,7 @@ function init!(stream::Streaming_InferOp, X_k::AbstractArray{}, U_k::AbstractArr
     Q_k_inv = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k \ Matrix(1.0I, K, K)
 
     # Construct the data matrix
-    D_k = getDataMat(X_k, transpose(X_k), U_k, stream.dims, stream.options)
+    D_k = getDataMat(X_k, U_k, stream.dims, stream.options)
 
     # Aggregated data matrix and Operator matrix
     if isnothing(stream.tol)
@@ -169,7 +169,7 @@ function stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, U_kp1::Abst
     end
 
     # Construct the data matrix
-    D_kp1 = getDataMat(X_kp1, transpose(X_kp1), U_kp1, stream.dims, stream.options)
+    D_kp1 = getDataMat(X_kp1, U_kp1, stream.options)
 
     if !isnothing(Q_kp1)
         if K == 1  # rank-1 update
@@ -218,7 +218,7 @@ function reg_stream!(stream::Streaming_InferOp, X_kp1::AbstractArray{T}, U_kp1::
     end
 
     # Construct the data matrix
-    D_kp1 = getDataMat(X_kp1, transpose(X_kp1), U_kp1, stream.dims, stream.options)
+    D_kp1 = getDataMat(X_kp1, U_kp1, stream.options)
 
     if !isnothing(Q_kp1)
         if K == 1  # rank-1 update
