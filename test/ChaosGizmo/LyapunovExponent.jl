@@ -240,7 +240,7 @@ end
     rom_option = LnL.LS_options(
         system=LnL.sys_struct(is_lin=true, is_quad=true),
     )
-    oprom = LnL.intrusiveMR(lorenz9_ops, Vr, rom_option)
+    oprom = LnL.pod(lorenz9_ops, Vr, rom_option)
 
     options = CG.LE_options(N=1e4, τ=1e2, τ0=0.0, Δt=1e-2, m=r, T=1e-2, verbose=false, history=true)
     λr, _ = CG.lyapunovExponentJacobian(oprom, lorenz_integrator, lorenz_jacobian, Vr' * x0, options)

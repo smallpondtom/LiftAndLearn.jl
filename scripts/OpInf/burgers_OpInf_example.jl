@@ -22,8 +22,8 @@ const LnL = LiftAndLearn
 ###############
 ## Some option
 ###############
-savefigure = false
-savedata = false
+SAVEFIG = false
+SAVEDATA = false
 
 ####################
 ## Setup burgers eq
@@ -104,13 +104,13 @@ for i in 1:length(μs)
     Σr[i] = tmp.S
 
     # Compute the values for the intrusive model from the basis of the training data
-    op_int = LnL.intrusiveMR(op_burger, Vrmax, options)
+    op_int = LnL.pod(op_burger, Vrmax, options)
 
     # Compute the inferred operators from the training data
     if options.optim.reproject 
-        op_inf = LnL.inferOp(X, U, Y, Vrmax, op_burger, options)  # Using Reprojection
+        op_inf = LnL.inferOp(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
     else
-        op_inf = LnL.inferOp(X, U, Y, Vrmax, R, options)
+        op_inf = LnL.inferOp(X, Vrmax, options; U=U, Y=Y, Xdot=R)
     end
 
     for j = 1+k:rmax
@@ -155,7 +155,7 @@ df = DataFrame(
     inferred_state_err=vec(opinf_state_err),
     inferred_output_err=vec(opinf_output_err)
 )
-if savedata
+if SAVEDATA
     CSV.write("scripts/OpInf/data/burger_data.csv", df)  # Write the data just in case
 end
 
@@ -193,7 +193,7 @@ xlabel!("dimension n")
 ylabel!("avg error of outputs")
 display(p3)
 
-if savefigure
+if SAVEFIG
     savefig(p1, "scripts/OpInf/plots/burger_projerr.pdf")
     savefig(p2, "scripts/OpInf/plots/burger_stateerr.pdf")
     savefig(p3, "scripts/OpInf/plots/burger_outputerr.pdf")

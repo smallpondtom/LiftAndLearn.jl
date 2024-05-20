@@ -55,12 +55,12 @@ The `SIGE` option is used to run the optimization successive from a lower reduce
 ```julia
 # r = 2
 options.optim.initial_guess = false  # turn off initial guess for the first iteration
-op_tmp = LnL.inferOp(Xdata, zeros(100,1), zeros(100,1), Vr[:,1:2], Vr[:,1:2]' * Rtr[i], options)  # compute the first operator
+op_tmp = LnL.inferOp(Xdata, Vr[:,1:2], options; U=zeros(100), Y=zeros(100), Xdot=Xdotdata)  # compute the first operator
 op[1] = op_tmp  # store the first operator
 
 # r =3
 options.optim.initial_guess = true  # turn on initial guess for the next step
-op_tmp = LnL.inferOp(Xdata, zeros(100,1), zeros(100,1), Vr[:,1:3], Vr[:,1:3]' * Rtr[i], options, LnL.operators(A=op_tmp.A, F=op_tmp.F)) # compute the second operator
+op_tmp = LnL.inferOp(Xdata, Vr[:,1:3], options; U=zeros(100), Y=zeros(100), Xdot=Xdotdata, IG=LnL.operators(A=op_tmp.A, F=op_tmp.F)) # compute the second operator
 op[2] = op_tmp
 ```
 

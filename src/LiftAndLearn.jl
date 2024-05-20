@@ -44,25 +44,32 @@ include("operators/bilinear.jl")
 include("operators/quadratic.jl")
 include("operators/cubic.jl")
 
-# OpInf & LnL
-include("OpInf_options.jl")
-include("analyze.jl")
-include("integrator.jl")
-include("lift.jl")
-include("learn.jl")
-include("intrusiveROM.jl")
+# Other utilities (for the sake of ordering)
+include("utilities/OpInf_options.jl")
+include("utilities/analyze.jl")
+include("utilities/integrator.jl")
 
-# Include the optimizers
+# Intrusive POD
+include("POD/pod.jl")
+
+# Operator Inference
+include("OpInf/learn.jl")
+
+# Lift & Learn
+include("LnL/lift.jl")
+include("LnL/learn.jl")
+
+# Include the optimization methods
 include("optimizer/NC_Optimize.jl")
 include("optimizer/EP_Optimize.jl")
 
 # Streaming OpInf
-include("streaming.jl")
+include("Streaming/streaming.jl")
 
 # [Submodule] Analysis of chaos analysis tools
 include("ChaosGizmo/ChaosGizmo.jl")
 
-# Include the models
+# Include the system models
 include("model/Heat1D.jl")
 include("model/Burgers.jl")
 include("model/FHN.jl")
@@ -73,5 +80,3 @@ using .FHN: fhn
 using .KS: ks
 
 end # module LiftAndLearn
-
-

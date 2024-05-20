@@ -1,5 +1,5 @@
 """
-    Streaming example of the 1D heat equation.
+    Streaming-OpInf example of the 1D heat equation.
 """
 
 #############
@@ -106,7 +106,7 @@ end
 #############
 ## Intrusive
 #############
-op_int = LnL.intrusiveMR(op_heat, Vr, options)
+op_int = LnL.pod(op_heat, Vr, options)
 
 
 ######################
@@ -118,7 +118,7 @@ idx = 2:heat1d.Tdim
 X = X[:, idx]  # fix the index of states
 U = U[idx, :]  # fix the index of inputs
 Y = Y[:, idx]  # fix the index of outputs
-op_inf = LnL.inferOp(X, U, Y, Vr, Xdot, options)
+op_inf = LnL.inferOp(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
 
 ##############################
@@ -130,56 +130,45 @@ options.λ = LnL.λtik(
     ctrl = 1e-8,
     output = 1e-5
 )
-op_inf_reg = LnL.inferOp(X, U, Y, Vr, Xdot, options)
+op_inf_reg = LnL.inferOp(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
 
 ###################
 ## Streaming-OpInf
 ###################
 # Construct batches of the training data
-if CONST_BATCH
+if CONST_BATCH  # using a single constant batchsize
     global batchsize = 1
 else
-    # Large initial batch updated with smaller batches
+    # initial batch updated with smaller batches
     init_batchsize = 1
     update_size = 1
     global batchsize = vcat([init_batchsize], [update_size for _ in 1:((size(X,2)-init_batchsize)÷update_size)])
 end
 
-## Shuffle the data
-# shuffle_idx = Random.shuffle(1:size(X, 2))
-# X_shuffle = X[:, shuffle_idx]
-# Xdot_shuffle = Xdot[:, shuffle_idx]
-# Y_shuffle = Matrix(Y[shuffle_idx]')
-
-# Xhat_batch = LnL.batchify(Vr' * X_shuffle, batchsize)
-# U_batch = LnL.batchify(U, batchsize)
-# Y_batch = LnL.batchify(Y_shuffle', batchsize)
-# R_batch = LnL.batchify((Vr' * Xdot_shuffle)', batchsize)
-
-##
+# Batchify the data based on the selected batchsizes
+# INFO: Remember to make data matrices a tall matrix except X matrix
 Xhat_batch = LnL.batchify(Vr' * X, batchsize)
 U_batch = LnL.batchify(U, batchsize)
 Y_batch = LnL.batchify(Y', batchsize)
 R_batch = LnL.batchify((Vr' * Xdot)', batchsize)
 num_of_batches = length(Xhat_batch)
 
-
-## Initialize the stream
-# INFO: Remember to make data matrices a tall matrix except X matrix
-# tol = [1e-12, 1e-15]
+# Initialize the stream
+# tol = [1e-12, 1e-15]  # tolerance for pinv 
 tol = nothing
 α = 1e-8
 β = 1e-5
 
+# Initialize the stream
 stream = LnL.Streaming_InferOp(options; variable_regularize=false, tol=tol)
 D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1], R_batch[1], α, β)
 
-## Stream all at once
+# Stream all at once
 stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch[2:end])
 stream.stream_output!(stream, Xhat_batch[2:end], Y_batch[2:end])
 
-## Unpack solution operators
+# Unpack solution operators
 op_stream = stream.unpack_operators(stream)
 
 

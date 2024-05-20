@@ -123,8 +123,8 @@ const LnL = LiftAndLearn
         Vr3 = W3.U[:, 1:r3]
         Vr = BlockDiagonal([Vr1, Vr2, Vr3])
 
-        infOps = LnL.inferOp(Wtr, Utr, Ytr, Vr, lifter, fomOps, options)
-        intruOps = LnL.intrusiveMR(fomLinOps, Vr, options)
+        infOps = LnL.inferOp(Wtr, Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
+        intruOps = LnL.pod(fomLinOps, Vr, options)
 
         finf = (x, u) -> infOps.A * x + infOps.B * u + infOps.H * kron(x, x) + (infOps.N * x) * u + infOps.K
         fint = (x, u) -> intruOps.A * x  + intruOps.B * u + intruOps.H * kron(x, x) + (intruOps.N*x)*u + intruOps.K

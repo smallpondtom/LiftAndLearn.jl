@@ -20,9 +20,9 @@ const LnL = LiftAndLearn
 ####################
 ## Set some options
 ####################
-savefigure = false
-provide_R = false
-savedata = false
+SAVEFIG = false
+PROVIDE_DERIVATIVE = false
+SAVEDATA = false
 
 #########################
 ## 1D Heat equation setup
@@ -92,21 +92,21 @@ for (idx, μ) in enumerate(heat1d.μs)
     Yfull[idx] = Y
 
     # Compute the values for the intrusive model
-    op_heat_new = LnL.intrusiveMR(op_heat, Vr, options)
+    op_heat_new = LnL.pod(op_heat, Vr, options)
     A_intru[idx] = op_heat_new.A
     B_intru[idx] = op_heat_new.B
     C_intru[idx] = op_heat_new.C
 
     # Compute the RHS for the operator inference based on the intrusive operators
-    if provide_R
+    if PROVIDE_DERIVATIVE
         jj = 2:heat1d.Tdim
         Xn = X[:, jj]
         Un = heat1d.Ubc[jj, :]
         Yn = Y[:, jj]
         Xdot = A * Xn + B * Un'
-        op_infer = LnL.inferOp(Xn, Un, Yn, Vr, Xdot, options)
+        op_infer = LnL.inferOp(Xn, Vr, options; U=Un, Y=Yn, Xdot=Xdot)
     else
-        op_infer = LnL.inferOp(X, heat1d.Ubc, Y, Vr, options)
+        op_infer = LnL.inferOp(X, Vr, options; U=heat1d.Ubc, Y=Y)
     end
 
     A_opinf[idx] = op_infer.A
@@ -170,7 +170,7 @@ df = DataFrame(
     :inferred_state_err => vec(opinf_state_err),
     :inferred_output_err => vec(opinf_output_err)
 )
-if savedata
+if SAVEDATA
     CSV.write("scripts/OpInf/data/heat1d_data.csv", df)  # Write the data just in case
 end
 
@@ -220,7 +220,7 @@ plot!(p3,
 )
 display(p3)
 
-if savefigure
+if SAVEFIG
     savefig(p1, "scripts/OpInf/plots/heat1d_proj_err.png")
     savefig(p2, "scripts/OpInf/plots/heat1d_state_err.png")
     savefig(p3, "scripts/OpInf/plots/heat1d_output_err.png")

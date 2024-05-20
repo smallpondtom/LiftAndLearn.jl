@@ -70,7 +70,7 @@ const LnL = LiftAndLearn
         Yfull[idx] = Y
 
         # Compute the values for the intrusive model
-        op_heat_new = LnL.intrusiveMR(op_heat, Vr, options)
+        op_heat_new = LnL.pod(op_heat, Vr, options)
         A_intru[idx] = op_heat_new.A
         B_intru[idx] = op_heat_new.B
         C_intru[idx] = op_heat_new.C
@@ -82,9 +82,9 @@ const LnL = LiftAndLearn
             Un = heat1d.Ubc[jj, :]
             Yn = Y[:, jj]
             Xdot = A * Xn + B * Un'
-            op_infer = LnL.inferOp(Xn, Un, Yn, Vr, Xdot, options)
+            op_infer = LnL.inferOp(Xn, Vr, options; U=Un, Y=Yn, Xdot=Xdot)
         else
-            op_infer = LnL.inferOp(X, heat1d.Ubc, Y, Vr, options)
+            op_infer = LnL.inferOp(X, Vr, options; U=heat1d.Ubc, Y=Y)
         end
 
         A_opinf[idx] = op_infer.A
@@ -263,13 +263,13 @@ end
         Σr[i] = tmp.S
 
         # Compute the values for the intrusive model from the basis of the training data
-        op_int = LnL.intrusiveMR(op_burger, Vrmax, options)
+        op_int = LnL.pod(op_burger, Vrmax, options)
 
         # Compute the inferred operators from the training data
         if options.optim.reproject || i == 1
-            op_inf = LnL.inferOp(X, U, Y, Vrmax, op_burger, options)  # Using Reprojection
+            op_inf = LnL.inferOp(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
         else
-            op_inf = LnL.inferOp(X, U, Y, Vrmax, R, options)
+            op_inf = LnL.inferOp(X, Vrmax, options; U=U, Y=Y, Xdot=R)
         end
 
         for j = 1+k:rmax

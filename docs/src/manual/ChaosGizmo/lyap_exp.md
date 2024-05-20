@@ -194,7 +194,7 @@ Vr = svd(data).U[:,1:rmax]   # choose rmax columns
 rom_option = LnL.LS_options(
     system=LnL.sys_struct(is_lin=true, is_quad=true),
 )
-oprom = LnL.intrusiveMR(lorenz9_ops, Vr, rom_option)
+oprom = LnL.pod(lorenz9_ops, Vr, rom_option)
 
 
 # Now, we can compute the Lyapunov spectrum and the Kaplan-Yorke dimension using the method without the Tangent map

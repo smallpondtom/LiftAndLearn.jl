@@ -39,7 +39,7 @@ const LnL = LiftAndLearn
         has_const=true,
     )
     options = LnL.LS_options(system=system)
-    op_rom = LnL.intrusiveMR(op, Vr, options)
+    op_rom = LnL.pod(op, Vr, options)
 
     for field in fieldnames(typeof(op_rom))
         if field != :f && field != :Q
@@ -90,7 +90,7 @@ end
         has_const=true,
     )
     options = LnL.LS_options(system=system)
-    op_rom = LnL.intrusiveMR(op, Vr, options)
+    op_rom = LnL.pod(op, Vr, options)
 
     for field in fieldnames(typeof(op_rom))
         if field != :f && field != :Q 

@@ -35,6 +35,7 @@ options = LnL.LS_options(
         is_quad=true,
         is_bilin=true,
         has_control=true,
+        has_output=true,
         has_const=true,
         has_funcOp=true,
         is_lifted=true,
@@ -216,9 +217,8 @@ test2_err = Dict(
     Vr3 = W3.U[:, 1:r3]
     Vr = BlockDiagonal([Vr1, Vr2, Vr3])
 
-    # infOps = inferOp(Wtr, Utr, Ytr, Vr, fhn.Δt, 0, options)
-    infOps = LnL.inferOp(Wtr, Utr, Ytr, Vr, lifter, fomOps, options)
-    intruOps = LnL.intrusiveMR(fomLinOps, Vr, options)
+    infOps = LnL.inferOp(Wtr,Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
+    intruOps = LnL.pod(fomLinOps, Vr, options)
     # At = Vr' * fomLinOps.A * Vr
     # Bt = Vr' * fomLinOps.B
     # Kt = Vr' * fomLinOps.K
