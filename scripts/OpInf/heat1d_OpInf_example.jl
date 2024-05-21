@@ -104,9 +104,9 @@ for (idx, μ) in enumerate(heat1d.μs)
         Un = heat1d.Ubc[jj, :]
         Yn = Y[:, jj]
         Xdot = A * Xn + B * Un'
-        op_infer = LnL.inferOp(Xn, Vr, options; U=Un, Y=Yn, Xdot=Xdot)
+        op_infer = LnL.opinf(Xn, Vr, options; U=Un, Y=Yn, Xdot=Xdot)
     else
-        op_infer = LnL.inferOp(X, Vr, options; U=heat1d.Ubc, Y=Y)
+        op_infer = LnL.opinf(X, Vr, options; U=heat1d.Ubc, Y=Y)
     end
 
     A_opinf[idx] = op_infer.A

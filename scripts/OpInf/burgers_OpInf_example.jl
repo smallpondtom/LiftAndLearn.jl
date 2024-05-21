@@ -108,9 +108,9 @@ for i in 1:length(μs)
 
     # Compute the inferred operators from the training data
     if options.optim.reproject 
-        op_inf = LnL.inferOp(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
+        op_inf = LnL.opinf(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
     else
-        op_inf = LnL.inferOp(X, Vrmax, options; U=U, Y=Y, Xdot=R)
+        op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=R)
     end
 
     for j = 1+k:rmax

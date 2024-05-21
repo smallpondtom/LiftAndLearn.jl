@@ -35,14 +35,14 @@ include("utilities/plotting.jl")
 ##########################
 ## 1D Heat equation setup
 ##########################
-heat1d = LnL.heat1d(
+heat1d = LnL.heat1d(  # define the model
     [0.0, 1.0], [0.0, 2.0], [0.1, 0.1],
     2^(-7), 1e-3, 1
 )
 foo = zeros(heat1d.Xdim)
 foo[65:end] .= 1
 heat1d.IC = Diagonal(foo) * 0.5 * sin.(2π * heat1d.x)  # change IC
-U = heat1d.Ubc
+U = heat1d.Ubc  # boundary condition → control input
 
 # OpInf options
 options = LnL.LS_options(
@@ -52,14 +52,14 @@ options = LnL.LS_options(
         has_output=true,
     ),
     vars=LnL.vars(
-        N=1,
+        N=1,  # number of state variables
     ),
     data=LnL.data(
-        Δt=1e-3,
-        deriv_type="BE"
+        Δt=1e-3, # time step
+        deriv_type="BE"  # backward Euler
     ),
     optim=LnL.opt_settings(
-        verbose=true,
+        verbose=true,  # show the optimization process
     ),
 )
 
@@ -118,7 +118,7 @@ idx = 2:heat1d.Tdim
 X = X[:, idx]  # fix the index of states
 U = U[idx, :]  # fix the index of inputs
 Y = Y[:, idx]  # fix the index of outputs
-op_inf = LnL.inferOp(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
+op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
 
 ##############################
@@ -130,7 +130,7 @@ options.λ = LnL.λtik(
     ctrl = 1e-8,
     output = 1e-5
 )
-op_inf_reg = LnL.inferOp(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
+op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
 
 ###################
@@ -139,8 +139,7 @@ op_inf_reg = LnL.inferOp(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 # Construct batches of the training data
 if CONST_BATCH  # using a single constant batchsize
     global batchsize = 1
-else
-    # initial batch updated with smaller batches
+else  # initial batch updated with smaller batches
     init_batchsize = 1
     update_size = 1
     global batchsize = vcat([init_batchsize], [update_size for _ in 1:((size(X,2)-init_batchsize)÷update_size)])
@@ -161,11 +160,11 @@ tol = nothing
 β = 1e-5
 
 # Initialize the stream
-stream = LnL.Streaming_InferOp(options; variable_regularize=false, tol=tol)
-D_k = stream.init!(stream, Xhat_batch[1], U_batch[1], Y_batch[1], R_batch[1], α, β)
+stream = LnL.StreamingOpInf(options; variable_regularize=false, tol=tol)
+D_k = stream.init!(stream, Xhat_batch[1], R_batch[1]; U_k=U_batch[1], Y_k=Y_batch[1], α_k=α, β_k=β)
 
 # Stream all at once
-stream.stream!(stream, Xhat_batch[2:end], U_batch[2:end], R_batch[2:end])
+stream.stream!(stream, Xhat_batch[2:end], R_batch[2:end]; U_kp1=U_batch[2:end])
 stream.stream_output!(stream, Xhat_batch[2:end], Y_batch[2:end])
 
 # Unpack solution operators

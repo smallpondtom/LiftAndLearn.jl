@@ -235,3 +235,4 @@ function compute_inital_stream_error(batchsizes::Union{AbstractArray{<:Int},Int}
 end
 
 function compute_operator_error()
+end

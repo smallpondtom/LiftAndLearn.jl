@@ -82,9 +82,9 @@ const LnL = LiftAndLearn
             Un = heat1d.Ubc[jj, :]
             Yn = Y[:, jj]
             Xdot = A * Xn + B * Un'
-            op_infer = LnL.inferOp(Xn, Vr, options; U=Un, Y=Yn, Xdot=Xdot)
+            op_infer = LnL.opinf(Xn, Vr, options; U=Un, Y=Yn, Xdot=Xdot)
         else
-            op_infer = LnL.inferOp(X, Vr, options; U=heat1d.Ubc, Y=Y)
+            op_infer = LnL.opinf(X, Vr, options; U=heat1d.Ubc, Y=Y)
         end
 
         A_opinf[idx] = op_infer.A
@@ -267,9 +267,9 @@ end
 
         # Compute the inferred operators from the training data
         if options.optim.reproject || i == 1
-            op_inf = LnL.inferOp(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
+            op_inf = LnL.opinf(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
         else
-            op_inf = LnL.inferOp(X, Vrmax, options; U=U, Y=Y, Xdot=R)
+            op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=R)
         end
 
         for j = 1+k:rmax

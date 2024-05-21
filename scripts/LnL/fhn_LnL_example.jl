@@ -217,7 +217,7 @@ test2_err = Dict(
     Vr3 = W3.U[:, 1:r3]
     Vr = BlockDiagonal([Vr1, Vr2, Vr3])
 
-    infOps = LnL.inferOp(Wtr,Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
+    infOps = LnL.opinf(Wtr,Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
     intruOps = LnL.pod(fomLinOps, Vr, options)
     # At = Vr' * fomLinOps.A * Vr
     # Bt = Vr' * fomLinOps.B

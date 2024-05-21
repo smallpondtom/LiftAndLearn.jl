@@ -1,4 +1,4 @@
-export inferOp
+export opinf
 
 include("dtApprox.jl")
 include("choose_ro.jl")
@@ -209,7 +209,7 @@ end
 
 
 """
-    inferOp(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
+    opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
         U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
         Xdot::AbstractArray=[], IG::operators=operators()) → op::operators
 
@@ -227,7 +227,7 @@ Infer the operators with derivative data given
 ## Returns
 - `op::operators`: inferred operators
 """
-function inferOp(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
+function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
                  U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
                  Xdot::AbstractArray=[], IG::operators=operators())::operators
     if isempty(Xdot)
@@ -253,7 +253,7 @@ end
 
 
 """
-    inferOp(X::AbstractArray, Vn::AbstractArray, full_op::operators, options::AbstractOption;
+    opinf(X::AbstractArray, Vn::AbstractArray, full_op::operators, options::AbstractOption;
         U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::operators=operators()) → op::operators
 
 Infer the operators with reprojection method (dispatch)
@@ -270,7 +270,7 @@ Infer the operators with reprojection method (dispatch)
 ## Returns
 - `op::operators`: inferred operators
 """
-function inferOp(X::AbstractArray, Vn::AbstractArray, full_op::operators, options::AbstractOption;
+function opinf(X::AbstractArray, Vn::AbstractArray, full_op::operators, options::AbstractOption;
                  U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::operators=operators())::operators
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)

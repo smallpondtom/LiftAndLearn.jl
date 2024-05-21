@@ -1,8 +1,8 @@
-export inferOp
+export opinf
 
 
 """
-    inferOp(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::operators,
+    opinf(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::operators,
             options::AbstractOption; U::AbstractArray=zeros(1,1), 
             Y::AbstractArray=zeros(1,1), IG::operators=operators()) → op::operators
 
@@ -21,7 +21,7 @@ Infer the operators for Lift And Learn for reprojected data (dispatch)
 ## Returns
 - `op::operators`: inferred operators
 """
-function inferOp(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::operators, 
+function opinf(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::operators, 
                  options::AbstractOption; U::AbstractArray=zeros(1,1), 
                  Y::AbstractArray=zeros(1,1), IG::operators=operators())::operators
 
