@@ -19,7 +19,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     options::AbstractOption, IG::operators)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
-    p = options.system.dims[:p]
+    m = options.system.dims[:m]
     s = options.system.dims[:s2]
     v = options.system.dims[:v2]
     w = options.system.dims[:w1]
@@ -59,7 +59,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     end
 
     if options.system.has_control
-        @variable(model, Bhat[1:n, 1:p])
+        @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess 
             set_start_value.(Bhat, IG.B)
         end
@@ -214,7 +214,7 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     options::AbstractOption, IG::operators)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
-    p = options.system.dims[:p]
+    m = options.system.dims[:m]
     s = options.system.dims[:s2]
     v = options.system.dims[:v2]
     w = options.system.dims[:w1]
@@ -254,7 +254,7 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     end
 
     if options.system.has_control
-        @variable(model, Bhat[1:n, 1:p])
+        @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess
             set_start_value.(Bhat, IG.B)
         end
@@ -431,7 +431,7 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     options::AbstractOption, IG::operators)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
-    p = options.system.dims[:p]
+    m = options.system.dims[:m]
     s = options.system.dims[:s2]
     v = options.system.dims[:v2]
     w = options.system.dims[:w1]
@@ -472,7 +472,7 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     end
 
     if options.system.has_control
-        @variable(model, Bhat[1:n, 1:p])
+        @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess
             set_start_value.(Bhat, IG.B)
         end

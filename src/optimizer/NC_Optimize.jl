@@ -20,7 +20,7 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
         options::AbstractOption, IG::operators)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
-    p = options.system.dims[:p]
+    m = options.system.dims[:m]
     s = options.system.dims[:s2]
     v = options.system.dims[:v2]
     w = options.system.dims[:w1]
@@ -51,7 +51,7 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
 
     # Input B matrix
     if options.system.has_control
-        @variable(model, Bhat[1:n, 1:p])
+        @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess
             set_start_value.(Bhat, IG.B) # set initial value of Bhat
         end
@@ -155,7 +155,7 @@ function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose},
         options::AbstractOption)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
-    q = options.system.dims[:q]
+    l = options.system.dims[:l]
 
     Yt = transpose(Y)
 
@@ -171,7 +171,7 @@ function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose},
         set_silent(model)
     end
 
-    @variable(model, Chat[1:q, 1:n])
+    @variable(model, Chat[1:l, 1:n])
     Chat_t = @expression(model, Chat')
     @objective(model, Min, sum((Matrix(Xhat_t) * Chat_t .- Yt).^2))
     @info "Done."

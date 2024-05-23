@@ -27,8 +27,8 @@ function LS_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
     Xhat_t::AbstractArray, options::AbstractOption)
     # Some dimensions to unpack for convenience
     n = options.system.dims[:n]
-    p = options.system.dims[:p]
-    q = options.system.dims[:q]
+    m = options.system.dims[:m]
+    l = options.system.dims[:l]
     s2 = options.system.dims[:s2]
     v2 = options.system.dims[:v2]
     s3 = options.system.dims[:s3]
@@ -38,15 +38,15 @@ function LS_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
     # Construct the Tikhonov matrix
     if options.optim.which_quad_term == "F"
         if options.optim.which_cubic_term == "E"
-            Γ = spzeros(n+p+s2+s3+w1)
+            Γ = spzeros(n+m+s2+s3+w1)
         else
-            Γ = spzeros(n+p+s2+v3+w1)
+            Γ = spzeros(n+m+s2+v3+w1)
         end
     else
         if options.optim.which_cubic_term == "E"
-            Γ = spzeros(n+p+v2+s3+w1)
+            Γ = spzeros(n+m+v2+s3+w1)
         else
-            Γ = spzeros(n+p+v2+v3+w1)
+            Γ = spzeros(n+m+v2+v3+w1)
         end
     end
     tikhonovMatrix!(Γ, options)
@@ -69,15 +69,15 @@ function LS_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
         Ahat = 0
     end
     if options.system.has_control
-        Bhat = O[:, TD+1:TD+p]
-        TD += p
+        Bhat = O[:, TD+1:TD+m]
+        TD += m
     else
         Bhat = 0
     end
 
     # Compute Chat by solving the least square problem for the output values 
     if options.system.has_output
-        Chat_t = zeros(n, q)
+        Chat_t = zeros(n, l)
         Yt = transpose(Y)
         if options.with_reg && options.λ.output != 0
             Chat_t = (Xhat_t' * Xhat_t + options.λ.output * I) \ (Xhat_t' * Yt)
@@ -126,18 +126,18 @@ function LS_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
     # FIX: fix this so that you can extract for a general case where there
     # are more than 1 input
     if options.system.is_bilin
-        if p == 1
+        if m == 1
             Nhat = O[:, TD+1:TD+w1]
         else 
-            Nhat = zeros(p,n,n)
+            Nhat = zeros(m,n,n)
             tmp = O[:, TD+1:TD+w1]
-            for i in 1:p
+            for i in 1:m
                 Nhat[:,:,i] .= tmp[:, Int(n*(i-1)+1):Int(n*i)]
             end
         end
         TD += w1
     else
-        Nhat = (p == 0) || (p == 1) ? 0 : zeros(n,n,p)
+        Nhat = (m == 0) || (m == 1) ? 0 : zeros(n,n,m)
     end
 
     # Constant term
@@ -314,11 +314,11 @@ function reproject(Xhat::AbstractArray, V::AbstractArray, U::AbstractArray,
         end
     end
 
-    Rt = zeros(options.system.dims[:m], options.system.dims[:n])  # Left hand side of the regression problem
+    Rt = zeros(options.system.dims[:K], options.system.dims[:n])  # Left hand side of the regression problem
     if options.system.has_funcOp
         f = (x, u) -> op.A * x + op.f(x) + op.B * u + op.K
     else
-        p = options.system.dims[:p]
+        m = options.system.dims[:m]
 
         fA = (x) -> options.system.is_lin ? op.A * x : 0
         fB = (u) -> options.system.has_control ? op.B * u : 0
@@ -326,13 +326,13 @@ function reproject(Xhat::AbstractArray, V::AbstractArray, U::AbstractArray,
         fH = (x) -> options.system.is_quad && options.optim.which_quad_term == "H" ? op.H * (x ⊗ x) : 0
         fE = (x) -> options.system.is_cubic && options.optim.which_cubic_term == "E" ? op.E * ⊘(x,x,x) : 0
         fG = (x) -> options.system.is_cubic && options.optim.which_cubic_term == "G" ? op.G * (x ⊗ x ⊗ x) : 0
-        fN = (x,u) -> options.system.is_bilin ? ( p==1 ? (op.N * x) * u : sum([(op.N[i] * x) * u[i] for i in 1:p]) ) : 0
+        fN = (x,u) -> options.system.is_bilin ? ( m==1 ? (op.N * x) * u : sum([(op.N[i] * x) * u[i] for i in 1:m]) ) : 0
         fK = options.system.has_const ? op.K : 0
 
         f = (x,u) -> fA(x) .+ fB(u) .+ fF(x) .+ fH(x) .+ fE(x) .+ fG(x) .+ fN(x,u) .+ fK
     end
 
-    for i in 1:options.system.dims[:m]  # loop thru all data
+    for i in 1:options.system.dims[:K]  # loop thru all data
         x = Xhat[:, i]  # julia automatically makes into column vec after indexing (still xrow-tcol)
         xrec = V * x
         states = f(xrec, U[i, :])

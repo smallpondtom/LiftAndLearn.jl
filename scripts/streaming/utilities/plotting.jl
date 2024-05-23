@@ -1,48 +1,103 @@
-"""
-    plot_rse(rel_state_err::Matrix, rel_output_err::Matrix, r::Int, theme::CairoMakie.Attributes)
-
-Plots the relative state and output errors of the intrusive, inferred, and streaming inferred models.
-
-# Arguments
-- `rel_state_err::Matrix`: The relative state errors.
-- `rel_output_err::Matrix`: The relative output errors.
-- `r::Int`: The number of reduced basis vectors.
-- `theme::CairoMakie.Attributes`: The theme to use for the plot.
-
-# Returns
-A figure containing the plot.
-"""
-function plot_rse(rel_state_err::Matrix, rel_output_err::Matrix, r::Int, theme::CairoMakie.Attributes)
-    n = size(rel_state_err, 2)
+function plot_rse(rse, roe, r, theme; provided_keys=[])
+    n = length(rse)
     with_theme(theme) do
-        fig2 = Figure(fontsize=20, size=(1200,600))
-        ax1 = Axis(fig2[1, 1], xlabel="r", ylabel="Relative Error", title="Relative State Error", yscale=log10)
-        scatterlines!(ax1, 1:r, rel_state_err[:, 1], label="Intrusive")
-        scatterlines!(ax1, 1:r, rel_state_err[:, 2], label="OpInf")
-        if n == 3
-            scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="Streaming-OpInf")
+        fig = Figure(fontsize=20, size=(1200,600))
+        # Relative State Error
+        ax1 = Axis(fig[1, 1], 
+            xlabel=L"reduced dimension, $r$",
+            ylabel="Relative State Error", 
+            title="Relative State Error", 
+            yscale=log10
+        )
+        if isempty(provided_keys)
+            for (key, values) in rse
+                scatterlines!(ax1, 1:r, values, label=key)
+            end
         else
-            scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="TR-OpInf")
-            scatterlines!(ax1, 1:r, rel_state_err[:, 4], label="Streaming-OpInf")
+            for key in provided_keys
+                scatterlines!(ax1, 1:r, rse[key], label=key)
+            end
         end
-        ax2 = Axis(fig2[1, 2], xlabel="r", ylabel="Relative Error", title="Relative Output Error", yscale=log10)
-        l1 = scatterlines!(ax2, 1:r, rel_output_err[:, 1], label="Intrusive")
-        l2 = scatterlines!(ax2, 1:r, rel_output_err[:, 2], label="OpInf")
-        if n == 3
-            l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="Streaming-OpInf")
-            labels = ["Intrusive", "OpInf", "Streaming-OpInf"]
-            lines = [l1, l2, l3]
+        # Relative Output Error
+        lines = []
+        labels = []
+        ax2 = Axis(fig[1, 2], 
+            xlabel=L"reduced dimensions, $r$", 
+            ylabel="Relative Output Error", 
+            title="Relative Output Error", 
+            yscale=log10
+        )
+        if isempty(provided_keys)
+            for (key, values) in roe
+                l = scatterlines!(ax2, 1:r, values, label=key)
+                push!(lines, l)
+                push!(labels, key)
+            end
         else
-            l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="TR-OpInf")
-            l4 = scatterlines!(ax2, 1:r, rel_output_err[:, 4], label="Streaming-OpInf")
-            labels = ["Intrusive", "OpInf", "TR-OpInf", "Streaming-OpInf"]
-            lines = [l1, l2, l3, l4]
+            for key in provided_keys
+                l = scatterlines!(ax2, 1:r, roe[key], label=key)
+                push!(lines, l)
+                push!(labels, key)
+            end
         end
-        Legend(fig2[2, 1:2], lines, labels,
-                orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
-        return fig2
+        Legend(fig[2, 1:2], 
+            lines, labels,
+            orientation=:horizontal, 
+            halign=:center, 
+            tellwidth=false, 
+            tellheight=true
+        )
+        return fig
     end
 end
+
+
+
+# """
+#     plot_rse(rel_state_err::Matrix, rel_output_err::Matrix, r::Int, theme::CairoMakie.Attributes)
+
+# Plots the relative state and output errors of the intrusive, inferred, and streaming inferred models.
+
+# # Arguments
+# - `rel_state_err::Matrix`: The relative state errors.
+# - `rel_output_err::Matrix`: The relative output errors.
+# - `r::Int`: The number of reduced basis vectors.
+# - `theme::CairoMakie.Attributes`: The theme to use for the plot.
+
+# # Returns
+# A figure containing the plot.
+# """
+# function plot_rse(rel_state_err::Matrix, rel_output_err::Matrix, r::Int, theme::CairoMakie.Attributes)
+#     n = size(rel_state_err, 2)
+#     with_theme(theme) do
+#         fig2 = Figure(fontsize=20, size=(1200,600))
+#         ax1 = Axis(fig2[1, 1], xlabel="r", ylabel="Relative Error", title="Relative State Error", yscale=log10)
+#         scatterlines!(ax1, 1:r, rel_state_err[:, 1], label="Intrusive")
+#         scatterlines!(ax1, 1:r, rel_state_err[:, 2], label="OpInf")
+#         if n == 3
+#             scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="Streaming-OpInf")
+#         else
+#             scatterlines!(ax1, 1:r, rel_state_err[:, 3], label="TR-OpInf")
+#             scatterlines!(ax1, 1:r, rel_state_err[:, 4], label="Streaming-OpInf")
+#         end
+#         ax2 = Axis(fig2[1, 2], xlabel="r", ylabel="Relative Error", title="Relative Output Error", yscale=log10)
+#         l1 = scatterlines!(ax2, 1:r, rel_output_err[:, 1], label="Intrusive")
+#         l2 = scatterlines!(ax2, 1:r, rel_output_err[:, 2], label="OpInf")
+#         if n == 3
+#             l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="Streaming-OpInf")
+#             labels = ["Intrusive", "OpInf", "Streaming-OpInf"]
+#             lines = [l1, l2, l3]
+#         else
+#             l3 = scatterlines!(ax2, 1:r, rel_output_err[:, 3], label="TR-OpInf")
+#             l4 = scatterlines!(ax2, 1:r, rel_output_err[:, 4], label="Streaming-OpInf")
+#             labels = ["Intrusive", "OpInf", "TR-OpInf", "Streaming-OpInf"]
+#             lines = [l1, l2, l3, l4]
+#         end
+#         Legend(fig2[2, 1:2], lines, labels,
+#                 orientation=:horizontal, halign=:center, tellwidth=false, tellheight=true)
+#         return fig2
+#     end
+# end
 
 
 

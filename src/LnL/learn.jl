@@ -76,12 +76,12 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
     tmp = size(V, 1)
     n = tmp / options.vars.N_lift
     dt = options.data.Δt
-    Rt = zeros(options.system.dims[:m], options.system.dims[:n])  # Left hand side of the regression problem
+    Rt = zeros(options.system.dims[:K], options.system.dims[:n])  # Left hand side of the regression problem
 
     if options.system.has_funcOp
         f = (x, u) -> op.A * x + op.f(x) + op.B * u + op.K
     else
-        p = options.system.dims[:p]
+        m = options.system.dims[:m]
 
         fA = (x) -> options.system.is_lin ? op.A * x : 0
         fB = (u) -> options.system.has_control ? op.B * u : 0
@@ -89,13 +89,13 @@ function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
         fH = (x) -> options.system.is_quad && options.optim.which_quad_term == "H" ? op.H * (x ⊗ x) : 0
         fE = (x) -> options.system.is_cubic && options.optim.which_cubic_term == "E" ? op.E * ⊘(x,x,x) : 0
         fG = (x) -> options.system.is_cubic && options.optim.which_cubic_term == "G" ? op.G * (x ⊗ x ⊗ x) : 0
-        fN = (x,u) -> options.system.is_bilin ? ( p==1 ? (op.N * x) * u : sum([(op.N[i] * x) * u[i] for i in 1:p]) ) : 0
+        fN = (x,u) -> options.system.is_bilin ? ( m==1 ? (op.N * x) * u : sum([(op.N[i] * x) * u[i] for i in 1:m]) ) : 0
         fK = options.system.has_const ? op.K : 0
 
         f = (x,u) -> fA(x) .+ fB(u) .+ fF(x) .+ fH(x) .+ fE(x) .+ fG(x) .+ fN(x,u) .+ fK
     end
 
-    for i in 1:options.system.dims[:m]  # loop thru all data
+    for i in 1:options.system.dims[:K]  # loop thru all data
         x = Xhat[:, i]  # julia automatically makes into column vec after indexing (still xrow-tcol)
         xrec = V * x
         states = f(xrec[1:Int(options.vars.N * n), :], U[i, :])

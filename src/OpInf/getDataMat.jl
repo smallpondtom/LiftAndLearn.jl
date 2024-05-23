@@ -63,7 +63,7 @@ function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::AbstractArray
 
     if options.system.is_bilin  # Bilinear term
         XU = Xhat_t .* U[:, 1]
-        for i in 2:options.system.dims[:p]
+        for i in 2:options.system.dims[:m]
             XU = hcat(XU, Xhat_t .* U[:, i])
         end
         if flag
@@ -75,7 +75,7 @@ function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::AbstractArray
     end
 
     if options.system.has_const  # constant term
-        I = ones(options.system.dims[:m], 1)
+        I = ones(options.system.dims[:K], 1)
         if flag
             D = hcat(D, I)
         else

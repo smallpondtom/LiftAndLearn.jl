@@ -50,7 +50,7 @@ Construct the Tikhonov matrix
 """
 function tikhonovMatrix!(Γ::AbstractArray, options::AbstractOption)
     n = options.system.dims[:n]
-    p = options.system.dims[:p]
+    m = options.system.dims[:m]
     s2 = options.system.dims[:s2]
     v2 = options.system.dims[:v2]
     s3 = options.system.dims[:s3]
@@ -64,9 +64,9 @@ function tikhonovMatrix!(Γ::AbstractArray, options::AbstractOption)
         si += n 
     end
 
-    if p != 0
-        Γ[si+1:si+p] .= λ.ctrl
-        si += p
+    if m != 0
+        Γ[si+1:si+m] .= λ.ctrl
+        si += m
     end
 
     if options.optim.which_quad_term == "F"

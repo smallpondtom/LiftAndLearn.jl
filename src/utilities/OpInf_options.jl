@@ -20,9 +20,9 @@ Structure of the given system.
 
 ## Note on `dims`
 - `n`: the number of rows of the state data matrix (state dimension)
-- `m`: the number of columns of the state data matrix (total number of time steps)
-- `p`: the number of inputs
-- `q`: the number of outputs
+- `K`: the number of columns of the state data matrix (total number of time steps)
+- `m`: the number of inputs
+- `l`: the number of outputs
 - `v2`: the dimension of quadratic state with redundancy
 - `s2`: the dimension of quadratic state without redundancy
 - `v3`: the dimension of cubic state with redundancy
@@ -39,7 +39,7 @@ Structure of the given system.
     has_const::Bool = false
     has_funcOp::Bool = false
     is_lifted::Bool = false
-    dims::Dict{Symbol, Int64} = Dict(:n=>0, :m=>0, :p=>0, :q=>0, :v2=>0, :s2=>0,
+    dims::Dict{Symbol, Int64} = Dict(:n=>0, :K=>0, :m=>0, :l=>0, :v2=>0, :s2=>0,
                                      :v3=>0, :s3=>0, :w1=>0)
 
     @assert !(has_control==false && is_bilin==true) "Bilinear system must have control input. Check the option 'has_control'."

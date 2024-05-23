@@ -84,9 +84,9 @@ Vr = svd(X).U[:, 1:r]
 Y = C * X
 
 # Copy the data for later analysis
-Xf = copy(X)
-Yf = copy(Y)
-Uf = copy(U)
+Xfull = copy(X)
+Yfull = copy(Y)
+Ufull = copy(U)
 
 
 ######################
@@ -138,34 +138,36 @@ op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 ###################
 # Construct batches of the training data
 if CONST_BATCH  # using a single constant batchsize
-    global batchsize = 1
+    global streamsize = 1
 else  # initial batch updated with smaller batches
-    init_batchsize = 1
+    init_streamsize = 1
     update_size = 1
-    global batchsize = vcat([init_batchsize], [update_size for _ in 1:((size(X,2)-init_batchsize)÷update_size)])
+    global streamsize = vcat([init_streamsize], [update_size for _ in 1:((size(X,2)-init_streamsize)÷update_size)])
 end
 
 # Batchify the data based on the selected batchsizes
 # INFO: Remember to make data matrices a tall matrix except X matrix
-Xhat_batch = LnL.batchify(Vr' * X, batchsize)
-U_batch = LnL.batchify(U, batchsize)
-Y_batch = LnL.batchify(Y', batchsize)
-R_batch = LnL.batchify((Vr' * Xdot)', batchsize)
-num_of_batches = length(Xhat_batch)
+Xhat_stream = LnL.streamify(Vr' * X, streamsize)
+U_stream = LnL.streamify(U, streamsize)
+Y_stream = LnL.streamify(Y', streamsize)
+R_stream = LnL.streamify((Vr' * Xdot)', streamsize)
+num_of_streams = length(Xhat_stream)
 
 # Initialize the stream
 # tol = [1e-12, 1e-15]  # tolerance for pinv 
 tol = nothing
 α = 1e-8
 β = 1e-5
+# α = [1e-8 * ones(num_of_batches÷10); zeros(9*num_of_batches÷10)]
+# β = [1e-5 * ones(num_of_batches÷10); zeros(9*num_of_batches÷10)]
 
 # Initialize the stream
-stream = LnL.StreamingOpInf(options; variable_regularize=false, tol=tol)
-D_k = stream.init!(stream, Xhat_batch[1], R_batch[1]; U_k=U_batch[1], Y_k=Y_batch[1], α_k=α, β_k=β)
+stream = LnL.StreamingOpInf(options; variable_regularize=true, tol=tol)
+D_k = stream.init!(stream, Xhat_stream[1], R_stream[1]; U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
 # Stream all at once
-stream.stream!(stream, Xhat_batch[2:end], R_batch[2:end]; U_kp1=U_batch[2:end])
-stream.stream_output!(stream, Xhat_batch[2:end], Y_batch[2:end])
+stream.stream!(stream, Xhat_stream[2:end], R_stream[2:end]; U_kp1=U_stream[2:end])
+stream.stream_output!(stream, Xhat_stream[2:end], Y_stream[2:end])
 
 # Unpack solution operators
 op_stream = stream.unpack_operators(stream)
@@ -174,13 +176,21 @@ op_stream = stream.unpack_operators(stream)
 ##################
 ## Error Analysis
 ##################
+# Collect all operators into a dictionary
+op_dict = Dict(
+    "POD" => op_int,
+    "OpInf" => op_inf,
+    "TR-OpInf" => op_inf_reg,
+    "Streaming-OpInf" => op_stream
+)
 # RSE: Relative State Error
 # ROE: Relative Output Error
-rse, roe = compute_rse(op_int, op_inf, op_stream, heat1d, Vr, Xf, Uf, Yf; op_inf_reg=op_inf_reg)
+rse, roe = analyze_heat_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull)
 
 ## Plot
-fig1 = plot_rse(rse, roe, r, ace_light)
+fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"])
 display(fig1)
+
 
 ###########################
 ## Error per stream update
@@ -188,9 +198,11 @@ display(fig1)
 # SEF: State Error Factor
 # OEF: Output Error Factor
 r_select = [5, 10, 15]
-rse_stream, roe_stream, sef_stream, oef_stream, sef_cond, oef_cond, trace_cov = compute_rse_per_stream(Xhat_batch, U_batch, Y_batch, R_batch, batchsize, 
-                                                                            r_select, options; tol=tol, CONST_BATCH=CONST_BATCH,
-                                                                            VR=false, α=α, β=β)
+res = analyze_heat_2(
+    Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
+    op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options; 
+    tol=0.0, VR=false, α=α, β=β
+)
 
 ## Plot
 fig2 = plot_rse_per_stream(rse_stream, roe_stream, r_select, ace_light, num_of_batches)
@@ -212,7 +224,7 @@ display(fig4)
 ################################
 ## Initial error over batchsize
 ################################
-batchsizes = 1:50:2000
+batchsizes = 1:10
 init_rse, init_roe = compute_inital_stream_error(batchsizes, Vr, X, U, Y, Vr' * Xdot, op_inf, options, tol, α=1e-8, β=1e-5, orders=1:15)
 
 ## Plot
