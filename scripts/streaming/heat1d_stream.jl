@@ -185,7 +185,7 @@ op_dict = Dict(
 )
 # RSE: Relative State Error
 # ROE: Relative Output Error
-rse, roe = analyze_heat_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull)
+rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
 
 ## Plot
 fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"])
@@ -198,10 +198,10 @@ display(fig1)
 # SEF: State Error Factor
 # OEF: Output Error Factor
 r_select = [5, 10, 15]
-res = analyze_heat_2(
+analysis_results = analysis_2(
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
-    op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options; 
-    tol=0.0, VR=false, α=α, β=β
+    op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options, 
+    [:A, :B], LnL.backwardEuler; tol=0.0, VR=false, α=α, β=β
 )
 
 ## Plot
@@ -221,14 +221,15 @@ display(fig6)
 fig4 = plot_error_condition(sef_cond, oef_cond, ace_light; CONST_BATCH=CONST_BATCH)
 display(fig4)
 
-################################
-## Initial error over batchsize
-################################
-batchsizes = 1:10
-init_rse, init_roe = compute_inital_stream_error(batchsizes, Vr, X, U, Y, Vr' * Xdot, op_inf, options, tol, α=1e-8, β=1e-5, orders=1:15)
+#################################
+## Initial error over streamsize
+#################################
+streamsizes = 1:num_of_streams
+init_rse, init_roe = analysis_3(streamsizes, Vr, X, U, Y, Vr' * Xdot, op_inf, 1:15, options; 
+                                tol=tol, α=α, β=β)
 
 ## Plot
-fig5 = plot_initial_error(batchsizes, init_rse, init_roe, ace_light, 1:15)
+fig5 = plot_initial_error(streamsizes, init_rse, init_roe, ace_light, 1:15)
 display(fig5)
 
 

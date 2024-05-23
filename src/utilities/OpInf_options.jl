@@ -28,6 +28,7 @@ Structure of the given system.
 - `v3`: the dimension of cubic state with redundancy
 - `s3`: the dimension of cubic state without redundancy
 - `w1`: the dimension of bilinear state-input coupling
+- `d`: the total dimension of the operator matrix
 """
 @with_kw mutable struct sys_struct 
     is_lin::Bool = true
@@ -40,7 +41,7 @@ Structure of the given system.
     has_funcOp::Bool = false
     is_lifted::Bool = false
     dims::Dict{Symbol, Int64} = Dict(:n=>0, :K=>0, :m=>0, :l=>0, :v2=>0, :s2=>0,
-                                     :v3=>0, :s3=>0, :w1=>0)
+                                     :v3=>0, :s3=>0, :w1=>0, :d=>0)
 
     @assert !(has_control==false && is_bilin==true) "Bilinear system must have control input. Check the option 'has_control'."
 end

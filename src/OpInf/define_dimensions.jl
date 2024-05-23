@@ -19,10 +19,18 @@ function define_dimensions!(Xhat::Matrix, U::Matrix, Y::VecOrMat, options::Abstr
     v3 = options.system.is_cubic ? Int(n * n * n) : 0
     s3 = options.system.is_cubic ? Int(n * (n + 1) * (n + 2) / 6) : 0
     w1 = options.system.is_bilin ? Int(n * m) : 0
+
+    d = 0
+    for (key, val) in options.system.dims
+        if key != :K && key != :l && key != :d
+            d += val
+        end
+    end
+
     options.system.dims = Dict(
         :n => n, :K => K, :m => m, :l => l, 
         :v2 => v2, :s2 => s2, :v3 => v3, :s3 => s3,
-        :w1 => w1
+        :w1 => w1, :d => d
     )  # create dimension dict
     return nothing
 end

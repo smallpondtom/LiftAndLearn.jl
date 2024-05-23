@@ -42,7 +42,7 @@ function StreamingOpInf(options::AbstractOption; variable_regularize::Bool=false
     dims = Dict(
         :n => 0, :K => 0, :m => 0, :l => 0, 
         :s2 => 0, :v2 => 0, :s3 => 0, :v3 => 0,
-        :w1 => 0
+        :w1 => 0, :d => 0
     ) 
 
     O_k = []; P_k = []; K_k = []
@@ -73,6 +73,13 @@ function init!(stream::StreamingOpInf, X_k::AbstractArray{}, R_k::AbstractArray{
     stream.dims[:s3] = stream.options.system.is_cubic ? Int(n * (n + 1) * (n + 2) / 6) : 0
     stream.dims[:v3] = stream.options.system.is_cubic ? Int(n * n * n) : 0
     stream.dims[:w1] = stream.options.system.is_bilin ? Int(n * p) : 0
+    d = 0
+    for (key, val) in stream.dims
+        if key != :K && key != :l && key != :d
+            d += val
+        end
+    end
+    stream.dims[:d] = d
 
     ## System (input-state)
     Q_k = isnothing(Q_k) ? sparse(Matrix(1.0I, K, K)) : Q_k
