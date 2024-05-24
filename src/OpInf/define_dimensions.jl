@@ -23,9 +23,20 @@ function define_dimensions!(Xhat::Matrix, U::Matrix, Y::VecOrMat, options::Abstr
     d = 0
     for (key, val) in options.system.dims
         if key != :K && key != :l && key != :d
-            d += val
+            if key == :s2
+                d += (options.optim.which_quad_term == "F") * val
+            elseif key == :v2
+                d += (options.optim.which_quad_term == "R") * val
+            elseif key == :s3
+                d += (options.optim.which_cubic_term == "E") * val
+            elseif key == :v3
+                d += (options.optim.which_cubic_term == "G") * val
+            else
+                d += val 
+            end
         end
     end
+    d += (options.system.has_const) * 1  # if has constant term
 
     options.system.dims = Dict(
         :n => n, :K => K, :m => m, :l => l, 

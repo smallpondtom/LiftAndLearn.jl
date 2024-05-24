@@ -54,7 +54,7 @@ end
 
 function plot_rse_per_stream(rel_state_err_stream, rel_output_err_stream, 
                              streaming_error, streaming_error_output,
-                             r_select, num_of_streams)
+                             r_select, num_of_streams; ylimits=([1e-6, 1e1], [1e-6, 1e1]))
     axis_colors = Makie.categorical_colors(:seaborn_bright, 2)
     with_theme(theme_latexfonts()) do
         fig = Figure(size=(1500,900))
@@ -69,7 +69,7 @@ function plot_rse_per_stream(rel_state_err_stream, rel_output_err_stream,
         for (j,ri) in enumerate(r_select)
             push!(axes, Axis(fig[1, j], 
                 xlabel=L"$k$-th stream", 
-                ylabel=L"\Vert \mathbf{X}_{\mathrm{full}}-\mathbf{X}_{\mathrm{recon}}\Vert_F / \Vert\mathbf{X}_{\mathrm{true}}\Vert_F", 
+                ylabel=L"\Vert \mathbf{X}_{\mathrm{true}}-\mathbf{X}_{\mathrm{recon}}\Vert_F / \Vert\mathbf{X}_{\mathrm{true}}\Vert_F", 
                 title=L"Relative State Error & Streaming Error, $r = %$ri$", 
                 yscale=log10, xticks=xtick_vals, yticklabelcolor=axis_colors[1]
             ))
@@ -81,7 +81,7 @@ function plot_rse_per_stream(rel_state_err_stream, rel_output_err_stream,
             hidexdecorations!(axes[4*(j-1)+2])
             push!(axes, Axis(fig[2, j], 
                 xlabel=L"$k$-th stream", 
-                ylabel=L"\Vert\mathbf{Y}_{\mathrm{full}}-\mathbf{Y}_{\mathrm{recon}}\Vert_F / \Vert\mathbf{Y}_{\mathrm{true}}\Vert_F", 
+                ylabel=L"\Vert\mathbf{Y}_{\mathrm{true}}-\mathbf{Y}_{\mathrm{recon}}\Vert_F / \Vert\mathbf{Y}_{\mathrm{true}}\Vert_F", 
                 title=L"Relative Output Error & Streaming Error, $r = %$ri$", 
                 yscale=log10, xticks=xtick_vals, yticklabelcolor=axis_colors[1]
             ))
@@ -92,8 +92,10 @@ function plot_rse_per_stream(rel_state_err_stream, rel_output_err_stream,
             hidespines!(axes[4*(j-1)+4])
             hidexdecorations!(axes[4*(j-1)+4])
 
-            ylims!(axes[4*(j-1)+1], 1e-6, 1e1)
-            ylims!(axes[4*(j-1)+3], 1e-6, 1e1)
+            ylims!(axes[4*(j-1)+1], ylimits[1]...)
+            ylims!(axes[4*(j-1)+2], ylimits[1]...)
+            ylims!(axes[4*(j-1)+3], ylimits[2]...)
+            ylims!(axes[4*(j-1)+4], ylimits[2]...)
 
             l = scatterlines!(axes[4*(j-1)+1], 1:num_of_streams, rel_state_err_stream[ri], color=axis_colors[1])
             scatterlines!(axes[4*(j-1)+2], 1:num_of_streams, streaming_error[ri], color=axis_colors[2])
@@ -115,7 +117,7 @@ function plot_streaming_error(stream_error, stream_error_output,
                               true_stream_error, true_stream_error_output,
                               r_select, num_of_streams, theme)
     with_theme(theme) do 
-        fig = Figure(size=(1600,600), fontsize=20)
+        fig = Figure(size=(1600,700), fontsize=20)
         if num_of_streams > 20
             xtick_vals = 0:(num_of_streams÷10):num_of_streams
         else
@@ -165,7 +167,7 @@ end
 
 function plot_errorfactor_condition(err_state_cond, err_output_cond, r_select, num_of_streams, theme)
     with_theme(theme) do
-        fig = Figure(size=(1300,600), fontsize=20)
+        fig = Figure(size=(1300,550), fontsize=20)
         if num_of_streams > 20
             xtick_vals = 0:(num_of_streams÷10):num_of_streams
         else
@@ -199,10 +201,10 @@ function plot_initial_error(streamsizes, initial_errs, initial_output_errs, them
         fig = Figure(fontsize=20, size=(1300,500))
         ax1 = Axis(fig[1, 1], xlabel="stream-size", 
                     ylabel=L"\Vert \mathbf{O}_* - \mathbf{O}_0 \Vert_F ~/~ \Vert \mathbf{O}_* \Vert_F", 
-                    title=L"Initial Relative Error of $\mathbf{O}_0$", yscale=log10)
+                    title=L"Relative Error of $\mathbf{O}_0$", yscale=log10)
         ax2 = Axis(fig[1, 2], xlabel="stream-size", 
                     ylabel=L"\Vert \hat{\mathbf{C}}_* - \hat{\mathbf{C}}_0\Vert ~/~ \Vert \hat{\mathbf{C}}_* \Vert", 
-                    title=L"Initial Relative Error of $\hat{\mathbf{C}}_0$", yscale=log10)
+                    title=L"Relative Error of $\hat{\mathbf{C}}_0$", yscale=log10)
 
         colors = Makie.resample_cmap(:viridis, length(r_select))
         lines = []

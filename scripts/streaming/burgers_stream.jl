@@ -1,5 +1,5 @@
 """
-    Streaming-OpInf example of the 1D heat equation.
+    Streaming-OpInf example of the Burgers equation.
 """
 
 #############
@@ -8,6 +8,7 @@
 using CairoMakie
 using LinearAlgebra
 using ProgressMeter
+using Random: rand
 
 
 ###############
@@ -32,60 +33,67 @@ include("utilities/plotting.jl")
 
 
 ##########################
-## 1D Heat equation setup
+## Burgers equation setup
 ##########################
-heat1d = LnL.heat1d(  # define the model
-    [0.0, 1.0], [0.0, 2.0], [0.1, 0.1],
-    2^(-7), 1e-3, 1
+burgers = LnL.burgers(
+    [0.0, 1.0], [0.0, 1.0], [0.5, 0.5],
+    2^(-7), 1e-4, 1, "dirichlet"
 )
-foo = zeros(heat1d.Xdim)
-foo[65:end] .= 1
-heat1d.IC = Diagonal(foo) * 0.5 * sin.(2π * heat1d.x)  # change IC
-U = heat1d.Ubc  # boundary condition → control input
-
-# OpInf options
 options = LnL.LS_options(
     system=LnL.sys_struct(
         is_lin=true,
+        is_quad=true,
         has_control=true,
         has_output=true,
     ),
     vars=LnL.vars(
-        N=1,  # number of state variables
+        N=1,
     ),
     data=LnL.data(
-        Δt=1e-3, # time step
-        deriv_type="BE"  # backward Euler
+        Δt=1e-4,
+        deriv_type="SI"
     ),
     optim=LnL.opt_settings(
-        verbose=true,  # show the optimization process
+        verbose=true,
     ),
 )
+num_of_inputs = 3
+rmax = 15
 
 
-#################
-## Generate Data
-#################
-# Construct full model
-μ = heat1d.μs[1]
-A, B = heat1d.generateABmatrix(heat1d.Xdim, μ, heat1d.Δx)
-C = ones(1, heat1d.Xdim) / heat1d.Xdim
-op_heat = LnL.operators(A=A, B=B, C=C)
+##########################
+## Generate training data
+##########################
+μ = burgers.μs[1]
+A, B, F = burgers.generateABFmatrix(burgers, μ)
+C = ones(1, burgers.Xdim) / burgers.Xdim
+op_burgers = LnL.operators(A=A, B=B, C=C, F=F)
 
-# Compute the state snapshot data with backward Euler
-X = LnL.backwardEuler(A, B, U, heat1d.t, heat1d.IC)
+# Reference solution
+Uref = ones(burgers.Tdim - 1, 1)  # Reference input/boundary condition
+Xref = burgers.semiImplicitEuler(A, B, F, Uref, burgers.t, burgers.IC)
+Yref = C * Xref
 
-# Compute the SVD for the POD basis
-r = 15  # order of the reduced form
-Vr = svd(X).U[:, 1:r]
-
-# Compute the output of the system
+Urand = rand(burgers.Tdim - 1, num_of_inputs)  # uniformly random input
+Xall = Vector{Matrix{Float64}}(undef, num_of_inputs)
+Xdotall = Vector{Matrix{Float64}}(undef, num_of_inputs)
+Xstore = nothing  # store one data trajectory for plotting
+for j in 1:num_of_inputs
+    @info "Generating data for input $j"
+    states = burgers.semiImplicitEuler(A, B, F, Urand[:, j], burgers.t, burgers.IC)
+    Xall[j] = states[:, 2:end]
+    Xdotall[j] = (states[:, 2:end] - states[:, 1:end-1]) / burgers.Δt
+    if j == 1
+        Xstore = states
+    end
+end
+X = reduce(hcat, Xall)
+Xdot = reduce(hcat, Xdotall)
+U = reshape(Urand, (burgers.Tdim - 1) * num_of_inputs, 1)
 Y = C * X
 
-# Copy the data for later analysis
-Xfull = copy(X)
-Yfull = copy(Y)
-Ufull = copy(U)
+# compute the POD basis from the training data
+Vrmax = svd(X).U[:, 1:rmax]
 
 
 ######################
@@ -94,30 +102,24 @@ Ufull = copy(U)
 with_theme(theme_latexfonts()) do
     fig0 = Figure(fontsize=20, size=(1300,500), backgroundcolor="#FFFFFF")
     ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-    surface!(ax1, heat1d.x, heat1d.t, X)
+    surface!(ax1, burgers.x, burgers.t, Xstore)
     ax2 = Axis(fig0[1, 2], xlabel="x", ylabel="t")
-    hm = heatmap!(ax2, heat1d.x, heat1d.t, X)
+    hm = heatmap!(ax2, burgers.x, burgers.t, Xstore)
     Colorbar(fig0[1, 3], hm)
     display(fig0)
 end
 
 
-#############
-## Intrusive
-#############
-op_int = LnL.pod(op_heat, Vr, options)
+#######################
+## Intrusive-POD model
+#######################
+op_int = LnL.pod(op_burgers, Vrmax, options)
 
 
-######################
-## Operator Inference
-######################
-# Obtain derivative data
-Xdot = (X[:, 2:end] - X[:, 1:end-1]) / heat1d.Δt
-idx = 2:heat1d.Tdim
-X = X[:, idx]  # fix the index of states
-U = U[idx, :]  # fix the index of inputs
-Y = Y[:, idx]  # fix the index of outputs
-op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
+###############
+## OpInf model
+###############
+op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=Xdot)
 
 
 ##############################
@@ -125,11 +127,11 @@ op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 ##############################
 options.with_reg = true
 options.λ = LnL.λtik(
-    lin = 1e-8,
-    ctrl = 1e-8,
-    output = 1e-5
+    lin = 1e-6,
+    ctrl = 1e-6,
+    output = 1e-6
 )
-op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
+op_inf_reg = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=Xdot)
 
 
 ###################
@@ -139,28 +141,23 @@ op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 if CONST_STREAM  # using a single constant batchsize
     global streamsize = 1
 else  # initial batch updated with smaller batches
-    init_streamsize = 1
+    init_streamsize = 200
     update_size = 1
     global streamsize = vcat([init_streamsize], [update_size for _ in 1:((size(X,2)-init_streamsize)÷update_size)])
 end
 
 # Streamify the data based on the selected streamsizes
 # INFO: Remember to make data matrices a tall matrix except X matrix
-Xhat_stream = LnL.streamify(Vr' * X, streamsize)
+Xhat_stream = LnL.streamify(Vrmax' * X, streamsize)
 U_stream = LnL.streamify(U, streamsize)
 Y_stream = LnL.streamify(Y', streamsize)
-R_stream = LnL.streamify((Vr' * Xdot)', streamsize)
+R_stream = LnL.streamify((Vrmax' * Xdot)', streamsize)
 num_of_streams = length(Xhat_stream)
 
 # Initialize the stream
-# tol = [1e-12, 1e-15]  # tolerance for pinv 
 tol = nothing
-α = 1e-8
-β = 1e-5
-# α = [1e-8 * ones(num_of_batches÷10); zeros(9*num_of_batches÷10)]
-# β = [1e-5 * ones(num_of_batches÷10); zeros(9*num_of_batches÷10)]
-
-# Initialize the stream
+α = 1e-7
+β = 1e-6
 stream = LnL.StreamingOpInf(options; variable_regularize=false, tol=tol)
 D_k = stream.init!(stream, Xhat_stream[1], R_stream[1]; U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
@@ -182,10 +179,10 @@ op_dict = Dict(
     "TR-OpInf" => op_inf_reg,
     "Streaming-OpInf" => op_stream
 )
-rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
+rse, roe = analysis_1(op_dict, burgers, Vrmax, Xref, Uref, Yref, [:A, :B, :F], burgers.semiImplicitEuler)
 
 ## Plot
-fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"])
+fig1 = plot_rse(rse, roe, rmax, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"])
 display(fig1)
 
 
@@ -193,10 +190,10 @@ display(fig1)
 ## (Analysis 2) Per stream quantities of interest
 ##################################################
 r_select = 1:15
-analysis_results = analysis_2(
+analysis_results = analysis_2( # Attention: This will take some time to run
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
-    op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options, 
-    [:A, :B], LnL.backwardEuler; tol=0.0, VR=false, α=α, β=β
+    op_inf_reg, Xref, Vrmax, Uref, Yref, burgers, r_select, options, 
+    [:A, :B, :F], burgers.semiImplicitEuler; tol=0.0, VR=false, α=α, β=β
 )
 
 ## Plot
@@ -219,58 +216,9 @@ display(fig4)
 ## (Analysis 3) Initial error over streamsize
 ##############################################
 streamsizes = 1:num_of_streams
-init_rse, init_roe = analysis_3(streamsizes, Vr, X, U, Y, Vr' * Xdot, op_inf_reg, 1:15, options; 
+init_rse, init_roe = analysis_3(streamsizes, Vrmax, Xref, Uref, Yref, Vr' * Xdot, op_inf_reg, r_select, options; 
                                 tol=tol, α=α, β=β)
 
 ## Plot
 fig5 = plot_initial_error(streamsizes, init_rse, init_roe, ace_light, 1:15)
 display(fig5)
-
-
-
-###################################################
-## Trying to compute heuristic regularization term
-###################################################
-# using JuMP
-# using Ipopt
-
-# ##
-# function hanke_raus(D, R, α_km1)
-#     model = JuMP.Model(Ipopt.Optimizer; add_bridges = false)
-#     JuMP.set_optimizer_attribute(model, "max_iter", 100)
-#     JuMP.@variable(model, 1 >= α >= 0)
-#     JuMP.set_start_value(α, α_km1)
-#     # JuMP.set_silent(model)
-#     d = size(D, 2)
-#     r = size(R, 2)
-
-#     U, S, V = svd(D)
-#     m = length(S)
-#     println(size(U))
-#     println(size(S))
-#     println(size(V))
-
-#     x0 = Matrix{JuMP.NonlinearExpr}(undef, d, r)
-#     for i in 1:r
-#         x0[:,i] .= sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R[:,i]) * V[:,j] for j in 1:m)
-#     end
-#     R0 = R - D * x0
-#     x1 = Matrix{JuMP.NonlinearExpr}(undef, d, r)
-#     for i in 1:r
-#         x1[:,i] .= x0[:,i] + sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R0[:,i]) * V[:,j] for j in 1:m)
-#     end
-#     R1 = R - D * x1
-
-#     # JuMP.@objective(model, Min, sqrt(1 + 1/α) * sqrt(sum((R1[:,i]' * R0[:,i]) for i in 1:r)))
-#     JuMP.@objective(model, Min, (1 + 1/α) * ((sum ∘ diag)(R1' * R0)))
-#     JuMP.optimize!(model)
-#     return JuMP.value(α)
-# end
-
-# ##
-# idx = rand(1:10)
-# D = hcat(Xhat_batch[idx]', U_batch[idx])
-# R = R_batch[idx]
-
-# ## 
-# α_star = hanke_raus(D, R, 1e-3)

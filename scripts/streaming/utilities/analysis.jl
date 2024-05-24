@@ -126,9 +126,7 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
     end
 
     # Compute the quantities of interest
-    for (i,ri) in enumerate(r_select)
-        @info "Computing for r = $ri ..."
-
+    @inbounds @views for (i,ri) in collect(enumerate(r_select))
         _ = stream.init!(stream, Xhat_stream[1], R_stream[1]; 
                             U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
@@ -167,6 +165,7 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
         results["roe_stream"][ri][1] = LnL.compOutputError(Yfull, Ystream)
 
         # D_k = nothing  # Initialize D_k
+        prog = Progress(num_of_streams-1, desc="Stream $(ri)-th order")
         for k in 2:num_of_streams
             if VR  # Variable regularization
                 D_k = stream.stream!(stream, Xhat_stream[k], R_stream[k]; U_kp1=U_stream[k], α_kp1=α[k])
@@ -206,6 +205,8 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
             # Compute relative state and output errors
             results["rse_stream"][ri][k] = LnL.compStateError(Xfull, Xstream, Vr[:,1:ri])
             results["roe_stream"][ri][k] = LnL.compOutputError(Yfull, Ystream)
+
+            next!(prog)
         end
 
         # Upper bound values
@@ -234,8 +235,8 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
     initial_errs = zeros(length(streamsizes), length(r_select))
     initial_output_errs = zeros(length(streamsizes), length(r_select))
 
-    for (i, streamsize) in enumerate(streamsizes)
-        @info "Compute $(streamsize)-th stream"
+    prog = Progress(length(streamsizes), desc="Initial error over streamsize") 
+    @inbounds @views for (i, streamsize) in enumerate(streamsizes)
         Xhat_i = (Vr' * X)[:, 1:streamsize]
         U_i = U[1:streamsize, :]
         Y_i = Y[:, 1:streamsize]'
@@ -258,6 +259,7 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
             C_tmp = ops.C[:, 1:r]'
             initial_output_errs[i,j] = norm(op_inf.C[:,1:r]' - C_tmp, 2) / norm(op_inf.C[:,1:r]', 2)
         end
+        next!(prog)
     end
     return initial_errs, initial_output_errs
 end

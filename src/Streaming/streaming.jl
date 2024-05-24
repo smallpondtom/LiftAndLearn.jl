@@ -6,7 +6,7 @@ $(TYPEDEF)
 
 Streaming Operator Inference/Lift And Learn
 """
-mutable struct StreamingOpInf
+mutable struct StreamingOpInf <: AbstractOption
     # State and input
     O_k::AbstractArray   # operator matrix
     P_k::AbstractArray   # projection matrix
@@ -76,9 +76,20 @@ function init!(stream::StreamingOpInf, X_k::AbstractArray{}, R_k::AbstractArray{
     d = 0
     for (key, val) in stream.dims
         if key != :K && key != :l && key != :d
-            d += val
+            if key == :s2
+                d += (stream.options.optim.which_quad_term == "F") * val
+            elseif key == :v2
+                d += (stream.options.optim.which_quad_term == "R") * val
+            elseif key == :s3
+                d += (stream.options.optim.which_cubic_term == "E") * val
+            elseif key == :v3
+                d += (stream.options.optim.which_cubic_term == "G") * val
+            else
+                d += val 
+            end
         end
     end
+    d += (stream.options.system.has_const) * 1  # if has constant term
     stream.dims[:d] = d
 
     ## System (input-state)
