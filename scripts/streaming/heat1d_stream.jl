@@ -173,9 +173,9 @@ stream.stream_output!(stream, Xhat_stream[2:end], Y_stream[2:end])
 op_stream = stream.unpack_operators(stream)
 
 
-##################
-## Error Analysis
-##################
+###############################
+## (Analysis 1) Relative Error 
+###############################
 # Collect all operators into a dictionary
 op_dict = Dict(
     "POD" => op_int,
@@ -183,8 +183,6 @@ op_dict = Dict(
     "TR-OpInf" => op_inf_reg,
     "Streaming-OpInf" => op_stream
 )
-# RSE: Relative State Error
-# ROE: Relative Output Error
 rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
 
 ## Plot
@@ -192,12 +190,10 @@ fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf
 display(fig1)
 
 
-###########################
-## Error per stream update
-###########################
-# SEF: State Error Factor
-# OEF: Output Error Factor
-r_select = [5, 10, 15]
+##################################################
+## (Analysis 2) Per stream quantities of interest
+##################################################
+r_select = 1:15
 analysis_results = analysis_2(
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options, 
@@ -205,25 +201,24 @@ analysis_results = analysis_2(
 )
 
 ## Plot
-fig2 = plot_rse_per_stream(rse_stream, roe_stream, r_select, ace_light, num_of_batches)
-fig3 = plot_error_acc_per_stream(sef_stream, oef_stream, ace_light, num_of_batches)
+fig2 = plot_rse_per_stream(analysis_results["rse_stream"], analysis_results["roe_stream"], 
+                           analysis_results["streaming_error"], analysis_results["streaming_error_output"], 
+                           [5,10,15], num_of_streams)
 display(fig2)
-display(fig3)
-
 ##
-fig6 = Figure()
-ax = Axis(fig6[1,1], yscale=log10)
-scatter!(ax, (16 ./ trace_cov)[2:end])
-display(fig6)
-
-
-## Plot the condition number of the error Factor
-fig4 = plot_error_condition(sef_cond, oef_cond, ace_light; CONST_BATCH=CONST_BATCH)
+fig3 = plot_errorfactor_condition(analysis_results["cond_state_EF"], analysis_results["cond_output_EF"], 
+                                  r_select, num_of_streams, ace_light)
+display(fig3)
+##
+fig4 = plot_streaming_error(analysis_results["streaming_error"], analysis_results["streaming_error_output"], 
+                            analysis_results["true_streaming_error"], analysis_results["true_streaming_error_output"],
+                            r_select, num_of_streams, ace_light)
 display(fig4)
 
-#################################
-## Initial error over streamsize
-#################################
+
+##############################################
+## (Analysis 3) Initial error over streamsize
+##############################################
 streamsizes = 1:num_of_streams
 init_rse, init_roe = analysis_3(streamsizes, Vr, X, U, Y, Vr' * Xdot, op_inf, 1:15, options; 
                                 tol=tol, α=α, β=β)

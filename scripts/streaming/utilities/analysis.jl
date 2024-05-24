@@ -129,13 +129,8 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
     for (i,ri) in enumerate(r_select)
         @info "Computing for r = $ri ..."
 
-        if VR  # Variable regularization
-            _ = stream.init!(stream, Xhat_stream[1], R_stream[1]; 
-                                U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
-        else  # Fixed regularization or no regularization
-            _ = stream.init!(stream, Xhat_stream[1], R_stream[1]; 
-                            U_k=U_stream[1], Y_k=Y_stream[1], α_k=α, β_k=β)
-        end
+        _ = stream.init!(stream, Xhat_stream[1], R_stream[1]; 
+                            U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
         # Compute the indices extracted from nonredundant quadratic matrix
         # for a smaller dimension r
@@ -147,15 +142,16 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
 
         # Compute the initial errors
         O_star = construct_Ostar(stream, op_inf, ri)
-        E_k = O_star - stream.O_k[extract_idx, 1:ri]
-        results["streaming_error"][ri][1] = norm(E_k, 2) / norm(O_star, 2)
-        results["true_streaming_error"][ri][1] = norm(E_k, 2) / norm(O_star, 2)
+        O_star_full = construct_Ostar(stream, op_inf, stream.dims[:n])
+        E_k_full = O_star_full - stream.O_k
+        results["streaming_error"][ri][1] = norm(E_k_full[extract_idx, 1:ri], 2) / norm(O_star, 2)
+        results["true_streaming_error"][ri][1] = norm(E_k_full[extract_idx, 1:ri], 2) / norm(O_star, 2)
 
         # Compute the initial output errors
         C_star = op_inf.C[:, 1:ri]'
-        E_k_output = C_star - stream.C_k[1:ri, :]
-        results["streaming_error_output"][ri][1] = norm(E_k_output, 2) / norm(C_star, 2)
-        results["true_streaming_error_output"][ri][1] = norm(E_k_output, 2) / norm(C_star, 2)
+        E_ko_full = op_inf.C' - stream.C_k
+        results["streaming_error_output"][ri][1] = norm(E_ko_full[1:ri, :], 2) / norm(C_star, 2)
+        results["true_streaming_error_output"][ri][1] = norm(E_ko_full[1:ri, :], 2) / norm(C_star, 2)
 
         # Unpack the operators from Streaming-OpInf
         op_stream = stream.unpack_operators(stream)
@@ -170,7 +166,7 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
         results["rse_stream"][ri][1] = LnL.compStateError(Xfull, Xstream, Vr[:,1:ri])
         results["roe_stream"][ri][1] = LnL.compOutputError(Yfull, Ystream)
 
-        D_k = nothing  # Initialize D_k
+        # D_k = nothing  # Initialize D_k
         for k in 2:num_of_streams
             if VR  # Variable regularization
                 D_k = stream.stream!(stream, Xhat_stream[k], R_stream[k]; U_kp1=U_stream[k], α_kp1=α[k])
@@ -181,23 +177,21 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
             end
 
             # Compute the error factors
-            K_ri = stream.K_k[extract_idx, :]
-            D_ri = D_k[:, extract_idx]
-            error_factor = I - K_ri * D_ri
-            error_factor_output = I - stream.Ky_k[1:ri, :] * Xhat_stream[k][1:ri, :]'
+            error_factor = I - stream.K_k * D_k
+            error_factor_output = I - stream.Ky_k * Xhat_stream[k]'
 
             # Compute the condition number of the error factor
-            results["cond_state_EF"][ri][k-1] = cond(error_factor)
-            results["cond_output_EF"][ri][k-1] = cond(error_factor_output)
+            results["cond_state_EF"][ri][k-1] = cond(error_factor[extract_idx, extract_idx])
+            results["cond_output_EF"][ri][k-1] = cond(error_factor_output[1:ri, 1:ri])
 
             # Compute the streaming error
-            E_k = error_factor * E_k
-            results["streaming_error"][ri][k] = norm(E_k, 2) / norm(O_star, 2)
+            E_k_full = error_factor * E_k_full
+            results["streaming_error"][ri][k] = norm(E_k_full[extract_idx, 1:ri], 2) / norm(O_star, 2)
             results["true_streaming_error"][ri][k] = norm(O_star - stream.O_k[extract_idx, 1:ri], 2) / norm(O_star, 2)
 
             # Compute the streaming output error
-            E_k_output = error_factor_output * E_k_output
-            results["streaming_error_output"][ri][k] = norm(E_k_output, 2) / norm(C_star, 2)
+            E_ko_full = error_factor_output * E_ko_full
+            results["streaming_error_output"][ri][k] = norm(E_ko_full[1:ri, :], 2) / norm(C_star, 2)
             results["true_streaming_error_output"][ri][k] = norm(C_star - stream.C_k[1:ri, :], 2) / norm(C_star, 2)
 
             # Unpack the operators from Streaming-OpInf
@@ -241,7 +235,7 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
     initial_output_errs = zeros(length(streamsizes), length(r_select))
 
     for (i, streamsize) in enumerate(streamsizes)
-        @info "Computing for streamsize = $streamsize ..."
+        @info "Compute $(streamsize)-th stream"
         Xhat_i = (Vr' * X)[:, 1:streamsize]
         U_i = U[1:streamsize, :]
         Y_i = Y[:, 1:streamsize]'
@@ -254,7 +248,6 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
         ops = stream.unpack_operators(stream)
 
         for (j, r) in enumerate(r_select)
-            @info "Computing for r = $r ..."
             O_star_r = construct_Ostar(stream, op_inf, r)
             O_tmp = construct_Ostar(stream, ops, r)
 
