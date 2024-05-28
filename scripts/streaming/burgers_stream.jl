@@ -216,7 +216,7 @@ display(fig4)
 ## (Analysis 3) Initial error over streamsize
 ##############################################
 streamsizes = 1:num_of_streams
-init_rse, init_roe = analysis_3(streamsizes, Vrmax, Xref, Uref, Yref, Vr' * Xdot, op_inf_reg, r_select, options; 
+init_rse, init_roe = analysis_3(streamsizes, Vrmax, X, U, Y, Vrmax' * Xdot, op_inf_reg, r_select, options; 
                                 tol=tol, α=α, β=β)
 
 ## Plot

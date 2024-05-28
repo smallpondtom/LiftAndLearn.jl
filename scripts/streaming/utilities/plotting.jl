@@ -59,7 +59,7 @@ function plot_rse_per_stream(rel_state_err_stream, rel_output_err_stream,
     with_theme(theme_latexfonts()) do
         fig = Figure(size=(1500,900))
         if num_of_streams > 20
-            xtick_vals = 0:(num_of_streams÷10):num_of_streams
+            xtick_vals = 0:(num_of_streams÷5):num_of_streams
         else
             xtick_vals = 0:num_of_streams
         end
@@ -119,7 +119,7 @@ function plot_streaming_error(stream_error, stream_error_output,
     with_theme(theme) do 
         fig = Figure(size=(1600,700), fontsize=20)
         if num_of_streams > 20
-            xtick_vals = 0:(num_of_streams÷10):num_of_streams
+            xtick_vals = 0:(num_of_streams÷5):num_of_streams
         else
             xtick_vals = 0:num_of_streams
         end
@@ -151,10 +151,10 @@ function plot_streaming_error(stream_error, stream_error_output,
         lines = []
         labels = []
         for (i,r) in enumerate(r_select)
-            l = scatterlines!(ax1, 1:num_of_streams, stream_error[r], color=colors[i])
-            scatterlines!(ax2, 1:num_of_streams, stream_error_output[r], color=colors[i])
-            scatterlines!(ax3, 1:num_of_streams, true_stream_error[r], color=colors[i])
-            scatterlines!(ax4, 1:num_of_streams, true_stream_error_output[r], color=colors[i])
+            l = scatterlines!(ax1, 1:10:num_of_streams, stream_error[r][1:10:end], color=colors[i])
+            scatterlines!(ax2, 1:10:num_of_streams, stream_error_output[r][1:10:end], color=colors[i])
+            scatterlines!(ax3, 1:10:num_of_streams, true_stream_error[r][1:10:end], color=colors[i])
+            scatterlines!(ax4, 1:10:num_of_streams, true_stream_error_output[r][1:10:end], color=colors[i])
             push!(lines, l)
             push!(labels, "r = $r")
         end
@@ -169,7 +169,7 @@ function plot_errorfactor_condition(err_state_cond, err_output_cond, r_select, n
     with_theme(theme) do
         fig = Figure(size=(1300,550), fontsize=20)
         if num_of_streams > 20
-            xtick_vals = 0:(num_of_streams÷10):num_of_streams
+            xtick_vals = 0:(num_of_streams÷5):num_of_streams
         else
             xtick_vals = 0:num_of_streams
         end
@@ -183,8 +183,8 @@ function plot_errorfactor_condition(err_state_cond, err_output_cond, r_select, n
         lines = []
         labels = []
         for (i, r) in enumerate(r_select)
-            l = scatterlines!(ax1, 2:num_of_streams, err_state_cond[r], color=colors[i])
-            scatterlines!(ax2, 2:num_of_streams, err_output_cond[r], color=colors[i])
+            l = scatterlines!(ax1, 2:100:num_of_streams, err_state_cond[r][1:100:end], color=colors[i])
+            scatterlines!(ax2, 2:100:num_of_streams, err_output_cond[r][1:100:end], color=colors[i])
             push!(lines, l)
             push!(labels, "r = $r")
         end
