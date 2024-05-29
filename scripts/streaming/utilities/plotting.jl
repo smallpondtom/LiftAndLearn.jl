@@ -115,7 +115,7 @@ end
 
 function plot_streaming_error(stream_error, stream_error_output, 
                               true_stream_error, true_stream_error_output,
-                              r_select, num_of_streams, theme)
+                              r_select, num_of_streams, theme, DS=1)
     with_theme(theme) do 
         fig = Figure(size=(1600,700), fontsize=20)
         if num_of_streams > 20
@@ -151,10 +151,10 @@ function plot_streaming_error(stream_error, stream_error_output,
         lines = []
         labels = []
         for (i,r) in enumerate(r_select)
-            l = scatterlines!(ax1, 1:10:num_of_streams, stream_error[r][1:10:end], color=colors[i])
-            scatterlines!(ax2, 1:10:num_of_streams, stream_error_output[r][1:10:end], color=colors[i])
-            scatterlines!(ax3, 1:10:num_of_streams, true_stream_error[r][1:10:end], color=colors[i])
-            scatterlines!(ax4, 1:10:num_of_streams, true_stream_error_output[r][1:10:end], color=colors[i])
+            l = scatterlines!(ax1, 1:DS:num_of_streams, stream_error[r][1:DS:end], color=colors[i])
+            scatterlines!(ax2, 1:DS:num_of_streams, stream_error_output[r][1:Ds:end], color=colors[i])
+            scatterlines!(ax3, 1:DS:num_of_streams, true_stream_error[r][1:DS:end], color=colors[i])
+            scatterlines!(ax4, 1:DS:num_of_streams, true_stream_error_output[r][1:DS:end], color=colors[i])
             push!(lines, l)
             push!(labels, "r = $r")
         end
@@ -165,7 +165,7 @@ function plot_streaming_error(stream_error, stream_error_output,
 end
 
 
-function plot_errorfactor_condition(err_state_cond, err_output_cond, r_select, num_of_streams, theme)
+function plot_errorfactor_condition(err_state_cond, err_output_cond, r_select, num_of_streams, theme, DS=1)
     with_theme(theme) do
         fig = Figure(size=(1300,550), fontsize=20)
         if num_of_streams > 20
@@ -183,8 +183,8 @@ function plot_errorfactor_condition(err_state_cond, err_output_cond, r_select, n
         lines = []
         labels = []
         for (i, r) in enumerate(r_select)
-            l = scatterlines!(ax1, 2:100:num_of_streams, err_state_cond[r][1:100:end], color=colors[i])
-            scatterlines!(ax2, 2:100:num_of_streams, err_output_cond[r][1:100:end], color=colors[i])
+            l = scatterlines!(ax1, 1:DS:num_of_streams, err_state_cond[r][1:DS:end], color=colors[i])
+            scatterlines!(ax2, 1:DS:num_of_streams, err_output_cond[r][1:DS:end], color=colors[i])
             push!(lines, l)
             push!(labels, "r = $r")
         end

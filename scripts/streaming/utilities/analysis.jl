@@ -106,12 +106,13 @@ end
 
 function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
                         op_inf, Xfull, Vr, Ufull, Yfull, model, r_select, options, 
-                        required_operators, solver; tol=0.0, VR=false, α=0.0, β=0.0)
+                        required_operators, solver; atol=[0.0,0.0], rtol=[0.0,0.0], 
+                        VR=false, α=0.0, β=0.0)
     results = Dict(
         "rse_stream" => Dict(r => zeros(num_of_streams) for r in r_select),
         "roe_stream" => Dict(r => zeros(num_of_streams) for r in r_select),
-        "cond_state_EF" => Dict(r => zeros(num_of_streams-1) for r in r_select),
-        "cond_output_EF" => Dict(r => zeros(num_of_streams-1) for r in r_select),
+        "cond_state_EF" => Dict(r => zeros(num_of_streams) for r in r_select),
+        "cond_output_EF" => Dict(r => zeros(num_of_streams) for r in r_select),
         "streaming_error" => Dict(r => zeros(num_of_streams) for r in r_select),
         "true_streaming_error" => Dict(r => zeros(num_of_streams) for r in r_select),
         "streaming_error_output" => Dict(r => zeros(num_of_streams) for r in r_select),
@@ -119,16 +120,18 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
     )
 
     # Initialize the Streaming-OpInf
-    if iszero(tol)
-        stream = LnL.StreamingOpInf(options; variable_regularize=VR)
+    if iszero(atol[1]) && iszero(atol[2])
+        stream = LnL.StreamingOpInf(options, size(Vr,2), size(Ufull,2), size(Yfull,1); 
+                                    variable_regularize=VR, γs_k=α, γo_k=β)
     else
-        stream = LnL.StreamingOpInf(options; tol=tol, variable_regularize=VR)
+        stream = LnL.StreamingOpInf(options, size(Vr,2), size(Ufull,2), size(Yfull,1); 
+                                    atol=atol, rtol=rtol, variable_regularize=VR, γs_k=α, γo_k=β)
     end
 
     # Compute the quantities of interest
-    @inbounds @views for (i,ri) in collect(enumerate(r_select))
-        _ = stream.init!(stream, Xhat_stream[1], R_stream[1]; 
-                            U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
+    for (i,ri) in collect(enumerate(r_select))
+        # _ = stream.init!(stream, Xhat_stream[1], R_stream[1]; 
+        #                     U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
         # Compute the indices extracted from nonredundant quadratic matrix
         # for a smaller dimension r
@@ -141,37 +144,39 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
         # Compute the initial errors
         O_star = construct_Ostar(stream, op_inf, ri)
         O_star_full = construct_Ostar(stream, op_inf, stream.dims[:n])
-        E_k_full = O_star_full - stream.O_k
-        results["streaming_error"][ri][1] = norm(E_k_full[extract_idx, 1:ri], 2) / norm(O_star, 2)
-        results["true_streaming_error"][ri][1] = norm(E_k_full[extract_idx, 1:ri], 2) / norm(O_star, 2)
+        E_k_full = nothing
+        # E_k_full = O_star_full - stream.O_k
+        # results["streaming_error"][ri][1] = norm(E_k_full[extract_idx, 1:ri], 2) / norm(O_star, 2)
+        # results["true_streaming_error"][ri][1] = norm(E_k_full[extract_idx, 1:ri], 2) / norm(O_star, 2)
 
         # Compute the initial output errors
         C_star = op_inf.C[:, 1:ri]'
-        E_ko_full = op_inf.C' - stream.C_k
-        results["streaming_error_output"][ri][1] = norm(E_ko_full[1:ri, :], 2) / norm(C_star, 2)
-        results["true_streaming_error_output"][ri][1] = norm(E_ko_full[1:ri, :], 2) / norm(C_star, 2)
+        E_ko_full = nothing
+        # E_ko_full = op_inf.C' - stream.C_k
+        # results["streaming_error_output"][ri][1] = norm(E_ko_full[1:ri, :], 2) / norm(C_star, 2)
+        # results["true_streaming_error_output"][ri][1] = norm(E_ko_full[1:ri, :], 2) / norm(C_star, 2)
 
-        # Unpack the operators from Streaming-OpInf
-        op_stream = stream.unpack_operators(stream)
+        # # Unpack the operators from Streaming-OpInf
+        # op_stream = stream.unpack_operators(stream)
 
-        # Integrate the streaming inferred model
-        tmp = []
-        get_operators!(tmp, op_stream, stream.dims[:n], ri, required_operators)
-        Xstream = solver(tmp..., Ufull, model.t, Vr[:,1:ri]' * model.IC)
-        Ystream = op_stream.C[1:1, 1:ri] * Xstream
+        # # Integrate the streaming inferred model
+        # tmp = []
+        # get_operators!(tmp, op_stream, stream.dims[:n], ri, required_operators)
+        # Xstream = solver(tmp..., Ufull, model.t, Vr[:,1:ri]' * model.IC)
+        # Ystream = op_stream.C[1:1, 1:ri] * Xstream
 
-        # Compute relative state and output errors
-        results["rse_stream"][ri][1] = LnL.compStateError(Xfull, Xstream, Vr[:,1:ri])
-        results["roe_stream"][ri][1] = LnL.compOutputError(Yfull, Ystream)
+        # # Compute relative state and output errors
+        # results["rse_stream"][ri][1] = LnL.compStateError(Xfull, Xstream, Vr[:,1:ri])
+        # results["roe_stream"][ri][1] = LnL.compOutputError(Yfull, Ystream)
 
         # D_k = nothing  # Initialize D_k
-        prog = Progress(num_of_streams-1, desc="Stream $(ri)-th order")
-        for k in 2:num_of_streams
+        prog = Progress(num_of_streams, desc="Stream $(ri)-th order")
+        for k in 1:num_of_streams
             if VR  # Variable regularization
-                D_k = stream.stream!(stream, Xhat_stream[k], R_stream[k]; U_kp1=U_stream[k], α_kp1=α[k])
-                stream.stream_output!(stream, Xhat_stream[k], Y_stream[k]; β_kp1=β[k])
+                D_k = stream.stream!(stream, Xhat_stream[k], R_stream[k]; U_k=U_stream[k], γs_k=α[k])
+                stream.stream_output!(stream, Xhat_stream[k], Y_stream[k]; γo_k=β[k])
             else  # Fixed regularization or no regularization
-                D_k = stream.stream!(stream, Xhat_stream[k], R_stream[k]; U_kp1=U_stream[k])
+                D_k = stream.stream!(stream, Xhat_stream[k], R_stream[k]; U_k=U_stream[k])
                 stream.stream_output!(stream, Xhat_stream[k], Y_stream[k])
             end
 
@@ -180,16 +185,16 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
             error_factor_output = I - stream.Ky_k * Xhat_stream[k]'
 
             # Compute the condition number of the error factor
-            results["cond_state_EF"][ri][k-1] = cond(error_factor[extract_idx, extract_idx])
-            results["cond_output_EF"][ri][k-1] = cond(error_factor_output[1:ri, 1:ri])
+            results["cond_state_EF"][ri][k] = cond(error_factor[extract_idx, extract_idx])
+            results["cond_output_EF"][ri][k] = cond(error_factor_output[1:ri, 1:ri])
 
             # Compute the streaming error
-            E_k_full = error_factor * E_k_full
+            E_k_full = k>1 ? error_factor * E_k_full : O_star_full - stream.O_k
             results["streaming_error"][ri][k] = norm(E_k_full[extract_idx, 1:ri], 2) / norm(O_star, 2)
             results["true_streaming_error"][ri][k] = norm(O_star - stream.O_k[extract_idx, 1:ri], 2) / norm(O_star, 2)
 
             # Compute the streaming output error
-            E_ko_full = error_factor_output * E_ko_full
+            E_ko_full = k>1 ? error_factor_output * E_ko_full : op_inf.C' - stream.C_k
             results["streaming_error_output"][ri][k] = norm(E_ko_full[1:ri, :], 2) / norm(C_star, 2)
             results["true_streaming_error_output"][ri][k] = norm(C_star - stream.C_k[1:ri, :], 2) / norm(C_star, 2)
 
@@ -235,8 +240,12 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
     initial_errs = zeros(length(streamsizes), length(r_select))
     initial_output_errs = zeros(length(streamsizes), length(r_select))
 
+    r = size(Vr, 2)
+    m = size(U, 2)
+    l = size(Y, 1)
+
     prog = Progress(length(streamsizes), desc="Initial error over streamsize") 
-    @inbounds @views for (i, streamsize) in enumerate(streamsizes)
+    for (i, streamsize) in enumerate(streamsizes)
         Xhat_i = (Vr' * X)[:, 1:streamsize]
         U_i = U[1:streamsize, :]
         Y_i = Y[:, 1:streamsize]'
@@ -244,8 +253,10 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
 
         # Initialize the stream
         # INFO: Remember to make data matrices a tall matrix except X matrix
-        stream = isnothing(tol) ? LnL.StreamingOpInf(options) : LnL.StreamingOpInf(options; tol=tol)
-        _ = stream.init!(stream, Xhat_i,R_i; U_k=U_i, Y_k=Y_i, α_k=α, β_k=β)
+        stream = isnothing(tol) ? LnL.StreamingOpInf(options,r,m,l) : LnL.StreamingOpInf(options,r,m,l; tol=tol)
+        # _ = stream.init!(stream, Xhat_i,R_i; U_k=U_i, Y_k=Y_i, α_k=α, β_k=β)
+        _ = stream.stream!(stream, Xhat_i, R_i; U_k=U_i, γs_k=α)
+        stream.stream_output!(stream, Xhat_i, Y_i; γo_k=β)
         ops = stream.unpack_operators(stream)
 
         for (j, r) in enumerate(r_select)

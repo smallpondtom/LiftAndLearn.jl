@@ -153,20 +153,18 @@ R_stream = LnL.streamify((Vr' * Xdot)', streamsize)
 num_of_streams = length(Xhat_stream)
 
 # Initialize the stream
-# tol = [1e-12, 1e-15]  # tolerance for pinv 
-tol = nothing
-α = 1e-8
-β = 1e-5
-# α = [1e-8 * ones(num_of_batches÷10); zeros(9*num_of_batches÷10)]
-# β = [1e-5 * ones(num_of_batches÷10); zeros(9*num_of_batches÷10)]
-
-# Initialize the stream
-stream = LnL.StreamingOpInf(options; variable_regularize=false, tol=tol)
-D_k = stream.init!(stream, Xhat_stream[1], R_stream[1]; U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
+# γs = 0.0
+# γo = 0.0
+γs = 1e-8
+γo = 1e-5
+stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo)
+# D_k = stream.init!(stream, Xhat_stream[1], R_stream[1]; U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
 # Stream all at once
-stream.stream!(stream, Xhat_stream[2:end], R_stream[2:end]; U_kp1=U_stream[2:end])
-stream.stream_output!(stream, Xhat_stream[2:end], Y_stream[2:end])
+# stream.stream!(stream, Xhat_stream[2:end], R_stream[2:end]; U_kp1=U_stream[2:end])
+# stream.stream_output!(stream, Xhat_stream[2:end], Y_stream[2:end])
+stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
+stream.stream_output!(stream, Xhat_stream, Y_stream)
 
 # Unpack solution operators
 op_stream = stream.unpack_operators(stream)
@@ -196,7 +194,7 @@ r_select = 1:15
 analysis_results = analysis_2(
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options, 
-    [:A, :B], LnL.backwardEuler; tol=0.0, VR=false, α=α, β=β
+    [:A, :B], LnL.backwardEuler; VR=false, α=γs, β=γo
 )
 
 ## Plot
@@ -220,7 +218,7 @@ display(fig4)
 ##############################################
 streamsizes = 1:num_of_streams
 init_rse, init_roe = analysis_3(streamsizes, Vr, X, U, Y, Vr' * Xdot, op_inf_reg, 1:15, options; 
-                                tol=tol, α=α, β=β)
+                                tol=nothing, α=γs, β=γo)
 
 ## Plot
 fig5 = plot_initial_error(streamsizes, init_rse, init_roe, ace_light, 1:15)

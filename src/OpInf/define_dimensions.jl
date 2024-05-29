@@ -9,7 +9,7 @@ Define the dimensions of the system
 - `Y::VecOrMat`: output data matrix
 - `options::AbstractOption`: options for the operator inference set by the user
 """
-function define_dimensions!(Xhat::Matrix, U::Matrix, Y::VecOrMat, options::SystemStructure)
+function define_dimensions!(Xhat::Matrix, U::Matrix, Y::VecOrMat, options::AbstractOption)
     # Important dimensions
     n, K = size(Xhat)
     m = options.system.has_control ? size(U, 2) : 0  # make sure that the U-matrix is tall
