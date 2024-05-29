@@ -191,8 +191,8 @@ data5 = lorenz_integrator(lorenz9_ops, 0:1e-2:1e3, 2*rand(9).-1)
 data = hcat(data1, data2, data3, data4, data5)
 rmax = 7
 Vr = svd(data).U[:,1:rmax]   # choose rmax columns
-rom_option = LnL.LS_options(
-    system=LnL.sys_struct(is_lin=true, is_quad=true),
+rom_option = LnL.LSOpInfOption(
+    system=LnL.SystemStructure(is_lin=true, is_quad=true),
 )
 oprom = LnL.pod(lorenz9_ops, Vr, rom_option)
 

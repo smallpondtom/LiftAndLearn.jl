@@ -29,8 +29,8 @@ fhn = LnL.fhn(
 )
 
 # Some options for operator inference
-options = LnL.LS_options(
-    system=LnL.sys_struct(
+options = LnL.LSOpInfOption(
+    system=LnL.SystemStructure(
         is_lin=true,
         is_quad=true,
         is_bilin=true,
@@ -40,15 +40,15 @@ options = LnL.LS_options(
         has_funcOp=true,
         is_lifted=true,
     ),
-    vars=LnL.vars(
+    vars=LnL.VariableStructure(
         N=2,
         N_lift=3,
     ),
-    data=LnL.data(
+    data=LnL.DataStructure(
         Δt=1e-4,
         DS=100,
     ),
-    optim=LnL.opt_settings(
+    optim=LnL.OptimizationSetting(
         verbose=true,
         which_quad_term="H",
         reproject=true,

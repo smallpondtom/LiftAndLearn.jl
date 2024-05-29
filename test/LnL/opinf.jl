@@ -17,20 +17,20 @@ const LnL = LiftAndLearn
     heat1d.x = heat1d.x[2:end-1]
 
     # Some options for operator inference
-    options = LnL.LS_options(
-        system=LnL.sys_struct(
+    options = LnL.LSOpInfOption(
+        system=LnL.SystemStructure(
             is_lin=true,
             has_control=true,
             has_output=true,
         ),
-        vars=LnL.vars(
+        vars=LnL.VariableStructure(
             N=1,
         ),
-        data=LnL.data(
+        data=LnL.DataStructure(
             Δt=1e-3,
             deriv_type="BE"
         ),
-        optim=LnL.opt_settings(
+        optim=LnL.OptimizationSetting(
             verbose=true,
         ),
     )
@@ -189,27 +189,27 @@ end
         2^(-7), 1e-4, 2, "dirichlet"
     );
 
-    options = LnL.LS_options(
-        system=LnL.sys_struct(
+    options = LnL.LSOpInfOption(
+        system=LnL.SystemStructure(
             is_lin=true,
             is_quad=true,
             has_control=true,
             has_output=true,
         ),
-        vars=LnL.vars(
+        vars=LnL.VariableStructure(
             N=1,
         ),
-        data=LnL.data(
+        data=LnL.DataStructure(
             Δt=1e-4,
             deriv_type="SI"
         ),
-        optim=LnL.opt_settings(
+        optim=LnL.OptimizationSetting(
             verbose=true,
         ),
         with_tol=true,
         with_reg=true,
         pinv_tol=1e-6,
-        λ=λtik(
+        λ=TikhonovParameter(
             lin=1.0,
             quad=1e-3,
             ctrl=1e-2,

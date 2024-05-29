@@ -237,8 +237,8 @@ end
     r = 5
     rmax = 8
     Vr = svd(data).U[:,1:rmax]   # choose rmax columns
-    rom_option = LnL.LS_options(
-        system=LnL.sys_struct(is_lin=true, is_quad=true),
+    rom_option = LnL.LSOpInfOption(
+        system=LnL.SystemStructure(is_lin=true, is_quad=true),
     )
     oprom = LnL.pod(lorenz9_ops, Vr, rom_option)
 

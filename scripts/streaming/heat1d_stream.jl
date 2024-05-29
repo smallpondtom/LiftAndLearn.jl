@@ -44,20 +44,20 @@ heat1d.IC = Diagonal(foo) * 0.5 * sin.(2π * heat1d.x)  # change IC
 U = heat1d.Ubc  # boundary condition → control input
 
 # OpInf options
-options = LnL.LS_options(
-    system=LnL.sys_struct(
+options = LnL.LSOpInfOption(
+    system=LnL.SystemStructure(
         is_lin=true,
         has_control=true,
         has_output=true,
     ),
-    vars=LnL.vars(
+    vars=LnL.VariableStructure(
         N=1,  # number of state variables
     ),
-    data=LnL.data(
+    data=LnL.DataStructure(
         Δt=1e-3, # time step
         deriv_type="BE"  # backward Euler
     ),
-    optim=LnL.opt_settings(
+    optim=LnL.OptimizationSetting(
         verbose=true,  # show the optimization process
     ),
 )
@@ -124,7 +124,7 @@ op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 ## Tikhonov Regularized OpInf
 ##############################
 options.with_reg = true
-options.λ = LnL.λtik(
+options.λ = LnL.TikhonovParameter(
     lin = 1e-8,
     ctrl = 1e-8,
     output = 1e-5

@@ -1,5 +1,5 @@
-export sys_struct, vars, data, opt_settings
-export λtik, LS_options, NC_options, EPHEC_options, EPSIC_options, EPP_options
+export SystemStructure, VariableStructure, DataStructure, OptimizationSetting
+export TikhonovParameter, LSOpInfOption, NCOpInfOption, EPHECOpInfOption, EPSICOpInfOption, EPPOpInfOption
 
 """ 
 $(TYPEDEF)
@@ -30,7 +30,7 @@ Structure of the given system.
 - `w1`: the dimension of bilinear state-input coupling
 - `d`: the total dimension of the operator matrix
 """
-@with_kw mutable struct sys_struct 
+@with_kw mutable struct SystemStructure 
     is_lin::Bool = true
     has_control::Bool = false
     has_output::Bool = false
@@ -56,7 +56,7 @@ Information about the system variables.
 - `N::Int64`: the number of system variables
 - `N_lift::Int64`: the number of lifted system variables
 """
-@with_kw mutable struct vars
+@with_kw mutable struct VariableStructure
     N::Int64 = 0
     N_lift::Int64 = N
 end
@@ -72,7 +72,7 @@ Information about the data.
 - `DS::Int64`: the downsampling rate
 - `deriv_type::String`: the derivative scheme, e.g. "F"orward "E"uler
 """
-@with_kw mutable struct data
+@with_kw mutable struct DataStructure
     Δt::Float64 = 0.01
     DS::Int64 = 0
     deriv_type::String = "FE"
@@ -95,7 +95,7 @@ Information about the optimization.
 - `linear_solver::String`: the linear solver to use for optimization
 - `HSL_lib_path::String`: the path to the HSL library
 """
-@with_kw mutable struct opt_settings
+@with_kw mutable struct OptimizationSetting
     verbose::Bool = false
     initial_guess::Bool = false
     max_iter::Int64 = 3000
@@ -121,7 +121,7 @@ Tikhonov regularization parameters.
 - `bilin::Float64`: the Tikhonov regularization parameter for bilinear state operator
 - `output::Float64`: the Tikhonov regularization parameter for output operator
 """
-@with_kw struct λtik
+@with_kw struct TikhonovParameter
     lin::Union{Real, AbstractArray{Real}} = 0.0
     quad::Real = 0.0
     cubic::Real = 0.0
@@ -138,22 +138,22 @@ Standard Operator Inference.
 
 ## Fields
 - `method::String`: the name of the method
-- `system::sys_struct`: the system structure
-- `vars::vars`: the system variables
-- `data::data`: the data
-- `optim::opt_settings`: the optimization settings
-- `λ::λtik`: the Tikhonov regularization parameters
+- `system::SystemStructure`: the system structure
+- `vars::VariableStructure`: the system variables
+- `data::DataStructure`: the data
+- `optim::OptimizationSetting`: the optimization settings
+- `λ::TikhonovParameter`: the Tikhonov regularization parameters
 - `with_tol::Bool`: the option to use tolerance for the least square pseudo inverse
 - `with_reg::Bool`: the option to use Tikhonov regularization
 - `pinv_tol::Real`: the tolerance for the least square pseudo inverse
 """
-@with_kw mutable struct LS_options <: AbstractOption
+@with_kw mutable struct LSOpInfOption <: AbstractOption
     method::String = "LS"
-    system::sys_struct = sys_struct()
-    vars::vars = vars()
-    data::data = data()
-    optim::opt_settings = opt_settings()
-    λ::λtik = λtik()
+    system::SystemStructure = SystemStructure()
+    vars::VariableStructure = VariableStructure()
+    data::DataStructure = DataStructure()
+    optim::OptimizationSetting = OptimizationSetting()
+    λ::TikhonovParameter = TikhonovParameter()
     with_tol::Bool = false  # This options makes it way slower
     with_reg::Bool = false  # tikhonov regularization
     pinv_tol::Real = 1e-6
@@ -167,19 +167,19 @@ Non-Constrained Operator Inference.
 
 ## Fields
 - `method::String`: the name of the method
-- `system::sys_struct`: the system structure
-- `vars::vars`: the system variables
-- `data::data`: the data
-- `optim::opt_settings`: the optimization settings
+- `system::SystemStructure`: the system structure
+- `vars::VariableStructure`: the system variables
+- `data::DataStructure`: the DataStructure
+- `optim::OptimizationSetting`: the optimization settings
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 """
-@with_kw mutable struct NC_options <: AbstractOption
+@with_kw mutable struct NCOpInfOption <: AbstractOption
     method::String = "NC"
-    system::sys_struct = sys_struct()
-    vars::vars = vars()
-    data::data = data()
-    optim::opt_settings = opt_settings()
+    system::SystemStructure = SystemStructure()
+    vars::VariableStructure = VariableStructure()
+    data::DataStructure = DataStructure()
+    optim::OptimizationSetting = OptimizationSetting()
     λ_lin::Real = 0
     λ_quad::Real = 0
 end
@@ -192,21 +192,21 @@ Energy-Preserving Hard Equality Constraint Operator Inference.
 
 ## Fields
 - `method::String`: the name of the method
-- `system::sys_struct`: the system structure
-- `vars::vars`: the system variables
-- `data::data`: the data
-- `optim::opt_settings`: the optimization settings
+- `system::SystemStructure`: the system structure
+- `vars::VariableStructure`: the system variables
+- `data::DataStructure`: the data
+- `optim::OptimizationSetting`: the optimization settings
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPHEC_options <: AbstractOption
+@with_kw mutable struct EPHECOpInfOption <: AbstractOption
     method::String = "EPHEC"
-    system::sys_struct = sys_struct()
-    vars::vars = vars()
-    data::data = data()
-    optim::opt_settings = opt_settings()
+    system::SystemStructure = SystemStructure()
+    vars::VariableStructure = VariableStructure()
+    data::DataStructure = DataStructure()
+    optim::OptimizationSetting = OptimizationSetting()
     λ_lin::Real = 0
     λ_quad::Real = 0
     A_bnds::Tuple{Float64, Float64} = (0.0, 0.0)
@@ -221,22 +221,22 @@ Energy-Preserving Soft Inequality Constraint Operator Inference.
 
 ## Fields
 - `method::String`: the name of the method
-- `system::sys_struct`: the system structure
-- `vars::vars`: the system variables
-- `data::data`: the data
-- `optim::opt_settings`: the optimization settings
+- `system::SystemStructure`: the system structure
+- `vars::VariableStructure`: the system variables
+- `data::DataStructure`: the data
+- `optim::OptimizationSetting`: the optimization settings
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 - `ϵ::Real`: soft constraint radius
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPSIC_options <: AbstractOption
+@with_kw mutable struct EPSICOpInfOption <: AbstractOption
     method::String = "EPSIC"
-    system::sys_struct = sys_struct()
-    vars::vars = vars()
-    data::data = data()
-    optim::opt_settings = opt_settings()
+    system::SystemStructure = SystemStructure()
+    vars::VariableStructure = VariableStructure()
+    data::DataStructure = DataStructure()
+    optim::OptimizationSetting = OptimizationSetting()
     λ_lin::Real = 0
     λ_quad::Real = 0
     ϵ::Real = 0.1
@@ -252,22 +252,22 @@ Energy-Preserving Penalty Operator Inference.
 
 ## Fields
 - `method::String`: the name of the method
-- `system::sys_struct`: the system structure
-- `vars::vars`: the system variables
-- `data::data`: the data
-- `optim::opt_settings`: the optimization settings
+- `system::SystemStructure`: the system structure
+- `vars::VariableStructure`: the system variables
+- `data::DataStructure`: the data
+- `optim::OptimizationSetting`: the optimization settings
 - `λ_lin::Real`: the Tikhonov regularization parameter for linear state operator
 - `λ_quad::Real`: the Tikhonov regularization parameter for quadratic state operator
 - `α::Float64`: the weight for the energy-preserving term in the cost function
 - `A_bnds::Tuple{Float64, Float64}`: the bounds for the linear operator
 - `ForH_bnds::Tuple{Float64, Float64}`: the bounds for the quadratic operator (F or H)
 """
-@with_kw mutable struct EPP_options <: AbstractOption
+@with_kw mutable struct EPPOpInfOption <: AbstractOption
     method::String = "EPP"
-    system::sys_struct = sys_struct()
-    vars::vars = vars()
-    data::data = data()
-    optim::opt_settings = opt_settings()
+    system::SystemStructure = SystemStructure()
+    vars::VariableStructure = VariableStructure()
+    data::DataStructure = DataStructure()
+    optim::OptimizationSetting = OptimizationSetting()
     λ_lin::Real = 0
     λ_quad::Real = 0
     α::Float64 = 1.0

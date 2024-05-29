@@ -1,4 +1,4 @@
-export sys_struct, vars, data, compProjError, compStateError, compOutputError, compError
+export compProjError, compStateError, compOutputError, compError
 export EPConstraintResidual, EPConstraintViolation
 
 """

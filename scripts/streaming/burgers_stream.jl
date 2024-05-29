@@ -39,21 +39,21 @@ burgers = LnL.burgers(
     [0.0, 1.0], [0.0, 1.0], [0.5, 0.5],
     2^(-7), 1e-4, 1, "dirichlet"
 )
-options = LnL.LS_options(
-    system=LnL.sys_struct(
+options = LnL.LSOpInfOption(
+    system=LnL.SystemStructure(
         is_lin=true,
         is_quad=true,
         has_control=true,
         has_output=true,
     ),
-    vars=LnL.vars(
+    vars=LnL.VariableStructure(
         N=1,
     ),
-    data=LnL.data(
+    data=LnL.DataStructure(
         Δt=1e-4,
         deriv_type="SI"
     ),
-    optim=LnL.opt_settings(
+    optim=LnL.OptimizationSetting(
         verbose=true,
     ),
 )
@@ -126,7 +126,7 @@ op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=Xdot)
 ## Tikhonov Regularized OpInf
 ##############################
 options.with_reg = true
-options.λ = LnL.λtik(
+options.λ = LnL.TikhonovParameter(
     lin = 1e-6,
     ctrl = 1e-6,
     output = 1e-6

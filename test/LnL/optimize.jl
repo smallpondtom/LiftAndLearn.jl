@@ -15,22 +15,22 @@ const LnL = LiftAndLearn
     num_inputs = 3
     rmax = 5
 
-    options = LnL.NC_options(
-        system=LnL.sys_struct(
+    options = LnL.NCOpInfOption(
+        system=LnL.SystemStructure(
             is_lin=true,
             is_quad=true,
             has_control=true,
             has_output=true,
         ),
-        vars=LnL.vars(
+        vars=LnL.VariableStructure(
             N=1,
         ),
-        data=LnL.data(
+        data=LnL.DataStructure(
             Δt=1e-4,
             deriv_type="SI",
             DS=100,
         ),
-        optim=LnL.opt_settings(
+        optim=LnL.OptimizationSetting(
             verbose=false,
             initial_guess=false,
         ),
@@ -115,18 +115,18 @@ end
     )
 
     # Settings for Operator Inference
-    KSE_system = LnL.sys_struct(
+    KSE_system = LnL.SystemStructure(
         is_lin=true,
         is_quad=true,
     )
-    KSE_vars = LnL.vars(
+    KSE_VariableStructure = LnL.VariableStructure(
         N=1,
     )
-    KSE_data = LnL.data(
+    KSE_data = LnL.DataStructure(
         Δt=KSE.Δt,
         DS=100,
     )
-    KSE_optim = LnL.opt_settings(
+    KSE_optim = LnL.OptimizationSetting(
         verbose=true,
         initial_guess=false,
         max_iter=1000,
@@ -135,9 +135,9 @@ end
         with_bnds=true,
     )
 
-    options = LnL.LS_options(
+    options = LnL.LSOpInfOption(
         system=KSE_system,
-        vars=KSE_vars,
+        vars=KSE_VariableStructure,
         data=KSE_data,
         optim=KSE_optim,
     )
@@ -217,9 +217,9 @@ end
     nice_orders = Int.(round.(mean(nice_orders_all)))
     ro = nice_orders[2:5]
 
-    options = LnL.EPHEC_options(
+    options = LnL.EPHECOpInfOption(
         system=KSE_system,
-        vars=KSE_vars,
+        vars=KSE_VariableStructure,
         data=KSE_data,
         optim=KSE_optim,
         A_bnds=(-1000.0, 1000.0),
@@ -232,9 +232,9 @@ end
     end
     @test true # dummy test to make sure the testset runs
 
-    options = LnL.EPSIC_options(
+    options = LnL.EPSICOpInfOption(
         system=KSE_system,
-        vars=KSE_vars,
+        vars=KSE_VariableStructure,
         data=KSE_data,
         optim=KSE_optim,
         ϵ=1e-3,
@@ -248,9 +248,9 @@ end
     end
     @test true # dummy test to make sure the testset runs
 
-    options = LnL.EPP_options(
+    options = LnL.EPPOpInfOption(
         system=KSE_system,
-        vars=KSE_vars,
+        vars=KSE_VariableStructure,
         data=KSE_data,
         optim=KSE_optim,
         α=1e6,

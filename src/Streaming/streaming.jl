@@ -11,19 +11,23 @@ mutable struct StreamingOpInf <: AbstractOption
     O_k::AbstractArray   # operator matrix
     P_k::AbstractArray   # projection matrix
     K_k::AbstractArray   # gain matrix
+
     # Output
     C_k::AbstractArray   # output matrix
     Py_k::AbstractArray  # projection matrix
     Ky_k::AbstractArray  # gain matrix
 
     # Regularization terms (state and output)
-    α_k::Union{Real}
-    β_k::Union{Real}
+    γs_k::Union{Real}
+    γo_k::Union{Real}
 
-    tol::Union{Real,Array{<:Real},Nothing}       # tolerance of the pseudo-inverse for state and output
-    dims::Dict{Symbol,Int}                       # dimensions
-    options::AbstractOption                      # options
-    variable_regularize::Bool                    # variable regularization flag
+    # Tolerance of the pseudo-inverse for state and output
+    atol::Real
+    rtol::Real
+
+    dims::Dict{Symbol,Int}     # dimensions
+    options::LSOpInfOption     # least-squares operator inference options
+    variable_regularize::Bool  # variable regularization flag
 
     # Methods
     init!::Function
@@ -33,11 +37,10 @@ mutable struct StreamingOpInf <: AbstractOption
 end
 
 
-function StreamingOpInf(options::AbstractOption; variable_regularize::Bool=false,
-                           tol::Union{Real,Array{<:Real},Nothing}=nothing)
-    if !isnothing(tol)
-        @assert length(tol) <= 2 "The length of the tolerance should be at most 2."
-    end
+function StreamingOpInf(options::AbstractOption; variable_regularize::Bool=false)
+    # if !isnothing(tol)
+    #     @assert length(tol) <= 2 "The length of the tolerance should be at most 2."
+    # end
 
     dims = Dict(
         :n => 0, :K => 0, :m => 0, :l => 0, 
@@ -45,6 +48,7 @@ function StreamingOpInf(options::AbstractOption; variable_regularize::Bool=false
         :w1 => 0, :d => 0
     ) 
 
+    # Initialize the operators
     O_k = []; P_k = []; K_k = []
     C_k = []; Py_k = []; Ky_k = []
 

@@ -30,7 +30,7 @@ const LnL = LiftAndLearn
     Nhat = Vr' * N * Vr
     op_naive = LnL.operators(A=Ahat, B=Bhat, C=Chat, K=Khat, F=Fhat, H=Hhat, N=Nhat)
 
-    system = LnL.sys_struct(
+    system = LnL.SystemStructure(
         is_lin=true, 
         is_quad=true, 
         is_bilin=true, 
@@ -38,7 +38,7 @@ const LnL = LiftAndLearn
         has_output=true, 
         has_const=true,
     )
-    options = LnL.LS_options(system=system)
+    options = LnL.LSOpInfOption(system=system)
     op_rom = LnL.pod(op, Vr, options)
 
     for field in fieldnames(typeof(op_rom))
@@ -81,7 +81,7 @@ end
     end
     op_naive = LnL.operators(A=Ahat, B=Bhat, C=Chat, K=Khat, F=Fhat, H=Hhat, N=Nhat)
 
-    system = LnL.sys_struct(
+    system = LnL.SystemStructure(
         is_lin=true, 
         is_quad=true, 
         is_bilin=true, 
@@ -89,7 +89,7 @@ end
         has_output=true, 
         has_const=true,
     )
-    options = LnL.LS_options(system=system)
+    options = LnL.LSOpInfOption(system=system)
     op_rom = LnL.pod(op, Vr, options)
 
     for field in fieldnames(typeof(op_rom))
