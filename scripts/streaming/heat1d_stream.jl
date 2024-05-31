@@ -157,12 +157,9 @@ num_of_streams = length(Xhat_stream)
 # γo = 0.0
 γs = 1e-8
 γo = 1e-5
-stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo)
-# D_k = stream.init!(stream, Xhat_stream[1], R_stream[1]; U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
+stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo, algorithm=:iQRRLS)
 
 # Stream all at once
-# stream.stream!(stream, Xhat_stream[2:end], R_stream[2:end]; U_kp1=U_stream[2:end])
-# stream.stream_output!(stream, Xhat_stream[2:end], Y_stream[2:end])
 stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
 stream.stream_output!(stream, Xhat_stream, Y_stream)
 
@@ -178,12 +175,12 @@ op_dict = Dict(
     "POD" => op_int,
     "OpInf" => op_inf,
     "TR-OpInf" => op_inf_reg,
-    "Streaming-OpInf" => op_stream
+    "TR-Streaming-OpInf" => op_stream
 )
 rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
 
 ## Plot
-fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"])
+fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "TR-Streaming-OpInf"])
 display(fig1)
 
 
@@ -200,7 +197,7 @@ analysis_results = analysis_2(
 ## Plot
 fig2 = plot_rse_per_stream(analysis_results["rse_stream"], analysis_results["roe_stream"], 
                            analysis_results["streaming_error"], analysis_results["streaming_error_output"], 
-                           [5,10,15], num_of_streams; ylimits=([1e-6,1e2], [1e-9,1e2]))
+                           [5,10,15], num_of_streams; ylimits=([1e-7,1.3e1], [1e-9,1e1]))
 display(fig2)
 ##
 fig3 = plot_errorfactor_condition(analysis_results["cond_state_EF"], analysis_results["cond_output_EF"], 

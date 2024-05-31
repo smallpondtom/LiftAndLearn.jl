@@ -152,7 +152,7 @@ function plot_streaming_error(stream_error, stream_error_output,
         labels = []
         for (i,r) in enumerate(r_select)
             l = scatterlines!(ax1, 1:DS:num_of_streams, stream_error[r][1:DS:end], color=colors[i])
-            scatterlines!(ax2, 1:DS:num_of_streams, stream_error_output[r][1:Ds:end], color=colors[i])
+            scatterlines!(ax2, 1:DS:num_of_streams, stream_error_output[r][1:DS:end], color=colors[i])
             scatterlines!(ax3, 1:DS:num_of_streams, true_stream_error[r][1:DS:end], color=colors[i])
             scatterlines!(ax4, 1:DS:num_of_streams, true_stream_error_output[r][1:DS:end], color=colors[i])
             push!(lines, l)

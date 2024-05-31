@@ -119,17 +119,17 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
         "true_streaming_error_output" => Dict(r => zeros(num_of_streams) for r in r_select)
     )
 
-    # Initialize the Streaming-OpInf
-    if iszero(atol[1]) && iszero(atol[2])
-        stream = LnL.StreamingOpInf(options, size(Vr,2), size(Ufull,2), size(Yfull,1); 
-                                    variable_regularize=VR, γs_k=α, γo_k=β)
-    else
-        stream = LnL.StreamingOpInf(options, size(Vr,2), size(Ufull,2), size(Yfull,1); 
-                                    atol=atol, rtol=rtol, variable_regularize=VR, γs_k=α, γo_k=β)
-    end
-
     # Compute the quantities of interest
     for (i,ri) in collect(enumerate(r_select))
+        # Initialize the Streaming-OpInf
+        if iszero(atol[1]) && iszero(atol[2])
+            stream = LnL.StreamingOpInf(options, size(Vr,2), size(Ufull,2), size(Yfull,1); 
+                                        variable_regularize=VR, γs_k=α, γo_k=β)
+        else
+            stream = LnL.StreamingOpInf(options, size(Vr,2), size(Ufull,2), size(Yfull,1); 
+                                        atol=atol, rtol=rtol, variable_regularize=VR, γs_k=α, γo_k=β)
+        end
+
         # _ = stream.init!(stream, Xhat_stream[1], R_stream[1]; 
         #                     U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
@@ -240,7 +240,7 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
     initial_errs = zeros(length(streamsizes), length(r_select))
     initial_output_errs = zeros(length(streamsizes), length(r_select))
 
-    r = size(Vr, 2)
+    n = size(Vr, 2)
     m = size(U, 2)
     l = size(Y, 1)
 
@@ -253,10 +253,14 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
 
         # Initialize the stream
         # INFO: Remember to make data matrices a tall matrix except X matrix
-        stream = isnothing(tol) ? LnL.StreamingOpInf(options,r,m,l) : LnL.StreamingOpInf(options,r,m,l; tol=tol)
+        if isnothing(tol)
+            stream = LnL.StreamingOpInf(options,n,m,l;γs_k=α, γo_k=β)
+        else
+            stream = LnL.StreamingOpInf(options,n,m,l; tol=tol, γs_k=α, γo_k=β)
+        end
         # _ = stream.init!(stream, Xhat_i,R_i; U_k=U_i, Y_k=Y_i, α_k=α, β_k=β)
-        _ = stream.stream!(stream, Xhat_i, R_i; U_k=U_i, γs_k=α)
-        stream.stream_output!(stream, Xhat_i, Y_i; γo_k=β)
+        _ = stream.stream!(stream, Xhat_i, R_i; U_k=U_i)
+        stream.stream_output!(stream, Xhat_i, Y_i)
         ops = stream.unpack_operators(stream)
 
         for (j, r) in enumerate(r_select)

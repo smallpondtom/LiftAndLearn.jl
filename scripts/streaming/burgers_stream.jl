@@ -127,8 +127,8 @@ op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=Xdot)
 ##############################
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(
-    lin = 1e-6,
-    ctrl = 1e-6,
+    lin = 1e-7,
+    ctrl = 1e-7,
     output = 1e-6
 )
 op_inf_reg = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=Xdot)
@@ -155,15 +155,14 @@ R_stream = LnL.streamify((Vrmax' * Xdot)', streamsize)
 num_of_streams = length(Xhat_stream)
 
 # Initialize the stream
-tol = nothing
-α = 1e-7
-β = 1e-6
-stream = LnL.StreamingOpInf(options; variable_regularize=false, tol=tol)
-D_k = stream.init!(stream, Xhat_stream[1], R_stream[1]; U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
+γs = 1e-7
+γo = 1e-6
+stream = LnL.StreamingOpInf(options, rmax, 1, 1; variable_regularize=false, atol=[0.0,0.0], rtol=[0.0,0.0], γs_k=γs, γo_k=γo)
+# D_k = stream.init!(stream, Xhat_stream[1], R_stream[1]; U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
 # Stream all at once
-stream.stream!(stream, Xhat_stream[2:end], R_stream[2:end]; U_kp1=U_stream[2:end])
-stream.stream_output!(stream, Xhat_stream[2:end], Y_stream[2:end])
+stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
+stream.stream_output!(stream, Xhat_stream, Y_stream)
 
 # Unpack solution operators
 op_stream = stream.unpack_operators(stream)
@@ -193,7 +192,7 @@ r_select = 1:15
 analysis_results = analysis_2( # Attention: This will take some time to run
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xref, Vrmax, Uref, Yref, burgers, r_select, options, 
-    [:A, :B, :F], burgers.semiImplicitEuler; tol=0.0, VR=false, α=α, β=β
+    [:A, :B, :F], burgers.semiImplicitEuler; VR=false, α=α, β=β
 )
 
 ## Plot
