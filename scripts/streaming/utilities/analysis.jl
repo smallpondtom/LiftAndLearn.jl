@@ -107,7 +107,7 @@ end
 function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
                         op_inf, Xfull, Vr, Ufull, Yfull, model, r_select, options, 
                         required_operators, solver; atol=[0.0,0.0], rtol=[0.0,0.0], 
-                        VR=false, α=0.0, β=0.0)
+                        VR=false, α=0.0, β=0.0, algo=:RLS)
     results = Dict(
         "rse_stream" => Dict(r => zeros(num_of_streams) for r in r_select),
         "roe_stream" => Dict(r => zeros(num_of_streams) for r in r_select),
@@ -124,14 +124,12 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
         # Initialize the Streaming-OpInf
         if iszero(atol[1]) && iszero(atol[2])
             stream = LnL.StreamingOpInf(options, size(Vr,2), size(Ufull,2), size(Yfull,1); 
-                                        variable_regularize=VR, γs_k=α, γo_k=β)
+                                        variable_regularize=VR, γs_k=α, γo_k=β, algorithm=algo)
         else
             stream = LnL.StreamingOpInf(options, size(Vr,2), size(Ufull,2), size(Yfull,1); 
-                                        atol=atol, rtol=rtol, variable_regularize=VR, γs_k=α, γo_k=β)
+                                        atol=atol, rtol=rtol, variable_regularize=VR, 
+                                        γs_k=α, γo_k=β, algorithm=algo)
         end
-
-        # _ = stream.init!(stream, Xhat_stream[1], R_stream[1]; 
-        #                     U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
 
         # Compute the indices extracted from nonredundant quadratic matrix
         # for a smaller dimension r
@@ -235,7 +233,7 @@ end
 
 
 function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options; 
-                    tol=nothing, α=0.0, β=0.0)
+                    tol=nothing, α=0.0, β=0.0, algo=:RLS)
 
     initial_errs = zeros(length(streamsizes), length(r_select))
     initial_output_errs = zeros(length(streamsizes), length(r_select))
@@ -254,9 +252,9 @@ function analysis_3(streamsizes, Vr, X, U, Y, R, op_inf, r_select, options;
         # Initialize the stream
         # INFO: Remember to make data matrices a tall matrix except X matrix
         if isnothing(tol)
-            stream = LnL.StreamingOpInf(options,n,m,l;γs_k=α, γo_k=β)
+            stream = LnL.StreamingOpInf(options,n,m,l;γs_k=α, γo_k=β, algorithm=algo)
         else
-            stream = LnL.StreamingOpInf(options,n,m,l; tol=tol, γs_k=α, γo_k=β)
+            stream = LnL.StreamingOpInf(options,n,m,l; tol=tol, γs_k=α, γo_k=β, algorithm=algo)
         end
         # _ = stream.init!(stream, Xhat_i,R_i; U_k=U_i, Y_k=Y_i, α_k=α, β_k=β)
         _ = stream.stream!(stream, Xhat_i, R_i; U_k=U_i)

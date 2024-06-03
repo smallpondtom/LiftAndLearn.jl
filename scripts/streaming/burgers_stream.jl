@@ -157,8 +157,8 @@ num_of_streams = length(Xhat_stream)
 # Initialize the stream
 γs = 1e-7
 γo = 1e-6
-stream = LnL.StreamingOpInf(options, rmax, 1, 1; variable_regularize=false, atol=[0.0,0.0], rtol=[0.0,0.0], γs_k=γs, γo_k=γo)
-# D_k = stream.init!(stream, Xhat_stream[1], R_stream[1]; U_k=U_stream[1], Y_k=Y_stream[1], α_k=α[1], β_k=β[1])
+algo=:iQRRLS
+stream = LnL.StreamingOpInf(options, rmax, 1, 1; variable_regularize=false, γs_k=γs, γo_k=γo, algorithm=algo)
 
 # Stream all at once
 stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
@@ -192,7 +192,7 @@ r_select = 1:15
 analysis_results = analysis_2( # Attention: This will take some time to run
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xref, Vrmax, Uref, Yref, burgers, r_select, options, 
-    [:A, :B, :F], burgers.semiImplicitEuler; VR=false, α=α, β=β
+    [:A, :B, :F], burgers.semiImplicitEuler; VR=false, α=γs, β=γo, algo=algo
 )
 
 ## Plot
@@ -214,9 +214,9 @@ display(fig4)
 ##############################################
 ## (Analysis 3) Initial error over streamsize
 ##############################################
-streamsizes = 1:num_of_streams
+streamsizes = 1:10:num_of_streams
 init_rse, init_roe = analysis_3(streamsizes, Vrmax, X, U, Y, Vrmax' * Xdot, op_inf_reg, r_select, options; 
-                                tol=tol, α=α, β=β)
+                                tol=tol, α=α, β=β, algo=algo)
 
 ## Plot
 fig5 = plot_initial_error(streamsizes, init_rse, init_roe, ace_light, 1:15)
