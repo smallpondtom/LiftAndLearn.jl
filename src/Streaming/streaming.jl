@@ -186,20 +186,20 @@ QRRLS
 """
 function QRRLS(d_k::AbstractArray{T}, r_k::AbstractArray{T}, Φ_km1::AbstractArray{T}, 
                q_km1::AbstractArray{T}, d::Int, r::Int) where T<:Real
-    # Pre-array
+    # Prearray
     A_k = [Φ_km1' q_km1; d_k r_k]
 
-    # Compute post-array using QR factorization
+    # Compute postarray using QR factorization
     _, B_k = qr(A_k)
 
-    # Extract the operator matrix and auxiliary matrix
+    # Extract the inverse covariance matrix and auxiliary matrix
     Φ_km1 = B_k[1:d, 1:d]'  # make sure it's lower triangular
     q_km1 = B_k[1:d, d+1:d+r] 
 
     # Compute the next operator matrix with inverse of upper triangular matrix
-    # O_k = Φ_km1' \ q_km1   # (backslash inverse)
-    O_k = copy(q_km1)
-    backsub!(Φ_km1', O_k)  # (backward subtitution) transpose to make upper triangular
+    O_k = Φ_km1' \ q_km1   # (backslash inverse) automatically does backward substitution
+    # O_k = copy(q_km1)
+    # backsub!(Φ_km1', O_k)  # (backward subtitution) transpose to make upper triangular
 
     # Compute the inverse covariance matrix and Kalman gain matrix
     P_k = (Φ_km1*Φ_km1') \ I
@@ -228,6 +228,7 @@ function backsub!(U::Matrix{T}, X::Matrix{T}) where T<:Real
         error("Dimensions of U and X do not match")
     end
     
+    # vectorized backward substitution for U*X = Y
     @inbounds for i in n:-1:1
         X[i, :] ./= U[i, i]
         X[1:i-1, :] .-= U[1:i-1, i] .* X[i, :]'
@@ -242,12 +243,19 @@ P2_km1: is actually the square-root of the inverse of the correlation matrix
 """
 function iQRRLS(d_k::AbstractArray{T}, r_k::AbstractArray{T}, O_km1::AbstractArray{T},
                 P2_km1::AbstractArray{T}, d::Int) where T<:Real
+    # Prearray
     A_k = [1 zeros(1,d); P2_km1'*d_k' P2_km1']
+
+    # Compute postarray using QR factorization
     _, B_k = qr(A_k)
+
+    # Extract the square-root of the conversion factor and 
+    # the Kalman gain matrix multiplied by square-root of the conversion factor
     α2_k_inv = B_k[1,1]
     gα2_k_inv = B_k[1,2:end]  # becomes a column vector after slicing
     P2_k = B_k[2:end, 2:end]'  # make sure it's lower triangular
 
+    # Compute the next operator matrix and Kalman gain matrix
     K_k = gα2_k_inv * (α2_k_inv)^(-1)
     O_k = O_km1 + K_k * (r_k - d_k * O_km1)
     return O_k, P2_k, K_k
