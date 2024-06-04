@@ -187,24 +187,24 @@ QRRLS
 function QRRLS(d_k::AbstractArray{T}, r_k::AbstractArray{T}, Φ_km1::AbstractArray{T}, 
                q_km1::AbstractArray{T}, d::Int, r::Int) where T<:Real
     # Prearray
-    A_k = [Φ_km1' q_km1; d_k r_k]
+    A_k = [Φ_km1' q_km1; d_k r_k]  # note: it's actually the transpose
 
     # Compute postarray using QR factorization
-    _, B_k = qr(A_k)
+    qr!(A_k)  # in-place QR factorization (B_k = A_k)
 
     # Extract the inverse covariance matrix and auxiliary matrix
-    Φ_km1 = B_k[1:d, 1:d]'  # make sure it's lower triangular
-    q_km1 = B_k[1:d, d+1:d+r] 
+    Φ_km1 = A_k[1:d, 1:d]  # keep it upper triangular here
+    q_km1 = A_k[1:d, d+1:d+r] 
 
     # Compute the next operator matrix with inverse of upper triangular matrix
-    O_k = Φ_km1' \ q_km1   # (backslash inverse) automatically does backward substitution
+    O_k = Φ_km1 \ q_km1   # (backslash inverse) automatically does backward substitution
     # O_k = copy(q_km1)
     # backsub!(Φ_km1', O_k)  # (backward subtitution) transpose to make upper triangular
 
     # Compute the inverse covariance matrix and Kalman gain matrix
-    P_k = (Φ_km1*Φ_km1') \ I
+    P_k = (Φ_km1'*Φ_km1) \ I   # Φ_km1 is still upper triangular
     K_k = P_k * d_k'
-    return O_k, Φ_km1, q_km1, P_k, K_k
+    return O_k, Φ_km1', q_km1, P_k, K_k
 end
 
 
@@ -244,10 +244,10 @@ P2_km1: is actually the square-root of the inverse of the correlation matrix
 function iQRRLS(d_k::AbstractArray{T}, r_k::AbstractArray{T}, O_km1::AbstractArray{T},
                 P2_km1::AbstractArray{T}, d::Int) where T<:Real
     # Prearray
-    A_k = [1 zeros(1,d); P2_km1'*d_k' P2_km1']
+    A_k = [1 zeros(1,d); P2_km1'*d_k' P2_km1']  # note: it's actually the transpose
 
     # Compute postarray using QR factorization
-    _, B_k = qr(A_k)
+    _, B_k = qr(A_k)  
 
     # Extract the square-root of the conversion factor and 
     # the Kalman gain matrix multiplied by square-root of the conversion factor

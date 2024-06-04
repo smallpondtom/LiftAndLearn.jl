@@ -21,6 +21,7 @@ const LnL = LiftAndLearn
 ## Global Settings
 ###################
 CONST_STREAM = true
+SAVEFIG = true
 
 
 ###############################
@@ -157,7 +158,8 @@ num_of_streams = length(Xhat_stream)
 # γo = 0.0
 γs = 1e-8
 γo = 1e-5
-stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo, algorithm=:iQRRLS)
+algo = :QRRLS
+stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo, algorithm=algo)
 
 # Stream all at once
 stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
@@ -175,12 +177,13 @@ op_dict = Dict(
     "POD" => op_int,
     "OpInf" => op_inf,
     "TR-OpInf" => op_inf_reg,
-    "TR-Streaming-OpInf" => op_stream
+    "QRRLS-Streaming-OpInf" => op_stream
+    # "Streaming-OpInf" => op_stream
 )
 rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
 
 ## Plot
-fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "TR-Streaming-OpInf"])
+fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "QRRLS-Streaming-OpInf"])
 display(fig1)
 
 
@@ -191,7 +194,7 @@ r_select = 1:15
 analysis_results = analysis_2(
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options, 
-    [:A, :B], LnL.backwardEuler; VR=false, α=γs, β=γo
+    [:A, :B], LnL.backwardEuler; VR=false, α=γs, β=γo, algo=algo
 )
 
 ## Plot
@@ -215,12 +218,23 @@ display(fig4)
 ##############################################
 streamsizes = 1:num_of_streams
 init_rse, init_roe = analysis_3(streamsizes, Vr, X, U, Y, Vr' * Xdot, op_inf_reg, 1:15, options; 
-                                tol=nothing, α=γs, β=γo)
+                                tol=nothing, α=γs, β=γo, algo=algo)
 
 ## Plot
 fig5 = plot_initial_error(streamsizes, init_rse, init_roe, ace_light, 1:15)
 display(fig5)
 
+
+################
+## Save figures
+################
+if SAVEFIG
+    save("scripts/streaming/plots/heat/rse_over_dim.png", fig1)
+    save("scripts/streaming/plots/heat/rse_and_streaming_error.png", fig2)
+    save("scripts/streaming/plots/heat/cond_streaming_error_factor.png", fig3)
+    save("scripts/streaming/plots/heat/verify_streaming_error.png", fig4)
+    save("scripts/streaming/plots/heat/initial_error.png", fig5)
+end
 
 
 ###################################################

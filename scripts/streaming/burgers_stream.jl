@@ -22,6 +22,7 @@ const LnL = LiftAndLearn
 ## Global Settings
 ###################
 CONST_STREAM = true
+SAVEFIG = true
 
 
 ###############################
@@ -157,7 +158,7 @@ num_of_streams = length(Xhat_stream)
 # Initialize the stream
 γs = 1e-7
 γo = 1e-6
-algo=:iQRRLS
+algo=:QRRLS
 stream = LnL.StreamingOpInf(options, rmax, 1, 1; variable_regularize=false, γs_k=γs, γo_k=γo, algorithm=algo)
 
 # Stream all at once
@@ -176,12 +177,12 @@ op_dict = Dict(
     "POD" => op_int,
     "OpInf" => op_inf,
     "TR-OpInf" => op_inf_reg,
-    "Streaming-OpInf" => op_stream
+    "QRRLS-Streaming-OpInf" => op_stream
 )
 rse, roe = analysis_1(op_dict, burgers, Vrmax, Xref, Uref, Yref, [:A, :B, :F], burgers.semiImplicitEuler)
 
 ## Plot
-fig1 = plot_rse(rse, roe, rmax, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"])
+fig1 = plot_rse(rse, roe, rmax, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "QRRLS-Streaming-OpInf"])
 display(fig1)
 
 
@@ -198,7 +199,7 @@ analysis_results = analysis_2( # Attention: This will take some time to run
 ## Plot
 fig2 = plot_rse_per_stream(analysis_results["rse_stream"], analysis_results["roe_stream"], 
                            analysis_results["streaming_error"], analysis_results["streaming_error_output"], 
-                           [5,10,15], num_of_streams; ylimits=([1e-6,1e2], [1e-9,1e2]))
+                           [5,10,15], num_of_streams; ylimits=([1e-5,2e2], [1e-7,1e1]))
 display(fig2)
 ##
 fig3 = plot_errorfactor_condition(analysis_results["cond_state_EF"], analysis_results["cond_output_EF"], 
@@ -214,10 +215,22 @@ display(fig4)
 ##############################################
 ## (Analysis 3) Initial error over streamsize
 ##############################################
-streamsizes = 1:10:num_of_streams
+streamsizes = 1:100:num_of_streams
 init_rse, init_roe = analysis_3(streamsizes, Vrmax, X, U, Y, Vrmax' * Xdot, op_inf_reg, r_select, options; 
-                                tol=tol, α=α, β=β, algo=algo)
+                                α=γs, β=γo, algo=algo)
 
 ## Plot
 fig5 = plot_initial_error(streamsizes, init_rse, init_roe, ace_light, 1:15)
 display(fig5)
+
+
+################
+## Save figures
+################
+if SAVEFIG
+    save("scripts/streaming/plots/burgers/rse_over_dim.png", fig1)
+    save("scripts/streaming/plots/burgers/rse_and_streaming_error.png", fig2)
+    save("scripts/streaming/plots/burgers/cond_streaming_error_factor.png", fig3)
+    save("scripts/streaming/plots/burgers/verify_streaming_error.png", fig4)
+    save("scripts/streaming/plots/burgers/initial_error.png", fig5)
+end
