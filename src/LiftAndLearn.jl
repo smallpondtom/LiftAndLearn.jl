@@ -74,9 +74,11 @@ include("model/Heat1D.jl")
 include("model/Burgers.jl")
 include("model/FHN.jl")
 include("model/KS.jl")
+include("model/FisherKPP.jl")
 using .Heat1D: heat1d
 using .Burgers: burgers
 using .FHN: fhn
 using .KS: ks
+using .FisherKPP: fisherkpp
 
 end # module LiftAndLearn
