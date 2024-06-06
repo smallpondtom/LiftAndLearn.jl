@@ -53,7 +53,7 @@ function StreamingOpInf(options::AbstractOption, n::Int, m::Int=0, l::Int=0;
     # Initialize the dimensions
     dims = Dict(
         :n => n, :K => 0, 
-        :m => m, :l => 0, 
+        :m => m, :l => l, 
         :s2 => options.system.is_quad ? Int(n * (n + 1) / 2) : 0, 
         :v2 => options.system.is_quad ? Int(n * n) : 0, 
         :s3 => options.system.is_cubic ? Int(n * (n + 1) * (n + 2) / 6) : 0,

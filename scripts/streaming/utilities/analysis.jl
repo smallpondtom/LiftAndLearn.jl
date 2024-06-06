@@ -93,8 +93,12 @@ function analysis_1(ops, model, V, Xfull, Ufull, Yfull, required_operators, solv
             Vr = V[:, 1:i]
             tmp = []
             get_operators!(tmp, op, r, i, required_operators)
-            foo, X = compute_rse(tmp, Xfull, Ufull, Vr, model.t, model.IC, solver)
-            Y = op.C[1:1, 1:i] * X
+            if hasfield(typeof(model), :t)
+                foo, X = compute_rse(tmp, Xfull, Ufull, Vr, model.t, model.IC, solver)
+            else
+                foo, X = compute_rse(tmp, Xfull, Ufull, Vr, model.tspan, model.IC, solver)
+            end
+            Y = op.C[1:end, 1:i] * X
             bar = LnL.compOutputError(Yfull, Y)
             push!(rel_state_err[key], foo)
             push!(rel_output_err[key], bar)

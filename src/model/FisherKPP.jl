@@ -28,13 +28,12 @@ where ``u`` is the state variable, ``D`` is the diffusion coefficient, and ``r``
 """
 mutable struct fisherkpp <: AbstractModel
     # Domains
-    spatial_domain::Tuple{<:Real}  # spatial domain
-    time_domain::Tuple{<:Real}  # temporal domain
-    diffusion_coeff_domain::Tuple{<:Real}  # parameter domain (diffusion coeff)
-    growth_rate_domain::Tuple{<:Real}  # parameter domain (growth rate)
+    spatial_domain::Tuple{Real,Real}  # spatial domain
+    time_domain::Tuple{Real,Real}  # temporal domain
+    diffusion_coeff_domain::Tuple{Real,Real}  # parameter domain (diffusion coeff)
+    growth_rate_domain::Tuple{Real,Real}  # parameter domain (growth rate)
 
     # Discritization grid
-    num_of_space_gp::Real  # number of spatial grid points
     Δx::Real  # spatial grid size
     Δt::Real  # temporal step size
     xspan::Vector{<:Real}  # spatial grid points
@@ -45,10 +44,13 @@ mutable struct fisherkpp <: AbstractModel
     # Parameters
     diffusion_coeffs::Union{Vector{<:Real},Real}  # diffusion coefficient
     growth_rates::Union{Vector{<:Real},Real}  # growth rate
-    param_dim::Dict{:Symbol,<:Int}  # parameter dimension
+    param_dim::Dict{Symbol,<:Int}  # parameter dimension
 
     # Initial condition
     IC::AbstractArray{<:Real}  # initial condition
+
+    # Boundary condition
+    BC::Symbol  # boundary condition
 
     # Functions
     finite_diff_model::Function  # model using Finite Difference
@@ -56,28 +58,54 @@ mutable struct fisherkpp <: AbstractModel
 end
 
 
-function fisherkpp(;spatial_domain, time_domain, num_of_space_gp, Δt, diffusion_coeffs, growth_rates)
+function fisherkpp(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+                    diffusion_coeffs::Union{Vector{<:Real},Real}, growth_rates::Union{Vector{<:Real},Real}, BC::Symbol=:periodic)
     # Discritization grid info
-    Δx = (spatial_domain[2] - spatial_domain[1]) / num_of_space_gp  # spatial grid size
-    xspan = collect(spatial_domain[1]:Δx:spatial_domain[2]-Δx)  # assuming a periodic boundary condition
+    @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
+    if BC == :periodic
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2]-Δx)
+    elseif BC ∈ (:dirichlet, :neumann, :mixed, :robin, :cauchy) 
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2])[2:end-1]
+    end
     tspan = collect(time_domain[1]:Δt:time_domain[2])
     spatial_dim = length(xspan)
     time_dim = length(tspan)
+
+    # Initial condition
+    IC = zeros(spatial_dim)
 
     # Parameter dimensions or number of parameters 
     param_dim = Dict(:diffusion_coeff => length(diffusion_coeffs), :growth_rate => length(growth_rates))
     diffusion_coeff_domain = extrema(diffusion_coeffs)
     growth_rate_domain = extrema(growth_rates)
 
-    # Initial condition
-    IC = zeros(spatial_dim)
-
     fisherkpp(
         spatial_domain, time_domain, diffusion_coeff_domain, growth_rate_domain,
-        num_of_space_gp, Δx, Δt, xspan, tspan, spatial_dim, time_dim,
-        diffusion_coeffs, growth_rates, param_dim, IC,
+        Δx, Δt, xspan, tspan, spatial_dim, time_dim,
+        diffusion_coeffs, growth_rates, param_dim, IC, BC,
         finite_diff_model, integrate_model
     )
+end
+
+
+"""
+    finite_diff_model(model::fisherkpp, D::Real, r::Real)
+
+Create the matrices A (linear operator) and F (quadratic operator) for the Fisher-KPP model. For different
+boundary conditions, the matrices are created differently.
+
+## Arguments
+- `model::fisherkpp`: Fisher-KPP model
+- `D::Real`: diffusion coefficients
+- `r::Real`: growth rates
+
+"""
+function finite_diff_model(model::fisherkpp, D::Real, r::Real)
+    if model.BC == :periodic
+        return finite_diff_periodic_model(model, D, r)
+    elseif model.BC == :mixed
+        return finite_diff_mixed_model(model, D, r)
+    end
 end
 
 
@@ -95,7 +123,7 @@ Create the matrices A (linear operator) and F (quadratic operator) for the Fishe
 - `A::SparseMatrixCSC{Float64,Int}`: linear operator
 - `F::SparseMatrixCSC{Float64,Int}`: quadratic operator
 """
-function finite_diff_model(model::fisherkpp, D::Real, r::Real)
+function finite_diff_periodic_model(model::fisherkpp, D::Real, r::Real)
     N = model.spatial_dim
     Δx = model.Δx
 
@@ -116,6 +144,47 @@ end
 
 
 """
+    finite_diff_mixed_model(model::fisherkpp, D::Real, r::Real)
+
+Create the matrices A (linear operator) and F (quadratic operator) for the Fisher-KPP model using the 
+mixed boundary condition. If the spatial domain is [0,1], then we assume u(0,t) to be homogeneous dirichlet
+boundary condition and u(1,t) to be Neumann boundary condition of some function h(t).
+
+## Arguments
+- `model::fisherkpp`: Fisher-KPP model
+- `D::Real`: diffusion coefficients
+- `r::Real`: growth rates
+
+## Returns
+- `A::SparseMatrixCSC{Float64,Int}`: linear operator
+- `B::SparseMatrixCSC{Float64,Int}`: input operator
+- `F::SparseMatrixCSC{Float64,Int}`: quadratic operator
+"""
+function finite_diff_mixed_model(model::fisherkpp, D::Real, r::Real)
+    N = model.spatial_dim
+    Δx = model.Δx
+
+    # Create A matrix
+    A = spdiagm(0 => (r-2*D/Δx^2) * ones(N), 1 => (D/Δx^2) * ones(N - 1), -1 => (D/Δx^2) * ones(N - 1))
+    A[end,end] = r - D/Δx^2  # influence of Neumann boundary condition
+
+    # Create F matrix
+    S = Int(N * (N + 1) / 2)
+    ii = 1:N  # row index
+    jj = Int.([N*(N+1)/2 - (N-m)*(N-m+1)/2 - (N-m) for m in 1:N])  # col index where the xi^2 term is
+    vv = ones(N);
+    F = sparse(ii,jj,vv,N,S)
+
+    # Create B matrix
+    B = spzeros(N,2)
+    B[1,1] = D / Δx^2  # from Dirichlet boundary condition
+    B[end,2] = D / Δx  # from Neumann boundary condition
+
+    return A, B, F
+end
+
+
+"""
     integrate_model(A::AbstractArray{<:Real}, F::AbstractArray{<:Real}, IC::AbstractArray{<:Real}, 
                     tspan::AbstractArray{<:Real}; const_stepsize::Bool=false)
     
@@ -131,64 +200,101 @@ Integrate the Fisher-KPP model using the Crank-Nicholson (linear) Explicit (nonl
 ## Returns
 - `u::AbstractArray{<:Real}`: solution
 """
-function integrate_model(A::AbstractArray{<:Real}, F::AbstractArray{<:Real}, IC::AbstractArray{<:Real}, 
-                         tspan::AbstractArray{<:Real}; const_stepsize::Bool=false)
+# function integrate_model(A::AbstractArray{<:Real}, F::AbstractArray{<:Real}, IC::AbstractArray{<:Real}, 
+#                          tspan::AbstractArray{<:Real}; const_stepsize::Bool=false)
+function integrate_model(A::AbstractArray{<:Real}, F::AbstractArray{<:Real}, tspan::AbstractArray{<:Real}, 
+                         IC::AbstractArray{<:Real}; const_stepsize::Bool=false)
+    Xdim = length(IC)
+    Tdim = length(tspan)
+    state = zeros(Xdim, Tdim)
+    state[:, 1] = IC
+
+    if const_stepsize
+        Δt = tspan[2] - tspan[1]  # assuming a constant time step size
+        ImdtA_inv = Matrix(I - Δt/2 * A) \ I
+        IpdtA = (I + Δt/2 * A)
+        for j in 2:Tdim
+            state2 = state[:, j-1] ⊘ state[:, j-1]
+            state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + F * state2 * Δt)
+        end
+    else
+        for j in 2:Tdim
+            Δt = tspan[j] - tspan[j-1]
+            state2 = state[:, j-1] ⊘ state[:, j-1]
+            state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + F * state2 * Δt)
+        end
+    end
+    return state
+end
+
+
+# function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, F::AbstractArray{T}, U::AbstractArray{T}, 
+#                          tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false) where T<:Real
+#     Xdim = length(IC)
+#     Tdim = length(tspan)
+#     state = zeros(Xdim, Tdim)
+#     state[:, 1] = IC
+
+#     # Make input matrix a tall matrix
+#     U = reshape(U, (Tdim - 1, 2))
+
+#     if const_stepsize
+#         Δt = tspan[2] - tspan[1]  # assuming a constant time step size
+#         ImdtA_inv = Matrix(I - Δt/2 * A) \ I
+#         IpdtA = (I + Δt/2 * A)
+#         for j in 2:Tdim
+#             state2 = state[:, j-1] ⊘ state[:, j-1]
+#             state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + F * state2 * Δt + B * U[j-1,:] * Δt)
+#         end
+#     else
+#         for j in 2:Tdim
+#             Δt = tspan[j] - tspan[j-1]
+#             state2 = state[:, j-1] ⊘ state[:, j-1]
+#             state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + F * state2 * Δt + B * U[j-1,:] * Δt)
+#         end
+#     end
+#     return state
+# end
+
+
+function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, F::AbstractArray{T}, U::AbstractArray{T}, 
+                         tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false) where T<:Real
     Xdim = length(IC)
     Tdim = length(tspan)
     u = zeros(Xdim, Tdim)
     u[:, 1] = IC
+    u2_jm1 = 0  # preallocate u2_{j-1}
+
+    # Make input matrix a tall matrix
+    U = reshape(U, (Tdim - 1, 2))
 
     if const_stepsize
         Δt = tspan[2] - tspan[1]  # assuming a constant time step size
-        ImdtA_inv = (I - Δt/2 * A) \ I
+        ImdtA_inv = Matrix(I - Δt/2 * A) \ I
         IpdtA = (I + Δt/2 * A)
         for j in 2:Tdim
             u2 = u[:, j-1] ⊘ u[:, j-1]
-            u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * Δt)
+            if j == 2 
+                u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * Δt + B * U[j-1,:] * Δt)
+            else
+                u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_jm1 * Δt/2 + B * U[j-1,:] * Δt)
+            end
+            u2_jm1 = u2
         end
     else
         for j in 2:Tdim
             Δt = tspan[j] - tspan[j-1]
             u2 = u[:, j-1] ⊘ u[:, j-1]
-            u[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * u[:, j-1] + F * u2 * Δt)
+            if j == 2 
+                u[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * u[:, j-1] + F * u2 * Δt + B * U[j-1,:] * Δt)
+            else
+                u[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_jm1 * Δt/2 + B * U[j-1,:] * Δt)
+            end
+            u2_jm1 = u2
         end
     end
     return u
 end
 
 
-# function integrate_model(A::AbstractArray{<:Real}, F::AbstractArray{<:Real}, IC::AbstractArray{<:Real}, 
-#                          tspan::AbstractArray{<:Real}; const_stepsize::Bool=false)
-#     Xdim = length(IC)
-#     Tdim = length(tspan)
-#     u = zeros(Xdim, Tdim)
-#     u[:, 1] = IC
-#     u2_jm1 = 0  # preallocate u2_{j-1}
-
-#     if const_stepsize
-#         Δt = tspan[2] - tspan[1]  # assuming a constant time step size
-#         ImdtA_inv = (I - Δt/2 * A) \ I
-#         IpdtA = (I + Δt/2 * A)
-#         for j in 2:Tdim
-#             u2 = u[:, j-1] ⊘ u[:, j-1]
-#             if j == 2 
-#                 u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * Δt)
-#             else
-#                 u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_jm1 * Δt/2)
-#             end
-#             u2_jm1 = u2
-#         end
-#     else
-#         for j in 2:Tdim
-#             Δt = tspan[j] - tspan[j-1]
-#             u2 = u[:, j-1] ⊘ u[:, j-1]
-#             if j == 2 
-#                 u[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * u[:, j-1] + F * u2 * Δt)
-#             else
-#                 u[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_jm1 * Δt/2)
-#             end
-#             u2_jm1 = u2
-#         end
-#     end
-#     return u
-# end
+end # FisherKPP module
