@@ -268,7 +268,7 @@ $(SIGNATURES)
 Update the streaming operator inference with new data. Including standard RLS, fixed regularization, 
 and variable regularization.
 """
-function stream!(stream::StreamingOpInf, X_k::AbstractArray{T}, R_k::AbstractArray{T}; U_k::AbstractArray{T}=[], 
+function stream!(stream::StreamingOpInf, X_k::AbstractArray{T}, R_k::AbstractArray{T}; U_k::AbstractArray{T}=T[], 
                  Q_k::Union{T,AbstractArray{T}}=size(X_k,2)==1 ? 1.0 : 1.0I(size(X_k,2)),
                  γs_k::T=0.0) where T<:Real
     stream.dims[:K] = size(X_k, 2)
@@ -323,11 +323,12 @@ function stream!(stream::StreamingOpInf, X_k::AbstractArray{<:AbstractArray{T}},
     N = length(X_k)
     D_k = nothing # initialize the data matrix
     flag = typeof(Q_k) <: AbstractArray{T} 
+    no_input = isempty(U_k)
     for i in 1:N
         if iszero(Q_k)
-            D_k = stream!(stream, X_k[i], R_k[i]; U_k=isempty(U_k) ? [] : U_k[i], γs_k=γs_k[i])
+            D_k = stream!(stream, X_k[i], R_k[i]; U_k=no_input ? T[] : U_k[i], γs_k=γs_k[i])
         else
-            D_k = stream!(stream, X_k[i], R_k[i]; U_k=isempty(U_k) ? [] : U_k[i], γs_k=γs_k[i], Q_k=flag ? Q_k : Q_k[i])
+            D_k = stream!(stream, X_k[i], R_k[i]; U_k=no_input ? T[] : U_k[i], γs_k=γs_k[i], Q_k=flag ? Q_k : Q_k[i])
         end
     end
     return D_k
