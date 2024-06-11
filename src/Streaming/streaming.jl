@@ -318,16 +318,16 @@ $(SIGNATURES)
 Update the streaming operator inference with new data for multiple batches of data matrices.
 """
 function stream!(stream::StreamingOpInf, X_k::AbstractArray{<:AbstractArray{T}}, R_k::AbstractArray{<:AbstractArray{T}}; 
-                 U_k::AbstractArray{<:AbstractArray{T}}=[[]], γs_k::AbstractArray{T}=zeros(length(X_k)),
+                 U_k::AbstractArray{<:AbstractArray{T}}=Vector{T}[], γs_k::AbstractArray{T}=zeros(length(X_k)),
                  Q_k::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0) where T<:Real
     N = length(X_k)
     D_k = nothing # initialize the data matrix
     flag = typeof(Q_k) <: AbstractArray{T} 
     for i in 1:N
         if iszero(Q_k)
-            D_k = stream!(stream, X_k[i], R_k[i]; U_k=U_k[i], γs_k=γs_k[i])
+            D_k = stream!(stream, X_k[i], R_k[i]; U_k=isempty(U_k) ? [] : U_k[i], γs_k=γs_k[i])
         else
-            D_k = stream!(stream, X_k[i], R_k[i]; U_k=U_k[i], γs_k=γs_k[i], Q_k=flag ? Q_k : Q_k[i])
+            D_k = stream!(stream, X_k[i], R_k[i]; U_k=isempty(U_k) ? [] : U_k[i], γs_k=γs_k[i], Q_k=flag ? Q_k : Q_k[i])
         end
     end
     return D_k

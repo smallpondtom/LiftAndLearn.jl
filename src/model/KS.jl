@@ -40,6 +40,7 @@ where ``u`` is the state variable and ``\\mu`` is the viscosity coefficient.
 - `Tdim::Int64`: temporal dimension
 - `Pdim::Int64`: parameter dimension
 - `type::String`: model type
+- `BC::Symbol` : boundary condition
 - `model_PS::Function`: model using Pseudo-Spectral Method/Fast Fourier Transform
 - `model_PS_ew::Function`: model using Pseudo-Spectral Method/Fast Fourier Transform (element-wise)
 - `model_SG::Function`: model using Spectral-Galerkin Method
@@ -66,6 +67,7 @@ mutable struct ks <: AbstractModel
     Pdim::Int64  # parameter dimension
 
     type::String  # model type
+    BC::Symbol  # boundary condition
 
     model_PS::Function  # model using Pseudo-Spectral Method/Fast Fourier Transform
     model_PS_ew::Function  # model using Pseudo-Spectral Method/Fast Fourier Transform (element-wise)
@@ -95,9 +97,15 @@ Kuramoto-Sivashinsky equation PDE model constructor
 ## Returns
 - `ks`: Kuramoto-Sivashinsky equation PDE model
 """
-function ks(Omega, T, D, nx, Δt, Pdim, type)
+function ks(Omega, T, D, nx, Δt, Pdim, type, BC=:periodic)
     Δx = (Omega[2] - Omega[1]) / nx
-    x = collect(Omega[1]:Δx:Omega[2]-Δx)  # assuming a periodic boundary condition
+    if BC == :periodic
+        x = collect(Omega[1]:Δx:Omega[2]-Δx)  # assuming a periodic boundary condition
+    elseif BC == :dirichlet
+        x = collect(Omega[1]:Δx:Omega[2])[2:end-1]  # assuming a Dirichlet boundary condition
+    else
+        error("Boundary condition must be either periodic or dirichlet")
+    end
     t = collect(T[1]:Δt:T[2])
     k = collect(-nx/2:1.0:nx/2-1)  
 
@@ -110,11 +118,49 @@ function ks(Omega, T, D, nx, Δt, Pdim, type)
     @assert (type == "c" || type == "nc" || type == "ep") "type must be either c, nc, or ep"
 
     ks(
-        Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim, type,
+        Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim, type, BC,
         model_PS, model_PS_ew, model_SG, model_FD, integrate_FD, 
         integrate_PS, integrate_PS_ew, integrate_SG, jacob
     )
 end
+
+
+# function model_FD_dirichlet(model::ks, μ::Float64)
+#     N = model.Xdim
+#     Δx = model.Δx
+
+#     # Create A matrix
+#     ζ = 2/Δx^2 - 6*μ/Δx^4
+#     η = 4*μ/Δx^4 - 1/Δx^2
+#     ϵ = -μ/Δx^4
+
+#     A = spdiagm(
+#         0 => ζ * ones(N), 
+#         1 => η * ones(N - 1), -1 => η * ones(N - 1),
+#         2 => ϵ * ones(N - 2), -2 => ϵ * ones(N - 2)
+#     )
+#     # For the periodicity for the first and final few indices
+#     A[1, end-1:end] = [ϵ, η]
+#     A[2, end] = ϵ
+#     A[end-1, 1] = ϵ
+#     A[end, 1:2] = [η, ϵ]
+    
+#     # Create F matrix
+#     S = Int(N * (N + 1) / 2)
+#     Fval = repeat([1.0, -1.0], outer=N)
+#     row_i = repeat(1:N, inner=2)
+#     seq = Int.([2 + (N + 1) * (x - 1) - x * (x - 1) / 2 for x in 1:(N-1)])
+#     col_i = vcat(seq[1], repeat(seq[2:end-1], inner=2), seq[end])
+#     F = sparse(row_i, col_i, Fval, N, S) / 2 / Δx
+
+#     # For the periodicity for the first and final indices
+#     F[1, 2] = - 1 / 2 / Δx
+#     F[1, N] = 1 / 2 / Δx
+#     F[N, N] = - 1 / 2 / Δx
+#     F[N, end-1] = 1 / 2 / Δx 
+
+#     return A, sparse(F)
+# end
 
 
 """

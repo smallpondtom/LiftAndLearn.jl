@@ -77,7 +77,11 @@ function get_operators!(tmp, op, r, i, required_operators)
 end
 
 function compute_rse(op, Xfull, Ufull, Vr, tspan, IC, solver)
-    X = solver(op..., Ufull, tspan, Vr' * IC)
+    if isempty(Ufull)
+        X = solver(op..., tspan, Vr' * IC)
+    else
+        X = solver(op..., Ufull, tspan, Vr' * IC)
+    end
     return LnL.compStateError(Xfull, X, Vr), X
 end
 
@@ -206,8 +210,12 @@ function analysis_2(Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams,
             # Integrate the streaming inferred model
             tmp = []
             get_operators!(tmp, op_stream, stream.dims[:n], ri, required_operators)
-            Xstream = solver(tmp..., Ufull, model.t, Vr[:,1:ri]' * model.IC)
-            Ystream = op_stream.C[1:1, 1:ri] * Xstream
+            if hasfield(typeof(model), :t)
+                Xstream = solver(tmp..., Ufull, model.t, Vr[:,1:ri]' * model.IC)
+            else
+                Xstream = solver(tmp..., Ufull, model.tspan, Vr[:,1:ri]' * model.IC)
+            end
+            Ystream = op_stream.C[:, 1:ri] * Xstream
 
             # Compute relative state and output errors
             results["rse_stream"][ri][k] = LnL.compStateError(Xfull, Xstream, Vr[:,1:ri])

@@ -52,7 +52,7 @@ options = LnL.LSOpInfOption(
         N=1,
     ),
     data=LnL.DataStructure(
-        Δt=1e-3,
+        Δt=1e-4,
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
@@ -140,6 +140,7 @@ op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=Xdot)
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(
     lin = 1e-7,
+    quad = 1e-7,
     ctrl = 1e-7,
     output = 1e-6
 )
@@ -188,10 +189,36 @@ op_dict = Dict(
     "POD" => op_int,
     "OpInf" => op_inf,
     "TR-OpInf" => op_inf_reg,
-    "TRRLS-Streaming-OpInf" => op_stream
+    "iQRRLS-Streaming-OpInf" => op_stream
 )
 rse, roe = analysis_1(op_dict, fisherkpp, Vrmax, Xref, Uref, Yref, [:A, :B, :F], fisherkpp.integrate_model)
 
 ## Plot
-fig1 = plot_rse(rse, roe, rmax, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "TRRLS-Streaming-OpInf"])
+fig1 = plot_rse(rse, roe, rmax, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "iQRRLS-Streaming-OpInf"])
 display(fig1)
+
+
+##################################################
+## (Analysis 2) Per stream quantities of interest
+##################################################
+r_select = 2:rmax
+analysis_results = analysis_2( # Attention: This will take some time to run
+    Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
+    op_inf_reg, Xref, Vrmax, Uref, Yref, fisherkpp, r_select, options, 
+    [:A, :B, :F], fisherkpp.integrate_model; VR=false, α=γs, β=γo, algo=algo
+)
+
+## Plot
+fig2 = plot_rse_per_stream(analysis_results["rse_stream"], analysis_results["roe_stream"], 
+                           analysis_results["streaming_error"], analysis_results["streaming_error_output"], 
+                           [5,10,15], num_of_streams; ylimits=([1e-5,2e2], [1e-7,1e1]))
+display(fig2)
+##
+fig3 = plot_errorfactor_condition(analysis_results["cond_state_EF"], analysis_results["cond_output_EF"], 
+                                  r_select, num_of_streams, ace_light)
+display(fig3)
+##
+fig4 = plot_streaming_error(analysis_results["streaming_error"], analysis_results["streaming_error_output"], 
+                            analysis_results["true_streaming_error"], analysis_results["true_streaming_error_output"],
+                            r_select, num_of_streams, ace_light)
+display(fig4)

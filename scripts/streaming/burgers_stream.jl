@@ -129,6 +129,7 @@ op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=Xdot)
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(
     lin = 1e-7,
+    quad = 1e-7,
     ctrl = 1e-7,
     output = 1e-6
 )
@@ -158,7 +159,7 @@ num_of_streams = length(Xhat_stream)
 # Initialize the stream
 γs = 1e-7
 γo = 1e-6
-algo=:QRRLS
+algo=:RLS
 stream = LnL.StreamingOpInf(options, rmax, 1, 1; variable_regularize=false, γs_k=γs, γo_k=γo, algorithm=algo)
 
 # Stream all at once
@@ -189,7 +190,7 @@ display(fig1)
 ##################################################
 ## (Analysis 2) Per stream quantities of interest
 ##################################################
-r_select = 1:15
+r_select = 1:rmax
 analysis_results = analysis_2( # Attention: This will take some time to run
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xref, Vrmax, Uref, Yref, burgers, r_select, options, 
