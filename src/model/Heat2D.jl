@@ -49,7 +49,6 @@ mutable struct heat2d <: AbstractModel
     xspan::Vector{Float64}  # spatial grid points (x-axis)
     yspan::Vector{Float64}  # spatial grid points (y-axis)
     tspan::Vector{Float64}  # temporal points
-    param_span::Vector{Float64}  # parameter vector
 
     # Functions
     finite_diff_model::Function
@@ -68,7 +67,7 @@ $(SIGNATURES)
 - `heat2d`: 2D heat equation model
 """
 function heat2d(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_domain::Tuple{Real,Real}, 
-                 Δx::Real, Δt::Real, diffusion_coeffs::Union{Real, Vector{<:Real}}, BC::Symbol)
+                 Δx::Real, Δy::Real, Δt::Real, diffusion_coeffs::Union{Real, Vector{<:Real}}, BC::Symbol)
     # Discritization grid info
     @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
     # x-axis
@@ -88,7 +87,7 @@ function heat2d(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_
     time_dim = length(tspan)
 
     # Initial condition
-    IC = zeros(sum(spatial_dim))
+    IC = zeros(prod(spatial_dim))
 
     # Parameter dimensions or number of parameters 
     param_dim = length(diffusion_coeffs)
@@ -101,24 +100,73 @@ function heat2d(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_
 end
 
 
+function finite_diff_dirichlet_model(model::heat2d, μ::Real)
+    Nx, Ny = model.spatial_dim
+    Δx, Δy = model.Δx, model.Δy
+
+    # A matrix
+    Ax = diagm(0 => (-2)*ones(Nx), 1 => ones(Nx-1), -1 => ones(Nx-1)) * μ / Δx^2
+    Ay = diagm(0 => (-2)*ones(Ny), 1 => ones(Ny-1), -1 => ones(Ny-1)) * μ / Δy^2
+    A = kron(Ay, I(Nx)) + kron(I(Ny), Ax)
+
+    # B matrix (different inputs for each boundary)
+    Bx = [1 0; zeros(Nx-2,2); 0 1] * μ / Δx^2
+    By = [1 0; zeros(Ny-2,2); 0 1] * μ / Δy^2
+    B = kron(By, Bx)
+
+    return A, B
+end
+
+
 """
 $(SIGNATURES)
 
-Generate A and B matrices for the 1D heat equation.
+Generate A and B matrices for the 2D heat equation.
 
 ## Arguments
-- `N::Int64`: number of spatial grid points
-- `μ::Float64`: viscosity coefficients
-- `Δx::Float64`: spatial grid size
+- `model::heat2d`: 2D heat equation model
+- `μ::Real`: diffusion coefficient
 
 ## Returns
 - `A::Matrix{Float64}`: A matrix
 - `B::Matrix{Float64}`: B matrix
 """
-function generateABmatrix(N, μ, Δx)
-    A = diagm(0 => (-2)*ones(N), 1 => ones(N-1), -1 => ones(N-1)) * μ / Δx^2
-    B = [1; zeros(N-2,1); 1] * μ / Δx^2   #! Fixed this to generalize input u
-    return A, B
+function finite_diff_model(model::heat2d, μ::Real)
+    if model.BC == :dirichlet 
+        return finite_diff_dirichlet_model(model, μ)
+    else
+        error("Not implemented")
+    end
 end
+
+
+
+"""
+$(SIGNATURES)
+
+Integrate the 2D heat equation model.
+
+## Arguments
+- `A::Matrix{Float64}`: A matrix
+- `B::Matrix{Float64}`: B matrix
+- `U::Vector{Float64}`: input vector
+- `tdata::Vector{Float64}`: time points
+- `IC::Vector{Float64}`: initial condition
+
+## Returns
+- `state::Matrix{Float64}`: state matrix
+"""
+function integrate_model(A, B, U, tdata, IC)
+    Xdim = length(IC)
+    Tdim = length(tdata)
+    state = Vector{Float64}(undef, Xdim, Tdim)
+    state[:,1] = IC
+    @inbounds for j in 2:Tdim
+        Δt = tdata[j] - tdata[j-1]
+        state[:,j] = (I - Δt * A) \ (state[:,j-1] + B * U[j-1] * Δt)
+    end
+    return state
+end
+
 
 end
