@@ -419,7 +419,7 @@ function integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)
         ImdtA_inv = Matrix(1.0I(Xdim) - Δt/2 * A) \ 1.0I(Xdim) # |> sparse
         IpdtA = (1.0I(Xdim) + Δt/2 * A)
 
-        for j in 2:Tdim
+        @inbounds for j in 2:Tdim
             # u2 = vech(u[:, j-1] * u[:, j-1]')
             u2 = u[:, j-1] ⊘ u[:, j-1]
             if j == 2 && isnothing(u2_lm1)
@@ -430,7 +430,7 @@ function integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)
             u2_lm1 = u2
         end
     else
-        for j in 2:Tdim
+        @inbounds for j in 2:Tdim
             Δt = tdata[j] - tdata[j-1]
             # u2 = vech(u[:, j-1] * u[:, j-1]')
             u2 = u[:, j-1] ⊘ u[:, j-1]
