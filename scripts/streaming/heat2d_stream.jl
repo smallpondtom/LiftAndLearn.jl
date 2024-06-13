@@ -212,7 +212,7 @@ display(fig1)
 r_select = 1:r
 analysis_results = analysis_2(
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
-    op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options, 
+    op_inf_reg, Xfull, Vr, Ufull, Yfull, heat2d, r_select, options, 
     [:A, :B], LnL.backwardEuler; VR=false, α=γs, β=γo, algo=algo
 )
 
