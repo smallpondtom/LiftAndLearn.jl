@@ -178,12 +178,12 @@ op_dict = Dict(
     "POD" => op_int,
     "OpInf" => op_inf,
     "TR-OpInf" => op_inf_reg,
-    "QRRLS-Streaming-OpInf" => op_stream
+    "TR-Streaming-OpInf" => op_stream
 )
 rse, roe = analysis_1(op_dict, burgers, Vrmax, Xref, Uref, Yref, [:A, :B, :F], burgers.semiImplicitEuler)
 
 ## Plot
-fig1 = plot_rse(rse, roe, rmax, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "QRRLS-Streaming-OpInf"])
+fig1 = plot_rse(rse, roe, rmax, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "TR-Streaming-OpInf"])
 display(fig1)
 
 

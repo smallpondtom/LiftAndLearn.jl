@@ -146,9 +146,9 @@ end
 """
     finite_diff_mixed_model(model::fisherkpp, D::Real, r::Real)
 
-Create the matrices A (linear operator) and F (quadratic operator) for the Fisher-KPP model using the 
-mixed boundary condition. If the spatial domain is [0,1], then we assume u(0,t) to be homogeneous dirichlet
-boundary condition and u(1,t) to be Neumann boundary condition of some function h(t).
+Create the matrices A (linear operator), B (input operator), and F (quadratic operator) for the Fisher-KPP 
+model using the mixed boundary condition. If the spatial domain is [0,1], then we assume u(0,t) to be 
+homogeneous dirichlet boundary condition and u(1,t) to be Neumann boundary condition of some function h(t).
 
 ## Arguments
 - `model::fisherkpp`: Fisher-KPP model
@@ -200,8 +200,6 @@ Integrate the Fisher-KPP model using the Crank-Nicholson (linear) Explicit (nonl
 ## Returns
 - `u::AbstractArray{<:Real}`: solution
 """
-# function integrate_model(A::AbstractArray{<:Real}, F::AbstractArray{<:Real}, IC::AbstractArray{<:Real}, 
-#                          tspan::AbstractArray{<:Real}; const_stepsize::Bool=false)
 function integrate_model(A::AbstractArray{<:Real}, F::AbstractArray{<:Real}, tspan::AbstractArray{<:Real}, 
                          IC::AbstractArray{<:Real}; const_stepsize::Bool=false)
     Xdim = length(IC)
@@ -222,6 +220,64 @@ function integrate_model(A::AbstractArray{<:Real}, F::AbstractArray{<:Real}, tsp
             Δt = tspan[j] - tspan[j-1]
             state2 = state[:, j-1] ⊘ state[:, j-1]
             state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + F * state2 * Δt)
+        end
+    end
+    return state
+end
+
+
+"""
+    integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, F::AbstractArray{T}, U::AbstractArray{T}, 
+                    tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false) where T<:Real
+
+Integrate the Fisher-KPP model using the Crank-Nicholson (linear) Adam-Bashforth (nonlinear) method.
+
+## Arguments
+- `A::AbstractArray{T}`: linear operator
+- `B::AbstractArray{T}`: input operator
+- `F::AbstractArray{T}`: quadratic operator
+- `U::AbstractArray{T}`: input
+- `tspan::AbstractArray{T}`: time span
+- `IC::AbstractArray{T}`: initial condition
+- `const_stepsize::Bool=false`: constant time step size
+
+## Returns
+- `state::AbstractArray{T}`: solution
+"""
+function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, F::AbstractArray{T}, U::AbstractArray{T}, 
+                         tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false) where T<:Real
+    Xdim = length(IC)
+    Tdim = length(tspan)
+    state = zeros(Xdim, Tdim)
+    state[:, 1] = IC
+    state2_jm1 = 0  # preallocate state2_{j-1}
+
+    # Make input matrix a tall matrix
+    U = reshape(U, (Tdim - 1, 2))
+
+    if const_stepsize
+        Δt = tspan[2] - tspan[1]  # assuming a constant time step size
+        ImdtA_inv = Matrix(I - Δt/2 * A) \ I
+        IpdtA = (I + Δt/2 * A)
+        for j in 2:Tdim
+            state2 = state[:, j-1] ⊘ state[:, j-1]
+            if j == 2 
+                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + F * state2 * Δt + B * U[j-1,:] * Δt)
+            else
+                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + F * state2 * 3*Δt/2 - F * state2_jm1 * Δt/2 + B * U[j-1,:] * Δt)
+            end
+            state2_jm1 = state2
+        end
+    else
+        for j in 2:Tdim
+            Δt = tspan[j] - tspan[j-1]
+            state2 = state[:, j-1] ⊘ state[:, j-1]
+            if j == 2 
+                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + F * state2 * Δt + B * U[j-1,:] * Δt)
+            else
+                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + F * state2 * 3*Δt/2 - F * state2_jm1 * Δt/2 + B * U[j-1,:] * Δt)
+            end
+            state2_jm1 = state2
         end
     end
     return state
@@ -255,46 +311,5 @@ end
 #     end
 #     return state
 # end
-
-
-function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, F::AbstractArray{T}, U::AbstractArray{T}, 
-                         tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false) where T<:Real
-    Xdim = length(IC)
-    Tdim = length(tspan)
-    u = zeros(Xdim, Tdim)
-    u[:, 1] = IC
-    u2_jm1 = 0  # preallocate u2_{j-1}
-
-    # Make input matrix a tall matrix
-    U = reshape(U, (Tdim - 1, 2))
-
-    if const_stepsize
-        Δt = tspan[2] - tspan[1]  # assuming a constant time step size
-        ImdtA_inv = Matrix(I - Δt/2 * A) \ I
-        IpdtA = (I + Δt/2 * A)
-        for j in 2:Tdim
-            u2 = u[:, j-1] ⊘ u[:, j-1]
-            if j == 2 
-                u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * Δt + B * U[j-1,:] * Δt)
-            else
-                u[:, j] = ImdtA_inv * (IpdtA * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_jm1 * Δt/2 + B * U[j-1,:] * Δt)
-            end
-            u2_jm1 = u2
-        end
-    else
-        for j in 2:Tdim
-            Δt = tspan[j] - tspan[j-1]
-            u2 = u[:, j-1] ⊘ u[:, j-1]
-            if j == 2 
-                u[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * u[:, j-1] + F * u2 * Δt + B * U[j-1,:] * Δt)
-            else
-                u[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * u[:, j-1] + F * u2 * 3*Δt/2 - F * u2_jm1 * Δt/2 + B * U[j-1,:] * Δt)
-            end
-            u2_jm1 = u2
-        end
-    end
-    return u
-end
-
 
 end # FisherKPP module

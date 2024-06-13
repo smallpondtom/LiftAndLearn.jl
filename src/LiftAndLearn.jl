@@ -37,6 +37,8 @@ include("utilities/vech.jl")
 include("utilities/invec.jl")
 export ⊘, vech, invec
 include("utilities/streamify.jl")
+include("utilities/fat2tall.jl")
+include("utilities/tall2fat.jl")
 
 # Operators and tools
 include("operators/operators.jl")
@@ -75,10 +77,12 @@ include("model/Burgers.jl")
 include("model/FHN.jl")
 include("model/KS.jl")
 include("model/FisherKPP.jl")
+include("model/Heat2D.jl")
 using .Heat1D: heat1d
 using .Burgers: burgers
 using .FHN: fhn
 using .KS: ks
 using .FisherKPP: fisherkpp
+using .Heat2D: heat2d
 
 end # module LiftAndLearn

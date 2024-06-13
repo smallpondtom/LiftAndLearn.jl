@@ -86,14 +86,14 @@ function compute_rse(op, Xfull, Ufull, Vr, tspan, IC, solver)
 end
 
 
-function analysis_1(ops, model, V, Xfull, Ufull, Yfull, required_operators, solver)
+function analysis_1(ops, model, V, Xfull, Ufull, Yfull, required_operators, solver; r_select=nothing)
     r = size(V,2)
     rel_state_err = Dict{String, Vector{Float64}}()
     rel_output_err = Dict{String, Vector{Float64}}()
     for (key, op) in ops
         rel_state_err[key] = Vector{Float64}[]
         rel_output_err[key] = Vector{Float64}[]
-        for i = 1:r 
+        for i = (isnothing(r_select) ? (1:r) : r_select)
             Vr = V[:, 1:i]
             tmp = []
             get_operators!(tmp, op, r, i, required_operators)
@@ -106,6 +106,7 @@ function analysis_1(ops, model, V, Xfull, Ufull, Yfull, required_operators, solv
             bar = LnL.compOutputError(Yfull, Y)
             push!(rel_state_err[key], foo)
             push!(rel_output_err[key], bar)
+            @info "($key) r = $i, State Error = $foo, Output Error = $bar"
         end
     end
     return rel_state_err, rel_output_err

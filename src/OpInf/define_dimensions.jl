@@ -4,12 +4,12 @@
 Define the dimensions of the system
 
 ## Arguments
-- `Xhat::Matrix`: projected data matrix
-- `U::Matrix`: input data matrix
-- `Y::VecOrMat`: output data matrix
+- `Xhat::AbstractArray`: projected data matrix
+- `U::AbstractArray`: input data matrix
+- `Y::AbstractArray`: output data matrix
 - `options::AbstractOption`: options for the operator inference set by the user
 """
-function define_dimensions!(Xhat::Matrix, U::Matrix, Y::VecOrMat, options::AbstractOption)
+function define_dimensions!(Xhat::AbstractArray, U::AbstractArray, Y::AbstractArray, options::AbstractOption)
     # Important dimensions
     n, K = size(Xhat)
     m = options.system.has_control ? size(U, 2) : 0  # make sure that the U-matrix is tall

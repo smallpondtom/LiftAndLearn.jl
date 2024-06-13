@@ -213,7 +213,8 @@ end
         U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
         Xdot::AbstractArray=[], IG::operators=operators()) → op::operators
 
-Infer the operators with derivative data given
+Infer the operators with derivative data given. NOTE: Make sure the data is 
+constructed such that the row is the state vector and the column is the time.
 
 ## Arguments
 - `X::AbstractArray`: state data matrix
@@ -230,6 +231,7 @@ Infer the operators with derivative data given
 function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
                  U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
                  Xdot::AbstractArray=[], IG::operators=operators())::operators
+    U = fat2tall(U)
     if isempty(Xdot)
         # Approximate the derivative data with finite difference
         Xdot, idx = dtApprox(X, options)
@@ -256,7 +258,8 @@ end
     opinf(X::AbstractArray, Vn::AbstractArray, full_op::operators, options::AbstractOption;
         U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::operators=operators()) → op::operators
 
-Infer the operators with reprojection method (dispatch)
+Infer the operators with reprojection method (dispatch). NOTE: Make sure the data is
+constructed such that the row is the state vector and the column is the time.
 
 ## Arguments
 - `X::AbstractArray`: state data matrix
@@ -272,6 +275,7 @@ Infer the operators with reprojection method (dispatch)
 """
 function opinf(X::AbstractArray, Vn::AbstractArray, full_op::operators, options::AbstractOption;
                  U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::operators=operators())::operators
+    U = fat2tall(U)
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
     define_dimensions!(Xhat, U, Y, options)

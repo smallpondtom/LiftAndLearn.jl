@@ -5,6 +5,7 @@ module Heat2D
 
 using DocStringExtensions
 using LinearAlgebra
+using SparseArrays
 
 import ..LiftAndLearn: AbstractModel
 
@@ -24,7 +25,7 @@ $(TYPEDEF)
 """
 mutable struct heat2d <: AbstractModel
     # Domains
-    spatial_domain::Tuple{Tuple{Real,Real}, Tuple{Real,Real}}  # spatial domain (x, y)
+    spatial_domain::Tuple{Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}}  # spatial domain (x, y)
     time_domain::Tuple{Real,Real}  # temporal domain
     param_domain::Tuple{Real,Real}  # parameter domain
 
@@ -43,7 +44,7 @@ mutable struct heat2d <: AbstractModel
     IC::Array{Float64}  # initial condition
 
     # Parameters
-    diffusion_coeffs::Union{Real, Vector{<:Real}} # diffusion coefficients
+    diffusion_coeffs::Union{Vector{<:Real},Real} # diffusion coefficients
 
     # Data
     xspan::Vector{Float64}  # spatial grid points (x-axis)
@@ -67,9 +68,10 @@ $(SIGNATURES)
 - `heat2d`: 2D heat equation model
 """
 function heat2d(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_domain::Tuple{Real,Real}, 
-                 Δx::Real, Δy::Real, Δt::Real, diffusion_coeffs::Union{Real, Vector{<:Real}}, BC::Symbol)
+                 Δx::Real, Δy::Real, Δt::Real, diffusion_coeffs::Union{Vector{<:Real},Real}, BC::Tuple{Symbol,Symbol})
     # Discritization grid info
-    @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
+    possible_BC = (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux)
+    @assert all([BC[i] ∈ possible_BC for i in eachindex(BC)]) "Invalid boundary condition"
     # x-axis
     if BC[1] == :periodic
         xspan = collect(spatial_domain[1][1]:Δx:spatial_domain[1][2]-Δx)
@@ -95,8 +97,8 @@ function heat2d(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_
 
     heat2d(spatial_domain, time_domain, param_domain, Δx, Δy, Δt,
            spatial_dim, time_dim, param_dim, BC, IC, diffusion_coeffs,
-           xspan, tspan, diffusion_coeffs,
-           generateABmatrix, integrateFD!)
+           xspan, yspan, tspan, 
+           finite_diff_model, integrate_model)
 end
 
 
@@ -105,14 +107,20 @@ function finite_diff_dirichlet_model(model::heat2d, μ::Real)
     Δx, Δy = model.Δx, model.Δy
 
     # A matrix
-    Ax = diagm(0 => (-2)*ones(Nx), 1 => ones(Nx-1), -1 => ones(Nx-1)) * μ / Δx^2
-    Ay = diagm(0 => (-2)*ones(Ny), 1 => ones(Ny-1), -1 => ones(Ny-1)) * μ / Δy^2
+    Ax = spdiagm(0 => (-2)*ones(Nx), 1 => ones(Nx-1), -1 => ones(Nx-1)) * μ / Δx^2
+    Ay = spdiagm(0 => (-2)*ones(Ny), 1 => ones(Ny-1), -1 => ones(Ny-1)) * μ / Δy^2
     A = kron(Ay, I(Nx)) + kron(I(Ny), Ax)
 
     # B matrix (different inputs for each boundary)
-    Bx = [1 0; zeros(Nx-2,2); 0 1] * μ / Δx^2
-    By = [1 0; zeros(Ny-2,2); 0 1] * μ / Δy^2
-    B = kron(By, Bx)
+    Bx = spzeros(Nx*Ny,2)
+    Bx[1:Ny,1] .= μ / Δx^2
+    Bx[end-Ny+1:end,2] .= μ / Δx^2
+    By = spzeros(Nx*Ny,2)
+    idx = [Ny*(n-1)+1 for n in 1:Nx]
+    By[idx,1] .= μ / Δy^2
+    idx = [Ny*n for n in 1:Nx]
+    By[idx,2] .= μ / Δy^2
+    B = hcat(Bx, By)
 
     return A, B
 end
@@ -132,7 +140,7 @@ Generate A and B matrices for the 2D heat equation.
 - `B::Matrix{Float64}`: B matrix
 """
 function finite_diff_model(model::heat2d, μ::Real)
-    if model.BC == :dirichlet 
+    if all(model.BC .== :dirichlet)
         return finite_diff_dirichlet_model(model, μ)
     else
         error("Not implemented")
@@ -159,14 +167,13 @@ Integrate the 2D heat equation model.
 function integrate_model(A, B, U, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
-    state = Vector{Float64}(undef, Xdim, Tdim)
+    state = Matrix{Float64}(undef, Xdim, Tdim)
     state[:,1] = IC
     @inbounds for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
-        state[:,j] = (I - Δt * A) \ (state[:,j-1] + B * U[j-1] * Δt)
+        state[:,j] = (I - Δt * A) \ (state[:,j-1] + B * U[:,j-1] * Δt)
     end
     return state
 end
-
 
 end

@@ -13,8 +13,8 @@ Inverse vectorization.
 ## Returns
 - the inverse vectorized matrix
 """
-function invec(r::AbstractArray, m::Int, n::Int)::VecOrMat
-    tmp = reshape(1.0I(n), 1, :)
-    return kron(tmp, 1.0I(m)) * kron(1.0I(n), r)
+function invec(r::AbstractArray, m::Int, n::Int)::AbstractArray
+    tmp = sparse(reshape(1.0I(n), 1, :))
+    return kron(tmp, sparse(1.0I,m,m)) * kron(sparse(1.0I,n,n), r)
 end
 

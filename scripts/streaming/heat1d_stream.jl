@@ -35,13 +35,14 @@ include("utilities/plotting.jl")
 ##########################
 ## 1D Heat equation setup
 ##########################
+Nx = 2^7
 heat1d = LnL.heat1d(  # define the model
     [0.0, 1.0], [0.0, 2.0], [0.1, 0.1],
-    2^(-7), 1e-3, 1
+    1/Nx, 1e-3, 1
 )
 foo = zeros(heat1d.Xdim)
-foo[65:end] .= 1
-heat1d.IC = Diagonal(foo) * 0.5 * sin.(2π * heat1d.x)  # change IC
+foo[(Nx÷2+1):end] .= 1
+heat1d.IC = foo .* (0.5 * sin.(2π * heat1d.x))  # change IC
 U = heat1d.Ubc  # boundary condition → control input
 
 # OpInf options
@@ -126,9 +127,9 @@ op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 ##############################
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(
-    lin = 1e-8,
-    ctrl = 1e-8,
-    output = 1e-5
+    lin = 1e-13,
+    ctrl = 1e-13,
+    output = 1e-10
 )
 op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
@@ -154,11 +155,13 @@ R_stream = LnL.streamify((Vr' * Xdot)', streamsize)
 num_of_streams = length(Xhat_stream)
 
 # Initialize the stream
-# γs = 0.0
-# γo = 0.0
-γs = 1e-8
-γo = 1e-5
-algo = :QRRLS
+# TR-Streaming-OpInf
+γs = 1e-10
+γo = 7.6e-9
+# iQR/QR-Streaming-OpInf
+# γs = 1e-13
+# γo = 1e-10
+algo = :RLS
 stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo, algorithm=algo)
 
 # Stream all at once
@@ -177,20 +180,20 @@ op_dict = Dict(
     "POD" => op_int,
     "OpInf" => op_inf,
     "TR-OpInf" => op_inf_reg,
-    "QRRLS-Streaming-OpInf" => op_stream
+    "TR-Streaming-OpInf" => op_stream
     # "Streaming-OpInf" => op_stream
 )
 rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
 
 ## Plot
-fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "QRRLS-Streaming-OpInf"])
+fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "TR-Streaming-OpInf"])
 display(fig1)
 
 
 ##################################################
 ## (Analysis 2) Per stream quantities of interest
 ##################################################
-r_select = 1:15
+r_select = 1:r
 analysis_results = analysis_2(
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options, 

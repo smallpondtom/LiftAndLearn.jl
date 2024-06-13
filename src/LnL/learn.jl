@@ -6,7 +6,9 @@ export opinf
             options::AbstractOption; U::AbstractArray=zeros(1,1), 
             Y::AbstractArray=zeros(1,1), IG::operators=operators()) → op::operators
 
-Infer the operators for Lift And Learn for reprojected data (dispatch)
+Infer the operators for Lift And Learn for reprojected data (dispatch). NOTE: make
+sure that the data is constructed such that the row dimension is the state dimension
+and the column dimension is the time dimension.
 
 ## Arguments
 - `W::AbstractArray`: state data matrix
@@ -24,7 +26,7 @@ Infer the operators for Lift And Learn for reprojected data (dispatch)
 function opinf(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::operators, 
                  options::AbstractOption; U::AbstractArray=zeros(1,1), 
                  Y::AbstractArray=zeros(1,1), IG::operators=operators())::operators
-
+    U = fat2tall(U)
     # Project
     What = Vn' * W
     What_t = W' * Vn

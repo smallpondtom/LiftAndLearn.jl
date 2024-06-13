@@ -19,7 +19,7 @@ const LnL = LiftAndLearn
 
 ###################
 ## Global Settings
-###################
+##################
 CONST_STREAM = true
 SAVEFIG = true
 
@@ -36,12 +36,12 @@ include("utilities/plotting.jl")
 ## 1D Heat equation setup
 ##########################
 Ω = ((0.0, 1.0), (0.0, 1.0))
-Nx = 2^7
-Ny = 2^7
+Nx = 2^6
+Ny = 2^6
 heat2d = LnL.heat2d(
     spatial_domain=Ω, time_domain=(0,2), 
     Δx=(Ω[1][2] + 1/Nx)/Nx, Δy=(Ω[2][2] + 1/Ny)/Ny, Δt=1e-3,
-    diffusion_coeffs=0.1, BC=:dirichlet
+    diffusion_coeffs=0.1, BC=(:dirichlet, :dirichlet)
 )
 xgrid0 = heat2d.xspan' .* ones(heat2d.spatial_dim[1])
 ygrid0 = ones(heat2d.spatial_dim[2])' .* heat2d.yspan
@@ -74,12 +74,12 @@ options = LnL.LSOpInfOption(
 # Construct full model
 μ = heat2d.diffusion_coeffs
 A, B = heat2d.finite_diff_model(heat2d, μ)
-C = ones(1, (Int ∘ prod)(heat2d.spatial_dim)) / heat1d.spatial_dim[1] / heat1d.spatial_dim[2]
+C = ones(1, (Int ∘ prod)(heat2d.spatial_dim)) / heat2d.spatial_dim[1] / heat2d.spatial_dim[2]
 op_heat = LnL.operators(A=A, B=B, C=C)
 
 # Generate the input data
-U = [1, -1, 1, -1]
-U = repeat(U, 1, heat2d.Tdim)
+U = [1.0, 1.0, -1.0, -1.0]
+U = repeat(U, 1, heat2d.time_dim)
 
 # Compute the state snapshot data with backward Euler
 X = heat2d.integrate_model(A, B, U, heat2d.tspan, heat2d.IC)
@@ -100,16 +100,26 @@ Ufull = copy(U)
 ######################
 ## Plot Data to Check
 ######################
+X2d = LnL.invec.(eachcol(X), heat2d.spatial_dim...)
+##
 with_theme(theme_latexfonts()) do
-    fig0 = Figure(fontsize=20, size=(1300,500), backgroundcolor="#FFFFFF")
-    ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="y", zlabel="u(x,t)")
-    hm = heatmap!(heat2d.xspan, heat2d.yspan, LnL.invec(X[:,1], Ny, Nx))
-
-    record(fig, "scripts/streaming/plots/heat2d/temperature.gif", 1:heat2d.time_dim) do i
-        hm[3] = LnL.invec(X[:,i], Ny, Nx) # update data
+    fig = Figure(fontsize=20, size=(1300,500))
+    ax1 = Axis3(fig[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
+    ax2 = Axis(fig[1, 2], xlabel="x", ylabel="y", aspect=DataAspect())
+    colgap!(fig.layout, 0)
+    sf = surface!(ax1, heat2d.xspan, heat2d.yspan, X2d[1])
+    hm = heatmap!(ax2, heat2d.xspan, heat2d.yspan, X2d[1])
+    Colorbar(fig[1, 3], hm)
+    record(fig, "scripts/streaming/plots/heat2d/temperature.mp4", 1:heat2d.time_dim) do i
+        sf[3] = X2d[i]
+        hm[3] = X2d[i]
         autolimits!(ax1) # update limits
+        autolimits!(ax2) # update limits
     end
 end
+##
+X2d = nothing
+GC.gc()
 
 
 #############
@@ -122,11 +132,11 @@ op_int = LnL.pod(op_heat, Vr, options)
 ## Operator Inference
 ######################
 # Obtain derivative data
-Xdot = (X[:, 2:end] - X[:, 1:end-1]) / heat1d.Δt
-idx = 2:heat1d.Tdim
-X = X[:, idx]  # fix the index of states
-U = U[idx, :]  # fix the index of inputs
-Y = Y[:, idx]  # fix the index of outputs
+Xdot = (X[:, 2:end] - X[:, 1:end-1]) / heat2d.Δt
+idx = 2:heat2d.time_dim
+X = X[:, idx]  
+U = U[:, idx]
+Y = Y[:, idx] 
 op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
 
@@ -135,9 +145,9 @@ op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 ##############################
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(
-    lin = 1e-8,
-    ctrl = 1e-8,
-    output = 1e-5
+    lin = 1e-6,
+    ctrl = 1e-6,
+    output = 1e-3
 )
 op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
@@ -157,7 +167,7 @@ end
 # Streamify the data based on the selected streamsizes
 # INFO: Remember to make data matrices a tall matrix except X matrix
 Xhat_stream = LnL.streamify(Vr' * X, streamsize)
-U_stream = LnL.streamify(U, streamsize)
+U_stream = LnL.streamify(U', streamsize)
 Y_stream = LnL.streamify(Y', streamsize)
 R_stream = LnL.streamify((Vr' * Xdot)', streamsize)
 num_of_streams = length(Xhat_stream)
@@ -165,10 +175,10 @@ num_of_streams = length(Xhat_stream)
 # Initialize the stream
 # γs = 0.0
 # γo = 0.0
-γs = 1e-8
-γo = 1e-5
-algo = :QRRLS
-stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo, algorithm=algo)
+γs = 1e-9
+γo = 1e-8
+algo = :iQRRLS
+stream = LnL.StreamingOpInf(options, r, size(U,1), size(Y,1); γs_k=γs, γo_k=γo, algorithm=algo)
 
 # Stream all at once
 stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
@@ -186,20 +196,20 @@ op_dict = Dict(
     "POD" => op_int,
     "OpInf" => op_inf,
     "TR-OpInf" => op_inf_reg,
-    "QRRLS-Streaming-OpInf" => op_stream
+    "iQR-Streaming-OpInf" => op_stream
     # "Streaming-OpInf" => op_stream
 )
-rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
+rse, roe = analysis_1(op_dict, heat2d, Vr, Xfull, Ufull, Yfull, [:A, :B], heat2d.integrate_model)
 
 ## Plot
-fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "QRRLS-Streaming-OpInf"])
+fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "iQR-Streaming-OpInf"])
 display(fig1)
 
 
 ##################################################
 ## (Analysis 2) Per stream quantities of interest
 ##################################################
-r_select = 1:15
+r_select = 1:r
 analysis_results = analysis_2(
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xfull, Vr, Ufull, Yfull, heat1d, r_select, options, 
