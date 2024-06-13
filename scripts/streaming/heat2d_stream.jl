@@ -104,7 +104,7 @@ X2d = LnL.invec.(eachcol(X), heat2d.spatial_dim...)
 ##
 with_theme(theme_latexfonts()) do
     fig = Figure(fontsize=20, size=(1300,500))
-    ax1 = Axis3(fig[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
+    ax1 = Axis3(fig[1, 1], xlabel="x", ylabel="y", zlabel="u(x,t)")
     ax2 = Axis(fig[1, 2], xlabel="x", ylabel="y", aspect=DataAspect())
     colgap!(fig.layout, 0)
     sf = surface!(ax1, heat2d.xspan, heat2d.yspan, X2d[1])
