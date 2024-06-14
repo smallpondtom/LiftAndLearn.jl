@@ -9,7 +9,7 @@ using SparseArrays
 
 import ..LiftAndLearn: AbstractModel, vech, ⊘, operators, elimat, makeCubicOp
 
-export chafeeinfante
+export ChafeeInfanteModel
 
 
 """
@@ -39,7 +39,7 @@ where ``u`` is the state variable, ``D`` is the diffusion coefficient, and ``r``
 - `finite_diff_model::Function`: model using Finite Difference
 - `integrate_model::Function`: integrator using Crank-Nicholson (linear) Explicit (nonlinear) method
 """
-mutable struct chafeeinfante <: AbstractModel
+mutable struct ChafeeInfanteModel <: AbstractModel
     # Domains
     spatial_domain::Tuple{Real,Real}  # spatial domain
     time_domain::Tuple{Real,Real}  # temporal domain
@@ -69,7 +69,7 @@ mutable struct chafeeinfante <: AbstractModel
 end
 
 
-function chafeeinfante(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+function ChafeeInfanteModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
                     diffusion_coeffs::Union{AbstractArray{<:Real},Real}, BC::Symbol=:periodic)
     # Discritization grid info
     @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
@@ -89,7 +89,7 @@ function chafeeinfante(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Rea
     param_dim = length(diffusion_coeffs)
     param_domain = extrema(diffusion_coeffs)
 
-    chafeeinfante(
+    ChafeeInfanteModel(
         spatial_domain, time_domain, param_domain,
         Δx, Δt, xspan, tspan, spatial_dim, time_dim,
         diffusion_coeffs, param_dim, IC, BC,
@@ -104,14 +104,14 @@ end
 Create the matrices A (linear operator) and E (cubic operator) for the Chafee-Infante model.
 
 ## Arguments
-- `model::chafeeinfante`: Chafee-Infante model
+- `model::ChafeeInfanteModel`: Chafee-Infante model
 - `μ::Real`: diffusion coefficient
 """
-function finite_diff_model(model::chafeeinfante, μ::Real)
+function finite_diff_model(model::ChafeeInfanteModel, μ::Real)
     if model.BC == :periodic
-        return finite_diff_periodic_model(model, μ)
+        return finite_diff_periodic_model(model.spatial_dim, model.Δx, μ)
     elseif model.BC == :mixed
-        return finite_diff_mixed_model(model, μ)
+        return finite_diff_mixed_model(model.spatial_dim, model.Δx, μ)
     end
 end
 
@@ -122,17 +122,15 @@ end
 Create the matrices A (linear operator) and E (cubic operator) for the Chafee-Infante model.
 
 ## Arguments
-- `model::chafeeinfante`: Chafee-Infante model
+- `N::Real`: spatial dimension
+- `Δx::Real`: spatial grid size
 - `μ::Real`: diffusion coefficient
 
 ## Returns
 - `A::SparseMatrixCSC{Float64,Int}`: linear operator
 - `E::SparseMatrixCSC{Float64,Int}`: cubic operator
 """
-function finite_diff_periodic_model(model::chafeeinfante, μ::Real)
-    N = model.spatial_dim
-    Δx = model.Δx
-
+function finite_diff_periodic_model(N::Real, Δx::Real, μ::Real)
     # Create A matrix
     A = spdiagm(0 => (μ-2/Δx^2) * ones(N), 1 => (1/Δx^2) * ones(N - 1), -1 => (1/Δx^2) * ones(N - 1))
     A[1, end] = 1 / Δx^2  # periodic boundary condition
@@ -154,16 +152,16 @@ model using the mixed boundary condition. If the spatial domain is [0,1], then w
 homogeneous dirichlet boundary condition and u(1,t) to be Neumann boundary condition of some function h(t).
 
 ## Arguments
+- `N::Real`: spatial dimension
+- `Δx::Real`: spatial grid size
+- `μ::Real`: diffusion coefficient
 
 ## Returns
 - `A::SparseMatrixCSC{Float64,Int}`: linear operator
 - `B::SparseMatrixCSC{Float64,Int}`: input operator
 - `E::SparseMatrixCSC{Float64,Int}`: cubic operator
 """
-function finite_diff_mixed_model(model::chafeeinfante, μ::Real)
-    N = model.spatial_dim
-    Δx = model.Δx
-
+function finite_diff_mixed_model(N::Real, Δx::Real, μ::Real)
     # Create A matrix
     A = spdiagm(0 => (μ-2/Δx^2) * ones(N), 1 => (1/Δx^2) * ones(N - 1), -1 => (1/Δx^2) * ones(N - 1))
     A[end,end] = μ - 1/Δx^2  # influence of Neumann boundary condition

@@ -83,8 +83,8 @@ using .Heat1D: Heat1DModel
 using .Burgers: burgers
 using .FHN: fhn
 using .KS: ks
-using .FisherKPP: fisherkpp
-using .Heat2D: heat2d
-using .ChafeeInfante: chafeeinfante
+using .FisherKPP: FisherKPPModel
+using .Heat2D: Heat2DModel
+using .ChafeeInfante: ChafeeInfanteModel
 
 end # module LiftAndLearn

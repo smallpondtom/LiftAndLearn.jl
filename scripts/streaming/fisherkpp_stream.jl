@@ -36,7 +36,7 @@ include("utilities/plotting.jl")
 ## Fisher-KPP equation setup
 #############################
 Ω = (0.0, 3.0)
-fisherkpp = LnL.fisherkpp(
+fisherkpp = LnL.FisherKPPModel(
     spatial_domain=Ω, time_domain=(0,2), Δx=(Ω[2] + 2^(-6))*2^(-6), Δt=1e-4, 
     diffusion_coeffs=0.2, growth_rates=0.3, BC=:mixed
 )

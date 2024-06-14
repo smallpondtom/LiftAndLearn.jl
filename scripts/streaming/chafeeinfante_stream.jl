@@ -38,7 +38,7 @@ include("utilities/plotting.jl")
 Ω = (0.0, 1.0)
 Nx = 2^6
 dt = 1e-3
-chafeeinfante = LnL.chafeeinfante(
+chafeeinfante = LnL.ChafeeInfanteModel(
     spatial_domain=Ω, time_domain=(0,2), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt, 
     diffusion_coeffs=0.2, BC=:mixed
 )

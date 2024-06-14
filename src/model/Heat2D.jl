@@ -9,7 +9,7 @@ using SparseArrays
 
 import ..LiftAndLearn: AbstractModel
 
-export heat1d
+export Heat2DModel
 
 
 """
@@ -22,8 +22,25 @@ $(TYPEDEF)
 ```
 
 ## Fields
+- `spatial_domain::Tuple{Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}}`: spatial domain (x, y)
+- `time_domain::Tuple{Real,Real}`: temporal domain
+- `param_domain::Tuple{Real,Real}`: parameter domain
+- `Δx::Real`: spatial grid size (x-axis)
+- `Δy::Real`: spatial grid size (y-axis)
+- `Δt::Real`: temporal step size
+- `spatial_dim::Tuple{Int64,Int64}`: spatial dimension x and y
+- `time_dim::Int64`: temporal dimension
+- `param_dim::Int64`: parameter dimension
+- `BC::Tuple{Symbol,Symbol}`: boundary condition
+- `IC::Array{Float64}`: initial condition
+- `diffusion_coeffs::Union{AbstractArray{<:Real},Real}`: diffusion coefficients
+- `xspan::Vector{Float64}`: spatial grid points (x-axis)
+- `yspan::Vector{Float64}`: spatial grid points (y-axis)
+- `tspan::Vector{Float64}`: temporal points
+- `finite_diff_model::Function`: finite difference model
+- `integrate_model::Function`: integrate model
 """
-mutable struct heat2d <: AbstractModel
+mutable struct Heat2DModel <: AbstractModel
     # Domains
     spatial_domain::Tuple{Tuple{<:Real,<:Real}, Tuple{<:Real,<:Real}}  # spatial domain (x, y)
     time_domain::Tuple{Real,Real}  # temporal domain
@@ -57,17 +74,7 @@ mutable struct heat2d <: AbstractModel
 end
 
 
-"""
-$(SIGNATURES)
-
-2 Dimensional Heat Equation Model
-
-## Arguments
-
-## Returns
-- `heat2d`: 2D heat equation model
-"""
-function heat2d(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_domain::Tuple{Real,Real}, 
+function Heat2DModel(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_domain::Tuple{Real,Real}, 
                  Δx::Real, Δy::Real, Δt::Real, diffusion_coeffs::Union{AbstractArray{<:Real},Real}, BC::Tuple{Symbol,Symbol})
     # Discritization grid info
     possible_BC = (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux)
@@ -95,17 +102,14 @@ function heat2d(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_
     param_dim = length(diffusion_coeffs)
     param_domain = extrema(diffusion_coeffs)
 
-    heat2d(spatial_domain, time_domain, param_domain, Δx, Δy, Δt,
+    Heat2DModel(spatial_domain, time_domain, param_domain, Δx, Δy, Δt,
            spatial_dim, time_dim, param_dim, BC, IC, diffusion_coeffs,
            xspan, yspan, tspan, 
            finite_diff_model, integrate_model)
 end
 
 
-function finite_diff_dirichlet_model(model::heat2d, μ::Real)
-    Nx, Ny = model.spatial_dim
-    Δx, Δy = model.Δx, model.Δy
-
+function finite_diff_dirichlet_model(Nx::Real, Ny::Real, Δx::Real, Δy::Real, μ::Real)
     # A matrix
     Ax = spdiagm(0 => (-2)*ones(Nx), 1 => ones(Nx-1), -1 => ones(Nx-1)) * μ / Δx^2
     Ay = spdiagm(0 => (-2)*ones(Ny), 1 => ones(Ny-1), -1 => ones(Ny-1)) * μ / Δy^2
@@ -139,9 +143,9 @@ Generate A and B matrices for the 2D heat equation.
 - `A::Matrix{Float64}`: A matrix
 - `B::Matrix{Float64}`: B matrix
 """
-function finite_diff_model(model::heat2d, μ::Real)
+function finite_diff_model(model::Heat2DModel, μ::Real)
     if all(model.BC .== :dirichlet)
-        return finite_diff_dirichlet_model(model, μ)
+        return finite_diff_dirichlet_model(model.spatial_dim..., model.Δx, model.Δy, μ)
     else
         error("Not implemented")
     end

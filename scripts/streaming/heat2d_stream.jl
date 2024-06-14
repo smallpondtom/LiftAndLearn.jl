@@ -38,7 +38,7 @@ include("utilities/plotting.jl")
 Ω = ((0.0, 1.0), (0.0, 1.0))
 Nx = 2^6
 Ny = 2^6
-heat2d = LnL.heat2d(
+heat2d = LnL.Heat2DModel(
     spatial_domain=Ω, time_domain=(0,2), 
     Δx=(Ω[1][2] + 1/Nx)/Nx, Δy=(Ω[2][2] + 1/Ny)/Ny, Δt=1e-3,
     diffusion_coeffs=0.1, BC=(:dirichlet, :dirichlet)

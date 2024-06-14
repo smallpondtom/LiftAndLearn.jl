@@ -9,7 +9,7 @@ using SparseArrays
 
 import ..LiftAndLearn: AbstractModel, vech, ⊘, operators, elimat
 
-export fisherkpp
+export FishserKPPModel
 
 
 """
@@ -25,8 +25,25 @@ logistic diffusion process in population dynamics. The model is given by the fol
 where ``u`` is the state variable, ``D`` is the diffusion coefficient, and ``r`` is the growth rate.
 
 ## Fields
+- `spatial_domain::Tuple{Real,Real}`: spatial domain
+- `time_domain::Tuple{Real,Real}`: temporal domain
+- `diffusion_coeff_domain::Tuple{Real,Real}`: parameter domain (diffusion coeff)
+- `growth_rate_domain::Tuple{Real,Real}`: parameter domain (growth rate)
+- `Δx::Real`: spatial grid size
+- `Δt::Real`: temporal step size
+- `xspan::Vector{<:Real}`: spatial grid points
+- `tspan::Vector{<:Real}`: temporal points
+- `spatial_dim::Int`: spatial dimension
+- `time_dim::Int`: temporal dimension
+- `diffusion_coeffs::Union{AbstractArray{<:Real},Real}`: diffusion coefficient
+- `growth_rates::Union{AbstractArray{<:Real},Real}`: growth rate
+- `param_dim::Dict{Symbol,<:Int}`: parameter dimension
+- `IC::AbstractArray{<:Real}`: initial condition
+- `BC::Symbol`: boundary condition
+- `finite_diff_model::Function`: model using Finite Difference
+- `integrate_model::Function`: integrator using Crank-Nicholson (linear) Explicit (nonlinear) method
 """
-mutable struct fisherkpp <: AbstractModel
+mutable struct FisherKPPModel <: AbstractModel
     # Domains
     spatial_domain::Tuple{Real,Real}  # spatial domain
     time_domain::Tuple{Real,Real}  # temporal domain
@@ -58,7 +75,7 @@ mutable struct fisherkpp <: AbstractModel
 end
 
 
-function fisherkpp(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+function FisherKPPModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
                     diffusion_coeffs::Union{AbstractArray{<:Real},Real}, growth_rates::Union{AbstractArray{<:Real},Real}, 
                     BC::Symbol=:periodic)
     # Discritization grid info
@@ -80,7 +97,7 @@ function fisherkpp(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Re
     diffusion_coeff_domain = extrema(diffusion_coeffs)
     growth_rate_domain = extrema(growth_rates)
 
-    fisherkpp(
+    FisherKPPModel(
         spatial_domain, time_domain, diffusion_coeff_domain, growth_rate_domain,
         Δx, Δt, xspan, tspan, spatial_dim, time_dim,
         diffusion_coeffs, growth_rates, param_dim, IC, BC,
@@ -96,16 +113,16 @@ Create the matrices A (linear operator) and F (quadratic operator) for the Fishe
 boundary conditions, the matrices are created differently.
 
 ## Arguments
-- `model::fisherkpp`: Fisher-KPP model
+- `model::FisherKPPModel`: Fisher-KPP model
 - `D::Real`: diffusion coefficients
 - `r::Real`: growth rates
 
 """
-function finite_diff_model(model::fisherkpp, D::Real, r::Real)
+function finite_diff_model(model::FisherKPPModel, D::Real, r::Real)
     if model.BC == :periodic
-        return finite_diff_periodic_model(model, D, r)
+        return finite_diff_periodic_model(model.spatial_dim, model.Δx, D, r)
     elseif model.BC == :mixed
-        return finite_diff_mixed_model(model, D, r)
+        return finite_diff_mixed_model(model.spatial_dim, model.Δx, D, r)
     end
 end
 
@@ -116,7 +133,8 @@ end
 Create the matrices A (linear operator) and F (quadratic operator) for the Fisher-KPP model.
 
 ## Arguments
-- `model::fisherkpp`: Fisher-KPP model
+- `N::Real`: spatial dimension
+- `Δx::Real`: spatial grid size
 - `D::Real`: diffusion coefficients
 - `r::Real`: growth rates
 
@@ -124,10 +142,7 @@ Create the matrices A (linear operator) and F (quadratic operator) for the Fishe
 - `A::SparseMatrixCSC{Float64,Int}`: linear operator
 - `F::SparseMatrixCSC{Float64,Int}`: quadratic operator
 """
-function finite_diff_periodic_model(model::fisherkpp, D::Real, r::Real)
-    N = model.spatial_dim
-    Δx = model.Δx
-
+function finite_diff_periodic_model(N::Real, Δx::Real, D::Real, r::Real)
     # Create A matrix
     A = spdiagm(0 => (r-2*D/Δx^2) * ones(N), 1 => (D/Δx^2) * ones(N - 1), -1 => (D/Δx^2) * ones(N - 1))
     A[1, end] = D / Δx^2  # periodic boundary condition
@@ -152,7 +167,8 @@ model using the mixed boundary condition. If the spatial domain is [0,1], then w
 homogeneous dirichlet boundary condition and u(1,t) to be Neumann boundary condition of some function h(t).
 
 ## Arguments
-- `model::fisherkpp`: Fisher-KPP model
+- `N::Real`: spatial dimension
+- `Δx::Real`: spatial grid size
 - `D::Real`: diffusion coefficients
 - `r::Real`: growth rates
 
@@ -161,10 +177,7 @@ homogeneous dirichlet boundary condition and u(1,t) to be Neumann boundary condi
 - `B::SparseMatrixCSC{Float64,Int}`: input operator
 - `F::SparseMatrixCSC{Float64,Int}`: quadratic operator
 """
-function finite_diff_mixed_model(model::fisherkpp, D::Real, r::Real)
-    N = model.spatial_dim
-    Δx = model.Δx
-
+function finite_diff_mixed_model(N::Real, Δx::Real, D::Real, r::Real)
     # Create A matrix
     A = spdiagm(0 => (r-2*D/Δx^2) * ones(N), 1 => (D/Δx^2) * ones(N - 1), -1 => (D/Δx^2) * ones(N - 1))
     A[end,end] = r - D/Δx^2  # influence of Neumann boundary condition
