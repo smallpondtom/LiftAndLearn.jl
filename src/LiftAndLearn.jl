@@ -74,14 +74,14 @@ include("ChaosGizmo/ChaosGizmo.jl")
 # Include the system models
 include("model/Heat1D.jl")
 include("model/Burgers.jl")
-include("model/FHN.jl")
+include("model/FitzHughNagumo.jl")
 include("model/KS.jl")
 include("model/FisherKPP.jl")
 include("model/Heat2D.jl")
 include("model/ChafeeInfante.jl")
 using .Heat1D: Heat1DModel
 using .Burgers: BurgersModel
-using .FHN: fhn
+using .FitzHughNagumo: FitzHughNagumoModel
 using .KS: ks
 using .FisherKPP: FisherKPPModel
 using .Heat2D: Heat2DModel

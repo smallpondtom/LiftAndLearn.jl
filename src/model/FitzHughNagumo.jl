@@ -1,7 +1,7 @@
 """
-    Fitzhugh-Nagumo PDE model
+    FitzHugh-Nagumo PDE model
 """
-module FHN
+module FitzHughNagumo
 
 using DocStringExtensions
 using LinearAlgebra
@@ -9,13 +9,13 @@ using SparseArrays
 
 import ..LiftAndLearn: AbstractModel
 
-export fhn
+export FitzHughNagumoModel
 
 
 """
 $(TYPEDEF)
 
-Fitzhugh-Nagumo PDE model
+FitzHugh-Nagumo PDE model
     
 ```math
 \\begin{aligned}
@@ -32,74 +32,101 @@ g(t) = \\alpha t^3 \\exp(-\\beta t)
 where ``\\alpha`` and ``\\beta`` are the parameters that are going to be varied for training.
 
 ## Fields
-- `Ω::Vector{Float64}`: spatial domain
-- `T::Vector{Float64}`: temporal domain
-- `αD::Vector{Float64}`: alpha parameter domain
-- `βD::Vector{Float64}`: beta parameter domain
-- `Δx::Float64`: spatial grid size
-- `Δt::Float64`: temporal step size
-- `Ubc::Matrix{Float64}`: boundary condition (input)
-- `ICx::Matrix{Float64}`: initial condition for the original states
-- `ICw::Matrix{Float64}`: initial condition for the lifted states
-- `x::Vector{Float64}`: spatial grid points
-- `t::Vector{Float64}`: temporal points
-- `Xdim::Int64`: spatial dimension
-- `Tdim::Int64`: temporal dimension
-- `FOM::Function`: function to generate the full order operators
-- `generateFHNmatrices::Function`: function to generate the full order operators for the intrusive model operators
-
+- `spatial_domain::Tuple{Real,Real}`: spatial domain
+- `time_domain::Tuple{Real,Real}`: temporal domain
+- `alpha_input_param_domain::Tuple{Real,Real}`: parameter domain
+- `beta_input_param_domain::Tuple{Real,Real}`: parameter domain
+- `Δx::Real`: spatial grid size
+- `Δt::Real`: temporal step size
+- `BC::Symbol`: boundary condition
+- `IC::Array{Float64}`: initial condition
+- `IC_lift::Array{Float64}`: initial condition
+- `xspan::Vector{Float64}`: spatial grid points
+- `tspan::Vector{Float64}`: temporal points
+- `alpha_input_params::Union{Real,AbstractArray{<:Real}}`: input parameter vector
+- `beta_input_params::Union{Real,AbstractArray{<:Real}}`: input parameter vector
+- `spatial_dim::Int64`: spatial dimension
+- `time_dim::Int64`: temporal dimension
+- `param_dim::Dict{Symbol,<:Int}`: parameter dimension
+- `full_order_model::Function`: full order model
+- `lifted_finite_diff_model::Function`: lifted finite difference model
 """
-mutable struct fhn <: AbstractModel
-    Ω::Vector{Float64}  # spatial domain 
-    T::Vector{Float64}  # temporal domain
-    αD::Vector{Float64}  # alpha parameter domain
-    βD::Vector{Float64}  # beta parameter domain
-    Δx::Float64  # spatial grid size
-    Δt::Float64  # temporal step size
-    Ubc::Matrix{Float64}  # boundary condition (input)
-    ICx::Matrix{Float64}  # initial condition for the original states
-    ICw::Matrix{Float64}  # initial condition for the lifted states
-    x::Vector{Float64}  # spatial grid points
-    t::Vector{Float64}  # temporal points
-    Xdim::Int64  # spatial dimension
-    Tdim::Int64  # temporal dimension
-    
-    FOM::Function
-    generateFHNmatrices::Function
+mutable struct FitzHughNagumoModel <: AbstractModel
+    # Domains
+    spatial_domain::Tuple{Real,Real}  # spatial domain
+    time_domain::Tuple{Real,Real}  # temporal domain
+    alpha_input_param_domain::Tuple{Real,Real}  # parameter domain
+    beta_input_param_domain::Tuple{Real,Real}  # parameter domain
+
+    # Discritization grid
+    Δx::Real  # spatial grid size
+    Δt::Real  # temporal step size
+
+    # Boundary condition
+    BC::Symbol  # boundary condition
+
+    # Initial conditino
+    IC::Array{Float64}  # initial condition
+    IC_lift::Array{Float64}  # initial condition
+
+    # grid points
+    xspan::Vector{Float64}  # spatial grid points
+    tspan::Vector{Float64}  # temporal points
+    alpha_input_params::Union{Real,AbstractArray{<:Real}}  # input parameter vector
+    beta_input_params::Union{Real,AbstractArray{<:Real}}  # input parameter vector
+
+    # Dimensions
+    spatial_dim::Int64  # spatial dimension
+    time_dim::Int64  # temporal dimension
+    param_dim::Dict{Symbol,<:Int}  # parameter dimension
+
+    full_order_model::Function
+    lifted_finite_diff_model::Function
 end
 
 
 """
-    fhn(Ω, T, αD, βD, Δx, Δt) → fhn
+    FitzHughNagumoModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+                    alpha_input_params::Union{AbstractArray{<:Real},Real}, beta_input_params::Union{AbstractArray{<:Real},Real}, 
+                    BC::Symbol=:neumann) → FitzHughNagumoModel
 
-Fitzhugh-Nagumo PDE model
-
-## Arguments
-- `Ω::Vector{Float64}`: spatial domain
-- `T::Vector{Float64}`: temporal domain
-- `αD::Vector{Float64}`: alpha parameter domain
-- `βD::Vector{Float64}`: beta parameter domain
-- `Δx::Float64`: spatial grid size
-- `Δt::Float64`: temporal step size
-
-## Returns
-- `fhn`: Fitzhugh-Nagumo PDE model
+Constructor FitzHugh-Nagumo PDE model
 """
-function fhn(Ω, T, αD, βD, Δx, Δt)
-    x = (Ω[1]:Δx:Ω[2]-Δx)  # do not include final boundary conditions
-    t = T[1]:Δt:T[2]
-    Xdim = length(x)
-    Tdim = length(t)
-    Ubc = ones(Tdim, 1)
-    ICx = zeros(Xdim*2, 1)
-    ICw = zeros(Xdim*3, 1)
+function FitzHughNagumoModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+                    alpha_input_params::Union{AbstractArray{<:Real},Real}, beta_input_params::Union{AbstractArray{<:Real},Real}, 
+                    BC::Symbol=:neumann)
+    @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
+    if BC == :periodic
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2]-Δx)
+    elseif BC ∈ (:dirichlet, :neumann, :mixed, :robin, :cauchy) 
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2])[2:end-1]
+    end
+    tspan = collect(time_domain[1]:Δt:time_domain[2])
+    spatial_dim = length(xspan)
+    time_dim = length(tspan)
 
-    fhn(Ω, T, αD, βD, Δx, Δt, Ubc, ICx, ICw, x, t, Xdim, Tdim, FOM, generateFHNmatrices)
+    # Initial condition
+    IC = zeros(spatial_dim*2)
+    IC_lift = zeros(spatial_dim*3)
+
+    # Parameter dimensions or number of parameters 
+    param_dim = Dict(:alpha => length(alpha_input_params), :beta => length(beta_input_params))
+    alpha_input_param_domain = extrema(alpha_input_params)
+    beta_input_param_domain = extrema(beta_input_params)
+
+    FitzHughNagumoModel(
+        spatial_domain, time_domain, 
+        alpha_input_param_domain, beta_input_param_domain,
+        Δx, Δt, BC, IC, IC_lift, 
+        xspan, tspan, alpha_input_params, beta_input_params,
+        spatial_dim, time_dim, param_dim,
+        full_order_model, lifted_finite_diff_model
+    )
 end
 
 
 """
-    FOM(k, l) → A, B, C, K, f
+    full_order_model(k, l) → A, B, C, K, f
 
 Create the full order operators with the nonlinear operator expressed as f(x). 
 
@@ -114,7 +141,7 @@ Create the full order operators with the nonlinear operator expressed as f(x).
 - `K::SparseMatrixCSC{Float64,Int64}`: K matrix
 - `f::Function`: nonlinear operator
 """
-function FOM(k, l)
+function full_order_model(k, l)
     h = l / (k - 1)
     Alift = spzeros(3 * k, 3 * k)
     Blift = spzeros(3 * k, 2)
@@ -195,7 +222,7 @@ end
 
 
 """
-    generateFHNmatrices(k, l) → A, B, C, H, N, K
+    lifted_finite_diff_model(k, l) → A, B, C, H, N, K
 
 Generate the full order operators used for the intrusive model operators
 
@@ -212,7 +239,7 @@ Generate the full order operators used for the intrusive model operators
 - `K::SparseMatrixCSC{Float64,Int64}`: K matrix
 
 """
-function generateFHNmatrices(k, l)
+function lifted_finite_diff_model(k, l)
     h = l / (k - 1)
     E = sparse(1.0I, 3 * k, 3 * k)
     A = spzeros(3 * k, 3 * k)
