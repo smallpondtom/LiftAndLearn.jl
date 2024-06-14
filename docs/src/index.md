@@ -42,7 +42,7 @@ Features included in this package are the following:
 If you wish to give this package a try see our [Jupyter Notebook examples](https://github.com/smallpondtom/LiftAndLearn.jl/tree/main/examples), where you will find a variety of examples:
 - 1-dimensional heat equation
 - Viscous Burgers' equation
-- Fitzhugh-Nagumo equation
+- FitzHugh-Nagumo equation
 - Kuramoto-Sivashinksy equation (chaotic system)
 
 If you prefer running scripts rather then notebooks, then see the [example scripts](https://github.com/smallpondtom/LiftAndLearn.jl/tree/main/scripts).
