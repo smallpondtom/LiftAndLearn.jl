@@ -72,7 +72,7 @@ options = LnL.LSOpInfOption(
 μ = heat1d.diffusion_coeffs
 A, B = heat1d.finite_diff_model(heat1d, μ)
 C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
-op_heat = LnL.operators(A=A, B=B, C=C)
+op_heat = LnL.Operators(A=A, B=B, C=C)
 
 # Compute the state snapshot data with backward Euler
 X = LnL.backwardEuler(A, B, U, heat1d.tspan, heat1d.IC)

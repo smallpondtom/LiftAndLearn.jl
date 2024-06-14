@@ -69,7 +69,7 @@ end
 """
 $(SIGNATURES)
 
-1 Dimensional Heat Equation Model
+Constructor 1 Dimensional Heat Equation Model
 
 ## Arguments
 - `spatial_domain::Tuple{Real,Real}`: spatial domain
@@ -80,7 +80,7 @@ $(SIGNATURES)
 - `BC::Symbol=:dirichlet`: boundary condition
 
 ## Returns
-- `heat1d`: 1D heat equation model
+- `Heat1DModel`: 1D heat equation model
 """
 function Heat1DModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
                  diffusion_coeffs::Union{Real,AbstractArray{<:Real}}, BC::Symbol=:dirichlet)
@@ -116,7 +116,7 @@ $(SIGNATURES)
 Finite Difference Model for 1D Heat Equation
 
 ## Arguments
-- `model::heat1d`: 1D heat equation model
+- `model::Heat1DModel`: 1D heat equation model
 - `μ::Real`: diffusion coefficient
 
 ## Returns

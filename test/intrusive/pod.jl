@@ -18,7 +18,7 @@ const LnL = LiftAndLearn
     H = round.(rand(n, n^2), digits=2)
     F = LnL.H2F(H)
     N = round.(rand(n, n), digits=2)
-    op = LnL.operators(A=A, B=B, C=C, K=K, F=F, H=H, N=N)
+    op = LnL.Operators(A=A, B=B, C=C, K=K, F=F, H=H, N=N)
 
     Vr = round.(rand(n, r), digits=2)
     Ahat = Vr' * A * Vr
@@ -28,7 +28,7 @@ const LnL = LiftAndLearn
     Hhat = Vr' * H * kron(Vr, Vr)
     Fhat = Vr' * F * LnL.elimat(n) * kron(Vr, Vr) * LnL.dupmat(r)
     Nhat = Vr' * N * Vr
-    op_naive = LnL.operators(A=Ahat, B=Bhat, C=Chat, K=Khat, F=Fhat, H=Hhat, N=Nhat)
+    op_naive = LnL.Operators(A=Ahat, B=Bhat, C=Chat, K=Khat, F=Fhat, H=Hhat, N=Nhat)
 
     system = LnL.SystemStructure(
         is_lin=true, 
@@ -66,7 +66,7 @@ end
     H = round.(rand(n, n^2), digits=2)
     F = LnL.H2F(H)
     N = round.(rand(n, n, p), digits=2)
-    op = LnL.operators(A=A, B=B, C=C, K=K, F=F, H=H, N=N)
+    op = LnL.Operators(A=A, B=B, C=C, K=K, F=F, H=H, N=N)
 
     Vr = round.(rand(n, r), digits=2)
     Ahat = Vr' * A * Vr
@@ -79,7 +79,7 @@ end
     for i in 1:p
         Nhat[:, :, i] = Vr' * N[:, :, i] * Vr
     end
-    op_naive = LnL.operators(A=Ahat, B=Bhat, C=Chat, K=Khat, F=Fhat, H=Hhat, N=Nhat)
+    op_naive = LnL.Operators(A=Ahat, B=Bhat, C=Chat, K=Khat, F=Fhat, H=Hhat, N=Nhat)
 
     system = LnL.SystemStructure(
         is_lin=true, 

@@ -71,7 +71,7 @@ u0 = (a,b) -> a * cos.((2*π*kse.x)/L) .+ b * cos.((4*π*kse.x)/L)  # initial co
 ##########################
 A, F = kse.model_FD(kse, kse.μs[1])
 C = ones(1, kse.Xdim) / kse.Xdim
-op_kse = LnL.operators(A=A, C=C, F=F)
+op_kse = LnL.Operators(A=A, C=C, F=F)
 
 # Initial condition parameters
 a = [0.8, 1.0, 1.2]

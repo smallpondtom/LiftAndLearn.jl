@@ -65,7 +65,7 @@ DS = options.data.DS
 ## Get the full-order model operators for intrusive model
 ##########################################################
 tmp = fhn.generateFHNmatrices(gp, fhn.Ω[2])
-fomLinOps = LnL.operators(
+fomLinOps = LnL.Operators(
     A=tmp[1],
     B=tmp[2][:, :],  # Make sure its matrix
     C=tmp[3][:, :],
@@ -79,7 +79,7 @@ fomLinOps = LnL.operators(
 
 # Generic function for FOM
 tmp = fhn.FOM(gp, fhn.Ω[2])  # much efficient to calculate for FOM
-fomOps = LnL.operators(
+fomOps = LnL.Operators(
     A=tmp[1],
     B=tmp[2][:, :],  # Make sure its a matrix
     C=tmp[3][:, :],

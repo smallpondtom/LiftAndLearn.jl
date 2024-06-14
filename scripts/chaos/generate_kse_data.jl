@@ -18,7 +18,7 @@ function generate_kse_data(KSE, u0, ic_a, ic_b, num_ic_params, DS, PRUNE_DATA, p
 
         # Generate the FOM system matrices (ONLY DEPENDS ON μ)
         A, F = KSE.model_FD(KSE, μ)
-        op_fom_tr[i] = LnL.operators(A=A, F=F)
+        op_fom_tr[i] = LnL.Operators(A=A, F=F)
 
         # Store the training data 
         Xall = Vector{Matrix{Float64}}(undef, num_ic_params)

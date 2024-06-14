@@ -7,7 +7,7 @@ using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
-import ..LiftAndLearn: AbstractModel, vech, ⊘, operators, elimat, makeCubicOp
+import ..LiftAndLearn: AbstractModel, ⊘, makeCubicOp
 
 export ChafeeInfanteModel
 

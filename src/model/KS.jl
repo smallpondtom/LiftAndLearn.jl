@@ -8,7 +8,7 @@ using FFTW
 using LinearAlgebra
 using SparseArrays
 
-import ..LiftAndLearn: AbstractModel, vech, ⊘, operators, elimat
+import ..LiftAndLearn: AbstractModel, vech, ⊘, Operators, elimat
 
 export ks
 
@@ -454,7 +454,7 @@ This is a dispatch function for `integrate_FD(A, F, tdata, IC; const_stepsize=tr
 Using the operator struct `ops` instead of `A` and `F`.
 
 ## Arguments
-- `ops`: operators
+- `ops`: Operators
 - `tdata`: temporal points
 - `IC`: initial condition
 - `params`: keyword arguments
@@ -676,7 +676,7 @@ Generate Jacobian matrix
 ## Returns
 - `J`: Jacobian matrix
 """
-function jacob(ops::operators, x::AbstractVector{T}) where {T}
+function jacob(ops::Operators, x::AbstractVector{T}) where {T}
     n = length(x)
     # return ops.A + ops.H * kron(1.0I(n), x) + ops.H * kron(x, 1.0I(n))
     return ops.A + ops.F * elimat(n) * ( kron(1.0I(n), x) + kron(x, 1.0I(n)) )

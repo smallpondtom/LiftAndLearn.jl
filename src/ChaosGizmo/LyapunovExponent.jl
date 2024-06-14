@@ -75,14 +75,14 @@ end
 
 
 """
-    lyapunovExponent(ops::operators, integrator::Function, ic::AbstractArray, 
+    lyapunovExponent(ops::Operators, integrator::Function, ic::AbstractArray, 
             options::LE_options, params...) → λ::Vector or (λ::Vector, λ_all::Matrix)
 
 Compute the Lyapunov exponents of a dynamical system using the algorirhtm in [^edson2019] which
 uses the algorithm from [^benettin1980] and [^shimada1979] to compute them.
 
 ## Arguments
-- `ops::operators`: operators for the full model
+- `ops::Operators`: operators for the full model
 - `integrator::Function`: integrator for the model
 - `ic::AbstractArray`: initial condition
 - `options::LE_options`: options for the algorithm
@@ -100,7 +100,7 @@ solution at the final time. And the integrator can have additional parameters as
 Example integrator function for the Lorenz system using the 4th order Runge-Kutta method:
 
 ```julia
-function lorenz_integrator(ops::LnL.operators, tspan::AbstractArray, IC::Array; params...)
+function lorenz_integrator(ops::LnL.Operators, tspan::AbstractArray, IC::Array; params...)
     K = length(tspan)
     N = size(IC,1)
     f = let A = ops.A, H = ops.H
@@ -136,7 +136,7 @@ Dissipative Dynamical Systems,” Progress of Theoretical Physics,
 vol. 61, no. 6, pp. 1605–1616, Jun. 1979, doi: 10.1143/PTP.61.1605.
 """
 function lyapunovExponent(
-    ops::operators,                 # operators for the full model
+    ops::Operators,                 # operators for the full model
     integrator::Function,           # integrator for the model
     ic::AbstractArray,              # initial condition
     options::LE_options;            # options for the algorithm
@@ -210,7 +210,7 @@ end
 
 
 """
-    lyapunovExponent(ops::operators, integrator::Function, Vr::AbstractArray, 
+    lyapunovExponent(ops::Operators, integrator::Function, Vr::AbstractArray, 
         ic::AbstractArray, options::LE_options, params...) → λ::Vector or (λ::Vector, λ_all::Matrix)
 
 Compute the Lyapunov exponents of a dynamical system using the algorirhtm in [^edson2019] for the reduced model. This
@@ -218,7 +218,7 @@ is a dispatched function for the case when the reduced model is used.
 
 ## Arguments
 - `model::AbstractModel`: the dynamical model
-- `ops::operators`: operators for the reduced model
+- `ops::Operators`: operators for the reduced model
 - `integrator::Function`: integrator for the model
 - `Vr::AbstractArray`: basis for the reduced model
 - `ic::AbstractArray`: initial condition
@@ -235,7 +235,7 @@ The integrator function must be in the form of `integrator(ops, tspan, ic)` wher
 solution at the final time. And the integrator can have additional parameters as keyword arguments `params...`.
 """
 function lyapunovExponent(
-    ops::operators,          # operators for the reduced model
+    ops::Operators,          # operators for the reduced model
     integrator::Function,    # integrator for the model
     Vr::AbstractArray,       # basis for the reduced model
     ic::AbstractArray,       # initial condition
@@ -261,7 +261,7 @@ function lyapunovExponent(
         A = ops.A[1:ro, 1:ro]
         F = extractF(ops.F, ro)
         H = extractH(ops.H, ro)
-        ops_ = operators(A=A, F=F, H=H)
+        ops_ = Operators(A=A, F=F, H=H)
     else
         ops_ = deepcopy(ops)
     end
@@ -352,14 +352,14 @@ end
 
 
 """
-    lyapunovExponentJacobian(ops::operators, integrator::Function, jacobian::Function, 
+    lyapunovExponentJacobian(ops::Operators, integrator::Function, jacobian::Function, 
         ic::AbstractArray, options::LE_options, params...) → λ::Vector or (λ::Vector, λ_all::Matrix)
 
 Compute the Lyapunov exponents of the full order dynamical system using the Jacobian of the system. 
 Refer to [References](#References) for more details.
 
 ## Arguments
-- `ops::operators`: operators for the full/reduced model
+- `ops::Operators`: operators for the full/reduced model
 - `integrator::Function`: integrator for the full/reduced model
 - `jacobian::Function`: Jacobian of the system
 - `ic::AbstractArray`: initial condition
@@ -399,7 +399,7 @@ end
 - P. V. Kuptsov and U. Parlitz, “Theory and computation of covariant Lyapunov vectors,” arXiv, 2011, doi: 10.48550/ARXIV.1105.5228.
 """
 function lyapunovExponentJacobian(
-    ops::operators,          # operators for the full/reduced model
+    ops::Operators,          # operators for the full/reduced model
     integrator::Function,    # integrator for the full/reduced model
     jacobian::Function,      # Jacobian of the system
     ic::AbstractArray,       # initial condition
@@ -474,14 +474,14 @@ end
 
 
 """
-    lyapunovExponentJacobian(ops::operators, integrator::Function, jacobian::Function, Vr::AbstractArray, 
+    lyapunovExponentJacobian(ops::Operators, integrator::Function, jacobian::Function, Vr::AbstractArray, 
         ic::AbstractArray, options::LE_options, params...) → λ::Vector or (λ::Vector, λ_all::Matrix)
 
 Compute the Lyapunov exponents of a reduced order dynamical system using the Jacobian of the system. 
 Refer to [References](#References) for more details.
 
 ## Arguments
-- `ops::operators`: operators for the full/reduced model
+- `ops::Operators`: operators for the full/reduced model
 - `integrator::Function`: integrator for the full/reduced model
 - `jacobian::Function`: Jacobian of the system
 - `Vr::AbstractArray`: basis for the reduced model
@@ -522,7 +522,7 @@ end
 - P. V. Kuptsov and U. Parlitz, “Theory and computation of covariant Lyapunov vectors,” arXiv, 2011, doi: 10.48550/ARXIV.1105.5228.
 """
 function lyapunovExponentJacobian(
-    ops::operators,      # operators for the full/reduced model
+    ops::Operators,      # operators for the full/reduced model
     integrator::Function,    # integrator for the full/reduced model
     jacobian::Function,      # Jacobian of the system
     Vr::AbstractArray,       # basis for the reduced model
@@ -539,7 +539,7 @@ function lyapunovExponentJacobian(
         A = ops.A[1:ro, 1:ro]
         F = extractF(ops.F, ro)
         H = extractH(ops.H, ro)
-        ops_ = operators(A=A, F=F, H=H)
+        ops_ = Operators(A=A, F=F, H=H)
     else
         ops_ = deepcopy(ops)
     end

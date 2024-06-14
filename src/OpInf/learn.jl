@@ -151,7 +151,7 @@ end
 """
     run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
         Xhat_t::AbstractArray, dims::Dict, options::AbstractOption,
-        IG::operators=operators()) → op::operators
+        IG::Operators=Operators()) → op::Operators
 
 Run the optimizer of choice.
 
@@ -161,14 +161,14 @@ Run the optimizer of choice.
 - `Y::AbstractArray`: output data matrix
 - `Xhat_t::AbstractArray`: projected data matrix (transposed)
 - `options::AbstractOption`: options for the operator inference set by the user
-- `IG::operators`: initial guesses for optimization
+- `IG::Operators`: initial guesses for optimization
 
 ## Returns
-- `op::operators`: All learned operators 
+- `op::Operators`: All learned operators 
 """
 function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
     Xhat_t::AbstractArray, options::AbstractOption,
-    IG::operators=operators())
+    IG::Operators=Operators())
 
     if options.method == "LS"
         Ahat, Bhat, Chat, Fhat, Hhat, Ehat, Ghat, Nhat, Khat = LS_solve(D, Rt, Y, Xhat_t, options)
@@ -201,7 +201,7 @@ function run_optimizer(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
         error("Incorrect optimization options.")
     end
     
-    op = operators(
+    op = Operators(
         A=Ahat, B=Bhat, C=Chat, F=Fhat, H=Hhat, 
         E=Ehat, G=Ghat, N=Nhat, K=Khat, Q=Qhat,
     )
@@ -212,7 +212,7 @@ end
 """
     opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
         U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
-        Xdot::AbstractArray=[], IG::operators=operators()) → op::operators
+        Xdot::AbstractArray=[], IG::Operators=Operators()) → op::Operators
 
 Infer the operators with derivative data given. NOTE: Make sure the data is 
 constructed such that the row is the state vector and the column is the time.
@@ -224,14 +224,14 @@ constructed such that the row is the state vector and the column is the time.
 - `U::AbstractArray`: input data matrix
 - `Y::AbstractArray`: output data matix
 - `Xdot::AbstractArray`: derivative data matrix
-- `IG::operators`: initial guesses for optimization
+- `IG::Operators`: initial guesses for optimization
 
 ## Returns
-- `op::operators`: inferred operators
+- `op::Operators`: inferred operators
 """
 function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
                  U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
-                 Xdot::AbstractArray=[], IG::operators=operators())::operators
+                 Xdot::AbstractArray=[], IG::Operators=Operators())::Operators
     U = fat2tall(U)
     if isempty(Xdot)
         # Approximate the derivative data with finite difference
@@ -256,8 +256,8 @@ end
 
 
 """
-    opinf(X::AbstractArray, Vn::AbstractArray, full_op::operators, options::AbstractOption;
-        U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::operators=operators()) → op::operators
+    opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options::AbstractOption;
+        U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::Operators=Operators()) → op::Operators
 
 Infer the operators with reprojection method (dispatch). NOTE: Make sure the data is
 constructed such that the row is the state vector and the column is the time.
@@ -265,17 +265,17 @@ constructed such that the row is the state vector and the column is the time.
 ## Arguments
 - `X::AbstractArray`: state data matrix
 - `Vn::AbstractArray`: POD basis
-- `full_op::operators`: full order model operators
+- `full_op::Operators`: full order model operators
 - `options::AbstractOption`: options for the operator inference defined by the user
 - `U::AbstractArray`: input data matrix
 - `Y::AbstractArray`: output data matix
-- `IG::operators`: initial guesses for optimization
+- `IG::Operators`: initial guesses for optimization
 
 ## Returns
-- `op::operators`: inferred operators
+- `op::Operators`: inferred operators
 """
-function opinf(X::AbstractArray, Vn::AbstractArray, full_op::operators, options::AbstractOption;
-                 U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::operators=operators())::operators
+function opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options::AbstractOption;
+                 U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::Operators=Operators())::Operators
     U = fat2tall(U)
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
@@ -291,7 +291,7 @@ end
 
 """
     reproject(Xhat::AbstractArray, V::AbstractArray, U::AbstractArray,
-        op::operators, options::AbstractOption) → Rhat::AbstractArray
+        op::Operators, options::AbstractOption) → Rhat::AbstractArray
 
 Reprojecting the data to minimize the error affected by the missing orders of the POD basis
 
@@ -299,14 +299,14 @@ Reprojecting the data to minimize the error affected by the missing orders of th
 - `Xhat::AbstractArray`: state data matrix projected onto the basis
 - `V::AbstractArray`: POD basis
 - `U::AbstractArray`: input data matrix
-- `op::operators`: full order model operators
+- `op::Operators`: full order model operators
 - `options::AbstractOption`: options for the operator inference defined by the user
 
 ## Return
 - `Rhat::AbstractArray`: R matrix (transposed) for the regression problem
 """
 function reproject(Xhat::AbstractArray, V::AbstractArray, U::AbstractArray,
-    op::operators, options::AbstractOption)::AbstractArray
+    op::Operators, options::AbstractOption)::AbstractArray
     
     # Just a simple error detection
     if options.system.is_quad && options.optim.which_quad_term=="F"

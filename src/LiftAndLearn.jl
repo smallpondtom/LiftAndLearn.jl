@@ -80,7 +80,7 @@ include("model/FisherKPP.jl")
 include("model/Heat2D.jl")
 include("model/ChafeeInfante.jl")
 using .Heat1D: Heat1DModel
-using .Burgers: burgers
+using .Burgers: BurgersModel
 using .FHN: fhn
 using .KS: ks
 using .FisherKPP: FisherKPPModel

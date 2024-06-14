@@ -7,9 +7,11 @@ const LnL = LiftAndLearn
 
 @testset "Burgers standard NC-OpInf" begin
     # First order Burger's equation setup
-    burger = LnL.burgers(
-        [0.0, 1.0], [0.0, 1.0], [0.1, 1.0],
-        2^(-7), 1e-4, 2, "dirichlet"
+    Ω = (0.0, 1.0)
+    Nx = 2^7; dt = 1e-4
+    burger = LnL.BurgersModel(
+        spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
+        diffusion_coeffs=range(0.1, 1.0, length=2), BC=:dirichlet,
     )
 
     num_inputs = 3
@@ -36,7 +38,7 @@ const LnL = LiftAndLearn
         ),
     )
 
-    Utest = ones(burger.Tdim - 1, 1);  # Reference input/boundary condition for OpInf testing 
+    Utest = ones(burger.time_dim - 1, 1);  # Reference input/boundary condition for OpInf testing 
 
     # Error Values 
     k = 3
@@ -44,23 +46,23 @@ const LnL = LiftAndLearn
     # Downsampling rate
     DS = options.data.DS
 
-    for i in 1:length(burger.μs)
-        μ = burger.μs[i]
+    for i in 1:length(burger.diffusion_coeffs)
+        μ = burger.diffusion_coeffs[i]
 
         ## Create testing data
-        A, B, F = burger.generateABFmatrix(burger, μ)
-        C = ones(1, burger.Xdim) / burger.Xdim
-        Xtest = LnL.semiImplicitEuler(A, B, F, Utest, burger.t, burger.IC)
+        A, B, F = burger.finite_diff_model(burger, μ)
+        C = ones(1, burger.spatial_dim) / burger.spatial_dim
+        Xtest = LnL.semiImplicitEuler(A, B, F, Utest, burger.tspan, burger.IC)
         Ytest = C * Xtest
 
-        op_burger = LnL.operators(A=A, B=B, C=C, F=F)
+        op_burger = LnL.Operators(A=A, B=B, C=C, F=F)
 
         ## training data for inferred dynamical models
-        Urand = rand(burger.Tdim - 1, num_inputs)
+        Urand = rand(burger.time_dim - 1, num_inputs)
         Xall = Vector{Matrix{Float64}}(undef, num_inputs)
         Xdotall = Vector{Matrix{Float64}}(undef, num_inputs)
         for j in 1:num_inputs
-            states = burger.semiImplicitEuler(A, B, F, Urand[:, j], burger.t, burger.IC)
+            states = burger.integrate_model(A, B, F, Urand[:, j], burger.tspan, burger.IC)
             tmp = states[:, 2:end]
             Xall[j] = tmp[:, 1:DS:end]  # downsample data
             tmp = (states[:, 2:end] - states[:, 1:end-1]) / burger.Δt
@@ -91,12 +93,12 @@ const LnL = LiftAndLearn
             
             # Integrate the intrusive model
             Fint_extract = LnL.extractF(op_int.F, j)
-            Xint = burger.semiImplicitEuler(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.t, Vr' * burger.IC)  # use F
+            Xint = burger.integrate_model(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.tspan, Vr' * burger.IC)  # use F
             Yint = op_int.C[1:1, 1:j] * Xint
             
             # Integrate the inferred model
             Finf_extract = LnL.extractF(op_inf.F, j)
-            Xinf = burger.semiImplicitEuler(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.t, Vr' * burger.IC)  # use F
+            Xinf = burger.integrate_model(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.tspan, Vr' * burger.IC)  # use F
             Yinf = op_inf.C[1:1, 1:j] * Xinf
 
             # Compute errors
@@ -225,7 +227,7 @@ end
         A_bnds=(-1000.0, 1000.0),
         ForH_bnds=(-100.0, 100.0),
     )
-    op_ephec =  Array{LnL.operators}(undef, KSE.Pdim)
+    op_ephec =  Array{LnL.Operators}(undef, KSE.Pdim)
     for i in eachindex(KSE.μs)
         # op_ephec[i] = LnL.opinf(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
         op_ephec[i] = LnL.opinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
@@ -241,7 +243,7 @@ end
         A_bnds=(-1000.0, 1000.0),
         ForH_bnds=(-100.0, 100.0),
     )
-    op_epsic = Array{LnL.operators}(undef, KSE.Pdim)
+    op_epsic = Array{LnL.Operators}(undef, KSE.Pdim)
     for i in eachindex(KSE.μs)
         # op_epsic[i] = LnL.opinf(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
         op_epsic[i] = LnL.opinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
@@ -257,7 +259,7 @@ end
         A_bnds=(-1000.0, 1000.0),
         ForH_bnds=(-100.0, 100.0),
     )
-    op_epp =  Array{LnL.operators}(undef, KSE.Pdim)
+    op_epp =  Array{LnL.Operators}(undef, KSE.Pdim)
     for i in eachindex(KSE.μs)
         # op_epp[i] = LnL.opinf(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
         op_epp[i] = LnL.opinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])

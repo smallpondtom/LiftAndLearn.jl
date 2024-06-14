@@ -69,7 +69,7 @@ DS = 1 # downsampling factor
 ##########################
 A, B, E = chafeeinfante.finite_diff_model(chafeeinfante, chafeeinfante.diffusion_coeffs)
 C = ones(1, chafeeinfante.spatial_dim) / chafeeinfante.spatial_dim
-op_chafeeinfante = LnL.operators(A=A, B=B, C=C, E=E)
+op_chafeeinfante = LnL.Operators(A=A, B=B, C=C, E=E)
 chafeeinfante.IC = 1 .+ 5*sin.((2*chafeeinfante.xspan.+1)*π).^2
 
 # Reference solution

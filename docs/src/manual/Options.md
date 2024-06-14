@@ -60,7 +60,7 @@ op[1] = op_tmp  # store the first operator
 
 # r =3
 options.optim.initial_guess = true  # turn on initial guess for the next step
-op_tmp = LnL.opinf(Xdata, Vr[:,1:3], options; U=zeros(100), Y=zeros(100), Xdot=Xdotdata, IG=LnL.operators(A=op_tmp.A, F=op_tmp.F)) # compute the second operator
+op_tmp = LnL.opinf(Xdata, Vr[:,1:3], options; U=zeros(100), Y=zeros(100), Xdot=Xdotdata, IG=LnL.Operators(A=op_tmp.A, F=op_tmp.F)) # compute the second operator
 op[2] = op_tmp
 ```
 

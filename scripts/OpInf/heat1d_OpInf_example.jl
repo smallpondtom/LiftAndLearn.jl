@@ -27,9 +27,11 @@ SAVEDATA = false
 #########################
 ## 1D Heat equation setup
 #########################
+Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-3
 heat1d = LnL.Heat1DModel(
-    spatial_domain=(0.0, 1.0), time_domain=(0.0, 1.0), Δx=1/Nx, Δt=dt, 
+    spatial_domain=Ω, time_domain=(0.0, 1.0), 
+    Δx=Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt, 
     diffusion_coeffs=range(0.1, 10, 10)
 )
 
@@ -75,7 +77,7 @@ p = Progress(length(heat1d.diffusion_coeffs))
 for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
     A, B = heat1d.finite_diff_model(heat1d, μ)
     C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
-    op_heat = LnL.operators(A=A, B=B, C=C)
+    op_heat = LnL.Operators(A=A, B=B, C=C)
 
     # Compute the states with backward Euler
     X = LnL.backwardEuler(A, B, Ubc, heat1d.tspan, heat1d.IC)

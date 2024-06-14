@@ -7,7 +7,7 @@ using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
-import ..LiftAndLearn: AbstractModel, vech, ⊘, operators, elimat
+import ..LiftAndLearn: AbstractModel, ⊘
 
 export FishserKPPModel
 

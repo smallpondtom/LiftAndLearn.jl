@@ -2,9 +2,9 @@ export opinf
 
 
 """
-    opinf(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::operators,
+    opinf(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::Operators,
             options::AbstractOption; U::AbstractArray=zeros(1,1), 
-            Y::AbstractArray=zeros(1,1), IG::operators=operators()) → op::operators
+            Y::AbstractArray=zeros(1,1), IG::Operators=Operators()) → op::Operators
 
 Infer the operators for Lift And Learn for reprojected data (dispatch). NOTE: make
 sure that the data is constructed such that the row dimension is the state dimension
@@ -14,18 +14,18 @@ and the column dimension is the time dimension.
 - `W::AbstractArray`: state data matrix
 - `Vn::AbstractArray`: POD basis
 - `lm::lifting`: struct of the lift map
-- `full_op::operators`: full order model operators
+- `full_op::Operators`: full order model operators
 - `options::AbstractOption`: options for the operator inference defined by the user
 - `U::AbstractArray`: input data matrix
 - `Y::AbstractArray`: output data matix
-- `IG::operators`: initial guesses for optimization
+- `IG::Operators`: initial guesses for optimization
 
 ## Returns
-- `op::operators`: inferred operators
+- `op::Operators`: inferred operators
 """
-function opinf(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::operators, 
+function opinf(W::AbstractArray, Vn::AbstractArray, lm::lifting, full_op::Operators, 
                  options::AbstractOption; U::AbstractArray=zeros(1,1), 
-                 Y::AbstractArray=zeros(1,1), IG::operators=operators())::operators
+                 Y::AbstractArray=zeros(1,1), IG::Operators=Operators())::Operators
     U = fat2tall(U)
     # Project
     What = Vn' * W
@@ -57,7 +57,7 @@ end
 
 """
     reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
-        lm::lifting, op::operators, options::AbstractOption) → Rhat::Matrix
+        lm::lifting, op::Operators, options::AbstractOption) → Rhat::Matrix
 
 Reprojecting the lifted data
 
@@ -66,14 +66,14 @@ Reprojecting the lifted data
 - `V::Union{VecOrMat,BlockDiagonal}`: POD basis
 - `U::VecOrMat`: input data matrix
 - `lm::lifting`: struct of the lift map
-- `op::operators`: full order model operators
+- `op::Operators`: full order model operators
 - `options::AbstractOption`: options for the operator inference defined by the user
 
 ## Returns
 - `Rhat::Matrix`: R matrix (transposed) for the regression problem
 """
 function reproject(Xhat::Matrix, V::Union{VecOrMat,BlockDiagonal}, U::VecOrMat,
-    lm::lifting, op::operators, options::AbstractOption)::Matrix
+    lm::lifting, op::Operators, options::AbstractOption)::Matrix
 
     tmp = size(V, 1)
     n = tmp / options.vars.N_lift

@@ -67,7 +67,7 @@ rmax = 15
 A, B, F = fisherkpp.finite_diff_model(fisherkpp, fisherkpp.diffusion_coeffs, fisherkpp.growth_rates)
 C = ones(1, fisherkpp.spatial_dim) / fisherkpp.spatial_dim
 C = vcat(C, rand(1, fisherkpp.spatial_dim) .- 0.5)  # add a random row to C
-op_fisherkpp = LnL.operators(A=A, B=B, C=C, F=F)
+op_fisherkpp = LnL.Operators(A=A, B=B, C=C, F=F)
 fisherkpp.IC = cos.(0.5π * fisherkpp.xspan)  # change IC
 # fisherkpp.IC = zeros(fisherkpp.spatial_dim)  # change IC
 

@@ -75,7 +75,7 @@ options = LnL.LSOpInfOption(
 μ = heat2d.diffusion_coeffs
 A, B = heat2d.finite_diff_model(heat2d, μ)
 C = ones(1, (Int ∘ prod)(heat2d.spatial_dim)) / heat2d.spatial_dim[1] / heat2d.spatial_dim[2]
-op_heat = LnL.operators(A=A, B=B, C=C)
+op_heat = LnL.Operators(A=A, B=B, C=C)
 
 # Generate the input data
 U = [1.0, 1.0, -1.0, -1.0]

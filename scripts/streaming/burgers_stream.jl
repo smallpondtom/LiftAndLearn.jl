@@ -36,10 +36,13 @@ include("utilities/plotting.jl")
 ##########################
 ## Burgers equation setup
 ##########################
-burgers = LnL.burgers(
-    [0.0, 1.0], [0.0, 1.0], [0.5, 0.5],
-    2^(-7), 1e-4, 1, "dirichlet"
+Ω = (0.0, 1.0)
+Nx = 2^7; dt = 1e-4
+burger = LnL.BurgersModel(
+    spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
+    diffusion_coeffs=0.5, BC=:dirichlet,
 )
+
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         is_lin=true,
@@ -51,7 +54,7 @@ options = LnL.LSOpInfOption(
         N=1,
     ),
     data=LnL.DataStructure(
-        Δt=1e-4,
+        Δt=dt,
         deriv_type="SI"
     ),
     optim=LnL.OptimizationSetting(
@@ -65,23 +68,23 @@ rmax = 15
 ##########################
 ## Generate training data
 ##########################
-μ = burgers.μs[1]
-A, B, F = burgers.generateABFmatrix(burgers, μ)
-C = ones(1, burgers.Xdim) / burgers.Xdim
-op_burgers = LnL.operators(A=A, B=B, C=C, F=F)
+μ = burgers.diffusion_coeffs
+A, B, F = burgers.finite_diff_model(burgers, μ)
+C = ones(1, burgers.spatial_dim) / burgers.spatial_dim
+op_burgers = LnL.Operators(A=A, B=B, C=C, F=F)
 
 # Reference solution
 Uref = ones(burgers.Tdim - 1, 1)  # Reference input/boundary condition
-Xref = burgers.semiImplicitEuler(A, B, F, Uref, burgers.t, burgers.IC)
+Xref = burgers.integrate_model(A, B, F, Uref, burgers.tspan, burgers.IC)
 Yref = C * Xref
 
-Urand = rand(burgers.Tdim - 1, num_of_inputs)  # uniformly random input
+Urand = rand(burgers.time_dim - 1, num_of_inputs)  # uniformly random input
 Xall = Vector{Matrix{Float64}}(undef, num_of_inputs)
 Xdotall = Vector{Matrix{Float64}}(undef, num_of_inputs)
 Xstore = nothing  # store one data trajectory for plotting
 for j in 1:num_of_inputs
     @info "Generating data for input $j"
-    states = burgers.semiImplicitEuler(A, B, F, Urand[:, j], burgers.t, burgers.IC)
+    states = burgers.integrate_model(A, B, F, Urand[:, j], burgers.tspan, burgers.IC)
     Xall[j] = states[:, 2:end]
     Xdotall[j] = (states[:, 2:end] - states[:, 1:end-1]) / burgers.Δt
     if j == 1
@@ -90,7 +93,7 @@ for j in 1:num_of_inputs
 end
 X = reduce(hcat, Xall)
 Xdot = reduce(hcat, Xdotall)
-U = reshape(Urand, (burgers.Tdim - 1) * num_of_inputs, 1)
+U = reshape(Urand, (burgers.time_dim - 1) * num_of_inputs, 1)
 Y = C * X
 
 # compute the POD basis from the training data
@@ -103,9 +106,9 @@ Vrmax = svd(X).U[:, 1:rmax]
 with_theme(theme_latexfonts()) do
     fig0 = Figure(fontsize=20, size=(1300,500), backgroundcolor="#FFFFFF")
     ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-    surface!(ax1, burgers.x, burgers.t, Xstore)
+    surface!(ax1, burgers.xspan, burgers.tspan, Xstore)
     ax2 = Axis(fig0[1, 2], xlabel="x", ylabel="t")
-    hm = heatmap!(ax2, burgers.x, burgers.t, Xstore)
+    hm = heatmap!(ax2, burgers.xspan, burgers.tspan, Xstore)
     Colorbar(fig0[1, 3], hm)
     display(fig0)
 end

@@ -7,7 +7,7 @@ const LnL = LiftAndLearn
 const CG = LiftAndLearn.ChaosGizmo
 
 
-function lorenz_jacobian(ops::LnL.operators, x::AbstractArray)
+function lorenz_jacobian(ops::LnL.Operators, x::AbstractArray)
     n = size(x,1)
     return ops.A + ops.H * kron(I(n),x) + ops.H*kron(x,I(n))
 end
@@ -23,7 +23,7 @@ function RK4(J, Q, dt)
     return Qnew
 end
 
-function lorenz_integrator(ops::LnL.operators, tspan::AbstractArray, IC::Array; params...)
+function lorenz_integrator(ops::LnL.Operators, tspan::AbstractArray, IC::Array; params...)
     K = length(tspan)
     N = size(IC,1)
     f = let A = ops.A, H = ops.H, F = ops.F
@@ -62,7 +62,7 @@ function lorenz9(u, t, p)
     return du
 end
 
-function lorenz9_integrator(ops::LnL.operators, tspan::AbstractArray, IC::Array; params...)
+function lorenz9_integrator(ops::LnL.Operators, tspan::AbstractArray, IC::Array; params...)
     sigma = get(params, :sigma, 0)
     r = get(params, :r, 0)
     b1 = get(params, :b1, 0)
@@ -112,7 +112,7 @@ end
     H[3,2] = 0.5
     H[3,4] = 0.5
 
-    lorenz_ops = LnL.operators(A=A, H=H)
+    lorenz_ops = LnL.Operators(A=A, H=H)
 
 
     N = 10000
@@ -214,7 +214,7 @@ end
     ]
     H = LnL.makeQuadOp(n, indices, values; which_quad_term="H")
     F = LnL.makeQuadOp(n, indices, values; which_quad_term="F")
-    lorenz9_ops = LnL.operators(A=A, H=H, F=F)
+    lorenz9_ops = LnL.Operators(A=A, H=H, F=F)
 
     x0 = [0.01, 0, 0.01, 0.0, 0.0, 0.0, 0, 0, 0.01] 
     options = CG.LE_options(N=1e4, τ=1e2, τ0=0.0, Δt=1e-2, m=n, T=1e-2, verbose=false, history=true)

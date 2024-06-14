@@ -14,13 +14,13 @@ Perform intrusive model reduction using Proper Orthogonal Decomposition (POD)
 # Return
 - `op_new`: new operator projected onto the basis
 """
-function pod(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, options::AbstractOption)
+function pod(op::Operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, options::AbstractOption)
     Ahat = Vr' * op.A * Vr
     Bhat = Vr' * op.B
     Chat = op.C * Vr
     Khat = Vr' * op.K
 
-    op_new = operators(
+    op_new = Operators(
         A=Matrix(Ahat), B=Matrix(Bhat[:, :]), C=Matrix(Chat[:, :]), K=Matrix(Khat[:, :])
     )
 
