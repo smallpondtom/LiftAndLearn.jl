@@ -8,7 +8,7 @@ using LinearAlgebra
 
 import ..LiftAndLearn: AbstractModel
 
-export heat1d
+export Heat1DModel
 
 
 """
@@ -36,7 +36,7 @@ $(TYPEDEF)
 - `param_dim::Int64`: parameter dimension
 - `finite_diff_model::Function`: model using Finite Difference
 """
-mutable struct heat1d <: AbstractModel
+mutable struct Heat1DModel <: AbstractModel
     # Domains
     spatial_domain::Tuple{Real,Real}  # spatial domain
     time_domain::Tuple{Real,Real}  # temporal domain
@@ -82,7 +82,7 @@ $(SIGNATURES)
 ## Returns
 - `heat1d`: 1D heat equation model
 """
-function heat1d(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+function Heat1DModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
                  diffusion_coeffs::Union{Real,AbstractArray{<:Real}}, BC::Symbol=:dirichlet)
     # Discritization grid info
     @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
@@ -102,7 +102,7 @@ function heat1d(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}
     param_dim = length(diffusion_coeffs)
     param_domain = extrema(diffusion_coeffs)
 
-    heat1d(
+    Heat1DModel(
         spatial_domain, time_domain, param_domain,
         Δx, Δt, BC, IC, xspan, tspan, diffusion_coeffs,
         spatial_dim, time_dim, param_dim, finite_diff_model
@@ -122,7 +122,7 @@ Finite Difference Model for 1D Heat Equation
 ## Returns
 - operators
 """
-function finite_diff_model(model::heat1d, μ::Real)
+function finite_diff_model(model::Heat1DModel, μ::Real)
     if model.BC == :periodic
         return finite_diff_periodic_model(model.spatial_dim, model.Δx, μ)
     elseif model.BC == :dirichlet

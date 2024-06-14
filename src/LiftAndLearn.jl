@@ -79,7 +79,7 @@ include("model/KS.jl")
 include("model/FisherKPP.jl")
 include("model/Heat2D.jl")
 include("model/ChafeeInfante.jl")
-using .Heat1D: heat1d
+using .Heat1D: Heat1DModel
 using .Burgers: burgers
 using .FHN: fhn
 using .KS: ks

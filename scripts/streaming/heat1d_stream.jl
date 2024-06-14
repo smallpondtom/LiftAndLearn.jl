@@ -36,7 +36,7 @@ include("utilities/plotting.jl")
 ## 1D Heat equation setup
 ##########################
 Nx = 2^7; dt = 1e-3
-heat1d = LnL.heat1d(  # define the model
+heat1d = LnL.Heat1DMdoel(  # define the model
     spatial_domain=(0.0, 1.0), time_domain=(0.0, 2.0), diffusion_coeffs=0.1,
     Δx=1/Nx, Δt=1e-3, BC=:dirichlet
 )

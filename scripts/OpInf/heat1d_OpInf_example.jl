@@ -28,7 +28,7 @@ SAVEDATA = false
 ## 1D Heat equation setup
 #########################
 Nx = 2^7; dt = 1e-3
-heat1d = LnL.heat1d(
+heat1d = LnL.Heat1DModel(
     spatial_domain=(0.0, 1.0), time_domain=(0.0, 1.0), Δx=1/Nx, Δt=dt, 
     diffusion_coeffs=range(0.1, 10, 10)
 )
