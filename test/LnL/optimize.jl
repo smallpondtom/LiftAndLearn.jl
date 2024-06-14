@@ -111,9 +111,12 @@ end
 
 @testset "KSE EP-OpInf" begin
     # Settings for the KS equation
-    KSE = LnL.ks(
-        [0.0, 22.0], [0.0, 100.0], [1.0, 1.0],
-        256, 0.01, 1, "ep"
+    Ω = (0.0, 22.0)
+    dt = 0.01
+    N = 256
+    KSE = LnL.KuramotoSivashinskyModel(
+        spatial_domain=Ω, time_domain=(0.0, 300.0), diffusion_coeffs=1.0,
+        Δx=(Ω[2] - 1/N)/N, Δt=dt, conservation_type=:EP
     )
 
     # Settings for Operator Inference
@@ -148,37 +151,37 @@ end
     DS = KSE_data.DS
 
     # Down-sampled dimension of the time data
-    Tdim_ds = size(1:DS:KSE.Tdim, 1)  # downsampled time dimension
+    Tdim_ds = size(1:DS:KSE.time_dim, 1)  # downsampled time dimension
 
     # Number of random test inputs
     num_test_ic = 50
 
     # Prune data to get only the chaotic region
     prune_data = false
-    prune_idx = KSE.Tdim ÷ 2
-    t_prune = KSE.t[prune_idx-1:end]
+    prune_idx = KSE.time_dim ÷ 2
+    t_prune = KSE.tspan[prune_idx-1:end]
     
     # Parameters of the initial condition
     ic_a = [0.8]
     ic_b = [0.2]
 
     num_ic_params = Int(length(ic_a) * length(ic_b))
-    L = KSE.Omega[2] - KSE.Omega[1]  # length of the domain
+    L = KSE.spatial_domain[2] - KSE.spatial_domain[1]  # length of the domain
 
     # Parameterized function for the initial condition
-    u0 = (a,b) -> a * cos.((2*π*KSE.x)/L) .+ b * cos.((4*π*KSE.x)/L)  # initial condition
+    u0 = (a,b) -> a * cos.((2*π*KSE.xspan)/L) .+ b * cos.((4*π*KSE.xspan)/L)  # initial condition
 
     # Store values
-    Xtr = Vector{Matrix{Float64}}(undef, KSE.Pdim)  # training state data 
-    Rtr = Vector{Matrix{Float64}}(undef, KSE.Pdim)  # training derivative data
-    Vr = Vector{Matrix{Float64}}(undef, KSE.Pdim)  # POD basis
-    Σr = Vector{Vector{Float64}}(undef, KSE.Pdim)  # singular values 
+    Xtr = Vector{Matrix{Float64}}(undef, KSE.param_dim)  # training state data 
+    Rtr = Vector{Matrix{Float64}}(undef, KSE.param_dim)  # training derivative data
+    Vr = Vector{Matrix{Float64}}(undef, KSE.param_dim)  # POD basis
+    Σr = Vector{Vector{Float64}}(undef, KSE.param_dim)  # singular values 
 
-    for i in eachindex(KSE.μs)
-        μ = KSE.μs[i]
+    for i in eachindex(KSE.diffusion_coeffs)
+        μ = KSE.diffusion_coeffs[i]
 
         # Generate the FOM system matrices (ONLY DEPENDS ON μ)
-        A, F = KSE.model_FD(KSE, μ)
+        A, F = KSE.finite_diff_model(KSE, μ)
 
         # Store the training data 
         Xall = Vector{Matrix{Float64}}(undef, num_ic_params)
@@ -189,7 +192,7 @@ end
         for (j, ic) in collect(enumerate(ic_combos))
             a, b = ic
 
-            states = KSE.integrate_FD(A, F, KSE.t, u0(a,b))
+            states = KSE.integrate_model(A, F, KSE.tspan, u0(a,b))
             if prune_data
                 tmp = states[:, prune_idx:end]
                 Xall[j] = tmp[:, 1:DS:end]  # downsample data
@@ -212,8 +215,8 @@ end
         Σr[i] = tmp.S
     end
 
-    nice_orders_all = Vector{Vector{Int}}(undef, KSE.Pdim)
-    for i in eachindex(KSE.μs)
+    nice_orders_all = Vector{Vector{Int}}(undef, KSE.param_dim)
+    for i in eachindex(KSE.diffusion_coeffs)
         nice_orders_all[i], _ = LnL.choose_ro(Σr[i]; en_low=-12)
     end
     nice_orders = Int.(round.(mean(nice_orders_all)))
@@ -227,9 +230,8 @@ end
         A_bnds=(-1000.0, 1000.0),
         ForH_bnds=(-100.0, 100.0),
     )
-    op_ephec =  Array{LnL.Operators}(undef, KSE.Pdim)
-    for i in eachindex(KSE.μs)
-        # op_ephec[i] = LnL.opinf(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
+    op_ephec =  Array{LnL.Operators}(undef, KSE.param_dim)
+    for i in eachindex(KSE.diffusion_coeffs)
         op_ephec[i] = LnL.opinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
     end
     @test true # dummy test to make sure the testset runs
@@ -243,9 +245,8 @@ end
         A_bnds=(-1000.0, 1000.0),
         ForH_bnds=(-100.0, 100.0),
     )
-    op_epsic = Array{LnL.Operators}(undef, KSE.Pdim)
-    for i in eachindex(KSE.μs)
-        # op_epsic[i] = LnL.opinf(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
+    op_epsic = Array{LnL.Operators}(undef, KSE.param_dim)
+    for i in eachindex(KSE.diffusion_coeffs)
         op_epsic[i] = LnL.opinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
     end
     @test true # dummy test to make sure the testset runs
@@ -259,9 +260,8 @@ end
         A_bnds=(-1000.0, 1000.0),
         ForH_bnds=(-100.0, 100.0),
     )
-    op_epp =  Array{LnL.Operators}(undef, KSE.Pdim)
-    for i in eachindex(KSE.μs)
-        # op_epp[i] = LnL.opinf(Xtr[i], zeros(Tdim_ds,1), zeros(Tdim_ds,1), Vr[i][:, 1:ro[end]], Rtr[i], options)
+    op_epp =  Array{LnL.Operators}(undef, KSE.param_dim)
+    for i in eachindex(KSE.diffusion_coeffs)
         op_epp[i] = LnL.opinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
     end
     Fextract = LnL.extractF(op_epp[1].F, ro[2])

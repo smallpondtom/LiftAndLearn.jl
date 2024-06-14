@@ -1,7 +1,7 @@
 """
     Kuramoto-Sivashinsky equation PDE model
 """
-module KS
+module KuramotoSivashinsky
 
 using DocStringExtensions
 using FFTW
@@ -10,7 +10,7 @@ using SparseArrays
 
 import ..LiftAndLearn: AbstractModel, vech, ⊘, Operators, elimat
 
-export ks
+export KuramotoSivashinskyModel
 
 
 """
@@ -25,161 +25,136 @@ Kuramoto-Sivashinsky equation PDE model
 where ``u`` is the state variable and ``\\mu`` is the viscosity coefficient.
 
 ## Fields
-- `Omega::Vector{Float64}`: spatial domain
-- `T::Vector{Float64}`: temporal domain
-- `D::Vector{Float64}`: parameter domain
-- `nx::Float64`: number of spatial grid points
-- `Δx::Float64`: spatial grid size
-- `Δt::Float64`: temporal step size
-- `IC::VecOrMat{Float64}`: initial condition
-- `x::Vector{Float64}`: spatial grid points
-- `t::Vector{Float64}`: temporal points
-- `k::Vector{Float64}`: Fourier modes
-- `μs::Union{Vector{Float64},Float64}`: parameter vector
-- `Xdim::Int64`: spatial dimension
-- `Tdim::Int64`: temporal dimension
-- `Pdim::Int64`: parameter dimension
-- `type::String`: model type
-- `BC::Symbol` : boundary condition
-- `model_PS::Function`: model using Pseudo-Spectral Method/Fast Fourier Transform
-- `model_PS_ew::Function`: model using Pseudo-Spectral Method/Fast Fourier Transform (element-wise)
-- `model_SG::Function`: model using Spectral-Galerkin Method
-- `model_FD::Function`: model using Finite Difference
-- `integrate_FD::Function`: integrator using Crank-Nicholson Adams-Bashforth method
-- `integrate_PS::Function`: integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
-- `integrate_PS_ew::Function`: integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
-- `integrate_SG::Function`: integrator for second method of Fourier Transform without FFT
+- `spatial_domain::Tuple{Real,Real}`: spatial domain
+- `time_domain::Tuple{Real,Real}`: temporal domain
+- `param_domain::Tuple{Real,Real}`: parameter domain
+- `Δx::Real`: spatial grid size
+- `Δt::Real`: temporal step size
+- `BC::Symbol`: boundary condition
+- `IC::Array{Float64}`: initial condition
+- `xspan::Vector{Float64}`: spatial grid points
+- `tspan::Vector{Float64}`: temporal points
+- `diffusion_coeffs::Union{Real,AbstractArray{<:Real}}`: parameter vector
+- `fourier_modes::Vector{Float64}`: Fourier modes
+- `spatial_dim::Int64`: spatial dimension
+- `time_dim::Int64`: temporal dimension
+- `param_dim::Int64`: parameter dimension
+- `conservation_type::Symbol`: conservation type
+- `model_type::Symbol`: model type
+- `finite_diff_model::Function`: finite difference model
+- `pseudo_spectral_model::Function`: pseudo spectral model
+- `elementwise_pseudo_spectral_model::Function`: element-wise pseudo spectral model
+- `spectral_galerkin_model::Function`: spectral Galerkin model
+- `integrate_model::Function`: integrator
+- `jacobian::Function`: Jacobian matrix
 """
-mutable struct ks <: AbstractModel
-    Omega::Vector{Float64}  # spatial domain
-    T::Vector{Float64}  # temporal domain
-    D::Vector{Float64}  # parameter domain
-    nx::Float64  # number of spatial grid points
-    Δx::Float64  # spatial grid size
-    Δt::Float64  # temporal step size
-    IC::VecOrMat{Float64}  # initial condition
-    x::Vector{Float64}  # spatial grid points
-    t::Vector{Float64}  # temporal points
-    k::Vector{Float64}  # Fourier modes
-    μs::Union{Vector{Float64},Float64}  # parameter vector
-    Xdim::Int64  # spatial dimension
-    Tdim::Int64  # temporal dimension
-    Pdim::Int64  # parameter dimension
+mutable struct KuramotoSivashinskyModel <: AbstractModel
+    # Domains
+    spatial_domain::Tuple{Real,Real}  # spatial domain
+    time_domain::Tuple{Real,Real}  # temporal domain
+    param_domain::Tuple{Real,Real}  # parameter domain
 
-    type::String  # model type
+    # Discritization grid
+    Δx::Real  # spatial grid size
+    Δt::Real  # temporal step size
+
+    # Boundary condition
     BC::Symbol  # boundary condition
 
-    model_PS::Function  # model using Pseudo-Spectral Method/Fast Fourier Transform
-    model_PS_ew::Function  # model using Pseudo-Spectral Method/Fast Fourier Transform (element-wise)
-    model_SG::Function  # model using Spectral-Galerkin Method
-    model_FD::Function  # model using Finite Difference
-    integrate_FD::Function  # integrator using Crank-Nicholson Adams-Bashforth method
-    integrate_PS::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space
-    integrate_PS_ew::Function  # integrator using Crank-Nicholson Adams-Bashforth method in the Fourier space (element-wise)
-    integrate_SG::Function  # integrator for second method of Fourier Transform without FFT
-    jacob::Function  # Jacobian
+    # Initial conditino
+    IC::Array{Float64}  # initial condition
+
+    # grid points
+    xspan::Vector{Float64}  # spatial grid points
+    tspan::Vector{Float64}  # temporal points
+    diffusion_coeffs::Union{Real,AbstractArray{<:Real}}  # parameter vector
+
+    # Fourier
+    fourier_modes::Vector{Float64}  # Fourier modes
+
+    # Dimensions
+    spatial_dim::Int64  # spatial dimension
+    time_dim::Int64  # temporal dimension
+    param_dim::Int64  # parameter dimension
+
+    # Convervation type
+    conservation_type::Symbol
+
+    # Model type
+    model_type::Symbol
+
+    finite_diff_model::Function
+    pseudo_spectral_model::Function
+    elementwise_pseudo_spectral_model::Function
+    spectral_galerkin_model::Function
+    integrate_model::Function
+    jacobian::Function
 end
 
 
+
 """
-    ks(Omega, T, D, nx, Δt, Pdim, type) → ks
+$(SIGNATURES)
 
-Kuramoto-Sivashinsky equation PDE model constructor
-
-## Arguments
-- `Omega::Vector{Float64}`: spatial domain
-- `T::Vector{Float64}`: temporal domain
-- `D::Vector{Float64}`: parameter domain
-- `nx::Float64`: number of spatial grid points
-- `Δt::Float64`: temporal step size
-- `Pdim::Int64`: parameter dimension
-
-## Returns
-- `ks`: Kuramoto-Sivashinsky equation PDE model
+Constructor for the Kuramoto-Sivashinsky equation model.
 """
-function ks(Omega, T, D, nx, Δt, Pdim, type, BC=:periodic)
-    Δx = (Omega[2] - Omega[1]) / nx
+function KuramotoSivashinskyModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+                       diffusion_coeffs::Union{Real,AbstractArray{<:Real}}, BC::Symbol=:periodic,
+                       conservation_type::Symbol=:NC, model_type::Symbol=:FD)
+    # Discritization grid info
+    @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
     if BC == :periodic
-        x = collect(Omega[1]:Δx:Omega[2]-Δx)  # assuming a periodic boundary condition
-    elseif BC == :dirichlet
-        x = collect(Omega[1]:Δx:Omega[2])[2:end-1]  # assuming a Dirichlet boundary condition
-    else
-        error("Boundary condition must be either periodic or dirichlet")
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2]-Δx)
+    elseif BC ∈ (:dirichlet, :neumann, :mixed, :robin, :cauchy) 
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2])[2:end-1]
     end
-    t = collect(T[1]:Δt:T[2])
-    k = collect(-nx/2:1.0:nx/2-1)  
+    tspan = collect(time_domain[1]:Δt:time_domain[2])
+    spatial_dim = length(xspan)
+    time_dim = length(tspan)
 
-    μs = Pdim == 1 ? D[1] : collect(range(D[1], D[2], Pdim))
-    Xdim = length(x)
-    Tdim = length(t)
-    IC = zeros(Xdim, 1)
+    # Initial condition
+    IC = zeros(spatial_dim)
 
-    @assert nx == Xdim "nx must be equal to Xdim"
-    @assert (type == "c" || type == "nc" || type == "ep") "type must be either c, nc, or ep"
+    # Parameter dimensions or number of parameters 
+    param_dim = length(diffusion_coeffs)
+    param_domain = extrema(diffusion_coeffs)
 
-    ks(
-        Omega, T, D, nx, Δx, Δt, IC, x, t, k, μs, Xdim, Tdim, Pdim, type, BC,
-        model_PS, model_PS_ew, model_SG, model_FD, integrate_FD, 
-        integrate_PS, integrate_PS_ew, integrate_SG, jacob
+    # Fourier modes
+    fourier_modes = collect(-spatial_dim/2:1.0:spatial_dim/2-1)
+
+    @assert conservation_type ∈ (:EP, :NC, :C) "Invalid conservation type"
+    @assert model_type ∈ (:FD, :PS, :EWPS, :SG) "Invalid model type"
+    integrate_model = integrate_finite_diff_model
+
+    KuramotoSivashinskyModel(
+        spatial_domain, time_domain, param_domain,
+        Δx, Δt, BC, IC, xspan, tspan, diffusion_coeffs, fourier_modes,
+        spatial_dim, time_dim, param_dim, conservation_type, model_type,
+        finite_diff_model, pseudo_spectral_model, elementwise_pseudo_spectral_model, 
+        spectral_galerkin_model, integrate_model, jacobian
     )
 end
 
 
-# function model_FD_dirichlet(model::ks, μ::Float64)
-#     N = model.Xdim
-#     Δx = model.Δx
 
-#     # Create A matrix
-#     ζ = 2/Δx^2 - 6*μ/Δx^4
-#     η = 4*μ/Δx^4 - 1/Δx^2
-#     ϵ = -μ/Δx^4
-
-#     A = spdiagm(
-#         0 => ζ * ones(N), 
-#         1 => η * ones(N - 1), -1 => η * ones(N - 1),
-#         2 => ϵ * ones(N - 2), -2 => ϵ * ones(N - 2)
-#     )
-#     # For the periodicity for the first and final few indices
-#     A[1, end-1:end] = [ϵ, η]
-#     A[2, end] = ϵ
-#     A[end-1, 1] = ϵ
-#     A[end, 1:2] = [η, ϵ]
-    
-#     # Create F matrix
-#     S = Int(N * (N + 1) / 2)
-#     Fval = repeat([1.0, -1.0], outer=N)
-#     row_i = repeat(1:N, inner=2)
-#     seq = Int.([2 + (N + 1) * (x - 1) - x * (x - 1) / 2 for x in 1:(N-1)])
-#     col_i = vcat(seq[1], repeat(seq[2:end-1], inner=2), seq[end])
-#     F = sparse(row_i, col_i, Fval, N, S) / 2 / Δx
-
-#     # For the periodicity for the first and final indices
-#     F[1, 2] = - 1 / 2 / Δx
-#     F[1, N] = 1 / 2 / Δx
-#     F[N, N] = - 1 / 2 / Δx
-#     F[N, end-1] = 1 / 2 / Δx 
-
-#     return A, sparse(F)
-# end
+function finite_diff_model(model::KuramotoSivashinskyModel, μ::Real)
+    if model.BC == :periodic
+        if model.conservation_type == :NC
+            return finite_diff_periodic_nonconservative_model(model.spatial_dim, model.Δx, μ)
+        elseif model.conservation_type == :C
+            return finite_diff_periodic_conservative_model(model.spatial_dim, model.Δx, μ)
+        elseif model.conservation_type == :EP
+            return finite_diff_periodic_energy_preserving_model(model.spatial_dim, model.Δx, μ)
+        else
+            error("Conservation type not implemented")
+        end
+    else
+        error("Boundary condition not implemented")
+    end
+end
 
 
-"""
-    model_FD(model, μ) → A, F
-
-Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Finite Difference method.
-
-## Arguments
-- `model`: Kuramoto-Sivashinsky equation model
-- `μ`: parameter value
-
-## Returns
-- `A`: A matrix
-- `F`: F matrix
-"""
-function model_FD(model::ks, μ::Float64)
-    N = model.Xdim
-    Δx = model.Δx
-
+function finite_diff_periodic_nonconservative_model(N::Real, Δx::Real, μ::Real)
     # Create A matrix
     ζ = 2/Δx^2 - 6*μ/Δx^4
     η = 4*μ/Δx^4 - 1/Δx^2
@@ -198,75 +173,116 @@ function model_FD(model::ks, μ::Float64)
     
     # Create F matrix
     S = Int(N * (N + 1) / 2)
-    if model.type == "nc"
-        if N >= 3
-            Fval = repeat([1.0, -1.0], outer=N - 2)
-            row_i = repeat(2:(N-1), inner=2)
-            seq = Int.([2 + (N + 1) * (x - 1) - x * (x - 1) / 2 for x in 1:(N-1)])
-            col_i = vcat(seq[1], repeat(seq[2:end-1], inner=2), seq[end])
-            F = sparse(row_i, col_i, Fval, N, S) / 2 / Δx
+    if N >= 3
+        Fval = repeat([1.0, -1.0], outer=N - 2)
+        row_i = repeat(2:(N-1), inner=2)
+        seq = Int.([2 + (N + 1) * (x - 1) - x * (x - 1) / 2 for x in 1:(N-1)])
+        col_i = vcat(seq[1], repeat(seq[2:end-1], inner=2), seq[end])
+        F = sparse(row_i, col_i, Fval, N, S) / 2 / Δx
 
-            # For the periodicity for the first and final indices
-            F[1, 2] = - 1 / 2 / Δx
-            F[1, N] = 1 / 2 / Δx
-            F[N, N] = - 1 / 2 / Δx
-            F[N, end-1] = 1 / 2 / Δx 
-        else
-            F = zeros(N, S)
-        end
-    elseif model.type == "c"
-        if N >= 3
-            ii = repeat(2:(N-1), inner=2)
-            m = 2:N-1
-            mm = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) - (N-(m-2)) for m in 2:N-1])  # this is where the x_{i-1}^2 term is
-            mp = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) + (N-(m-1)) for m in 2:N-1])  # this is where the x_{i+1}^2 term is
-            jj = reshape([mp'; mm'],2*N-4);
-            vv = reshape([-ones(1,N-2); ones(1,N-2)],2*N-4)/(4*Δx);
-            F = sparse(ii,jj,vv,N,S)
-
-            # Boundary conditions (Periodic)
-            F[1,N+1] = -1/4/Δx
-            F[1,end] = 1/4/Δx
-            F[N,end-2] = 1/4/Δx
-            F[N,1] = -1/4/Δx
-        else
-            F = zeros(N, S)
-        end
-    elseif model.type == "ep"
-        if N >= 3
-            ii = repeat(2:(N-1), inner=4)
-            m = 2:N-1
-            mi = Int.([N*(N+1)/2 - (N-m)*(N-m+1)/2 - (N-m) for m in 2:N-1])               # this is where the xi^2 term is
-            mm = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) - (N-(m-2)) for m in 2:N-1])  # this is where the x_{i-1}^2 term is
-            mp = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) + (N-(m-1)) for m in 2:N-1])  # this is where the x_{i+1}^2 term is
-            jp = mi .+ 1  # this is the index of the x_{i+1}*x_i term
-            jm = mm .+ 1  # this is the index of the x_{i-1}*x_i term
-            jj = reshape([mp'; mm'; jp'; jm'],4*N-8);
-            vv = reshape([-ones(1,N-2); ones(1,N-2); -ones(1,N-2); ones(1,N-2)],4*N-8)/(6*Δx);
-            F = sparse(ii,jj,vv,N,S)
-
-            # Boundary conditions (Periodic)
-            F[1,2] = -1/6/Δx
-            F[1,N+1] = -1/6/Δx
-            F[1,N] = 1/6/Δx
-            F[1,end] = 1/6/Δx
-            F[N,end-1] = 1/6/Δx
-            F[N,end-2] = 1/6/Δx
-            F[N,1] = -1/6/Δx
-            F[N,N] = -1/6/Δx
-        else
-            F = zeros(N, S)
-        end
+        # For the periodicity for the first and final indices
+        F[1, 2] = - 1 / 2 / Δx
+        F[1, N] = 1 / 2 / Δx
+        F[N, N] = - 1 / 2 / Δx
+        F[N, end-1] = 1 / 2 / Δx 
     else
-        error("type must be either c, nc, or ep")
+        F = zeros(N, S)
     end
-
     return A, sparse(F)
 end
 
 
+
+function finite_diff_periodic_conservative_model(N::Real, Δx::Real, μ::Real)
+    # Create A matrix
+    ζ = 2/Δx^2 - 6*μ/Δx^4
+    η = 4*μ/Δx^4 - 1/Δx^2
+    ϵ = -μ/Δx^4
+
+    A = spdiagm(
+        0 => ζ * ones(N), 
+        1 => η * ones(N - 1), -1 => η * ones(N - 1),
+        2 => ϵ * ones(N - 2), -2 => ϵ * ones(N - 2)
+    )
+    # For the periodicity for the first and final few indices
+    A[1, end-1:end] = [ϵ, η]
+    A[2, end] = ϵ
+    A[end-1, 1] = ϵ
+    A[end, 1:2] = [η, ϵ]
+    
+    # Create F matrix
+    S = Int(N * (N + 1) / 2)
+    if N >= 3
+        ii = repeat(2:(N-1), inner=2)
+        m = 2:N-1
+        mm = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) - (N-(m-2)) for m in 2:N-1])  # this is where the x_{i-1}^2 term is
+        mp = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) + (N-(m-1)) for m in 2:N-1])  # this is where the x_{i+1}^2 term is
+        jj = reshape([mp'; mm'],2*N-4);
+        vv = reshape([-ones(1,N-2); ones(1,N-2)],2*N-4)/(4*Δx);
+        F = sparse(ii,jj,vv,N,S)
+
+        # Boundary conditions (Periodic)
+        F[1,N+1] = -1/4/Δx
+        F[1,end] = 1/4/Δx
+        F[N,end-2] = 1/4/Δx
+        F[N,1] = -1/4/Δx
+    else
+        F = zeros(N, S)
+    end
+    return A, sparse(F)
+end
+
+
+function finite_diff_periodic_energy_preserving_model(N::Real, Δx::Real, μ::Real)
+    # Create A matrix
+    ζ = 2/Δx^2 - 6*μ/Δx^4
+    η = 4*μ/Δx^4 - 1/Δx^2
+    ϵ = -μ/Δx^4
+
+    A = spdiagm(
+        0 => ζ * ones(N), 
+        1 => η * ones(N - 1), -1 => η * ones(N - 1),
+        2 => ϵ * ones(N - 2), -2 => ϵ * ones(N - 2)
+    )
+    # For the periodicity for the first and final few indices
+    A[1, end-1:end] = [ϵ, η]
+    A[2, end] = ϵ
+    A[end-1, 1] = ϵ
+    A[end, 1:2] = [η, ϵ]
+    
+    # Create F matrix
+    S = Int(N * (N + 1) / 2)
+    if N >= 3
+        ii = repeat(2:(N-1), inner=4)
+        m = 2:N-1
+        mi = Int.([N*(N+1)/2 - (N-m)*(N-m+1)/2 - (N-m) for m in 2:N-1])               # this is where the xi^2 term is
+        mm = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) - (N-(m-2)) for m in 2:N-1])  # this is where the x_{i-1}^2 term is
+        mp = Int.([N*(N+1)/2 - (N-m).*(N-m+1)/2 - (N-m) + (N-(m-1)) for m in 2:N-1])  # this is where the x_{i+1}^2 term is
+        jp = mi .+ 1  # this is the index of the x_{i+1}*x_i term
+        jm = mm .+ 1  # this is the index of the x_{i-1}*x_i term
+        jj = reshape([mp'; mm'; jp'; jm'],4*N-8);
+        vv = reshape([-ones(1,N-2); ones(1,N-2); -ones(1,N-2); ones(1,N-2)],4*N-8)/(6*Δx);
+        F = sparse(ii,jj,vv,N,S)
+
+        # Boundary conditions (Periodic)
+        F[1,2] = -1/6/Δx
+        F[1,N+1] = -1/6/Δx
+        F[1,N] = 1/6/Δx
+        F[1,end] = 1/6/Δx
+        F[N,end-1] = 1/6/Δx
+        F[N,end-2] = 1/6/Δx
+        F[N,1] = -1/6/Δx
+        F[N,N] = -1/6/Δx
+    else
+        F = zeros(N, S)
+    end
+    return A, sparse(F)
+end
+
+
+
 """
-    model_PS(model, μ) → A, F
+    pseudo_spectral_model(model, μ) → A, F
 
 Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Pseudo-Spectral/Fast Fourier Transform method.
 
@@ -278,24 +294,26 @@ Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Pseudo-Sp
 - `A`: A matrix
 - `F`: F matrix  (take out 1.0im)
 """
-function model_PS(model::ks, μ::Float64)
-    L = model.Omega[2]
+function pseudo_spectral_model(model::KuramotoSivashinskyModel, μ::Float64)
+    L = model.spatial_domain[2] - model.spatial_domain[1]
 
     # Create A matrix
     A = spdiagm(
-        0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
+        0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.fourier_modes]
     )
     
     # Create F matix
     F = spdiagm(
-        0 => [-π * k / L for k in model.k]
+        0 => [-π * k / L for k in model.fourier_modes]
     )
+    model.model_type = :PS
+    model.integrate_model = integrate_pseudo_spectral_model
     return A, F
 end
 
 
 """
-    model_PS_ew(model, μ) → A, F
+    elementwise_pseudo_spectral_model(model, μ) → A, F    
 
 Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Fast Fourier Transform method (element-wise).
 
@@ -307,20 +325,22 @@ Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Fast Four
 - `A`: A matrix
 - `F`: F matrix
 """
-function model_PS_ew(model::ks, μ::Float64)
-    L = model.Omega[2]
+function elementwise_pseudo_spectral_model(model::KuramotoSivashinskyModel, μ::Float64)
+    L = model.spatial_domain[2] - model.spatial_domain[1]
 
     # Create A matrix
-    A = [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
+    A = [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.fourier_modes]
     # Create F matix
-    F = [-π * 1.0im * k / L for k in model.k]
+    F = [-π * 1.0im * k / L for k in model.fourier_modes]
+    model.model_type = :EWPS
+    model.integrate_model = integrate_elementwise_pseudo_spectral_model
     return A, F
 end
 
 
 """
-    model_SG(model, μ) → A, F
-
+    spectral_galerkin_model(model, μ) → A, F
+    
 Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Spectral-Galerkin method.
 
 ## Arguments
@@ -331,21 +351,21 @@ Generate A, F matrices for the Kuramoto-Sivashinsky equation using the Spectral-
 - `A`: A matrix
 - `F`: F matrix
 """
-function model_SG(model::ks, μ::Float64)
-    N = model.Xdim
-    L = model.Omega[2]
+function spectral_galerkin_model(model::KuramotoSivashinskyModel, μ::Float64)
+    N = model.spatial_dim
+    L = model.spatial_domain[2] - model.spatial_domain[1]
 
     # Create A matrix
     A = spdiagm(
-        0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.k]
+        0 => [(2 * π * k / L)^2 - μ*(2 * π * k / L)^4 for k in model.fourier_modes]
     )
 
     # Create F matrix
     # WARNING: The 1.0im is taken out from F
     F = spzeros(N, Int(N * (N + 1) / 2))
-    for k in model.k
+    for k in model.fourier_modes
         foo = zeros(N, N)
-        for p in model.k, q in model.k
+        for p in model.fourier_modes, q in model.fourier_modes
             if  p + q == k
                 pshift = Int(p + N/2 + 1)
                 qshift = Int(q + N/2 + 1)
@@ -386,13 +406,14 @@ function model_SG(model::ks, μ::Float64)
     #     F[i, :] = vech(foo)
     # end
 
+    model.model_type = :SG
+    model.integrate_model = integrate_spectral_galerkin_model
     return A, F
 end
 
 
-
 """
-    integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing) → u
+$(SIGNATURES)
 
 Integrator using Crank-Nicholson Adams-Bashforth method for (FD)
 
@@ -407,7 +428,7 @@ Integrator using Crank-Nicholson Adams-Bashforth method for (FD)
 ## Returns
 - `u`: state matrix
 """
-function integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)
+function integrate_finite_diff_model(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)
     Xdim = length(IC)
     Tdim = length(tdata)
     u = zeros(Xdim, Tdim)
@@ -447,7 +468,7 @@ end
 
 
 """
-    integrate_FD(ops, tdata, IC; const_stepsize=true, u2_lm1=nothing) → u
+$(SIGNATURES)
 
 Integrator using Crank-Nicholson Adams-Bashforth method for (FD). 
 This is a dispatch function for `integrate_FD(A, F, tdata, IC; const_stepsize=true, u2_lm1=nothing)`.
@@ -463,7 +484,7 @@ Using the operator struct `ops` instead of `A` and `F`.
 ## Returns
 - `u`: state matrix
 """
-function integrate_FD(ops, tdata, IC; params...)
+function integrate_finite_diff_model(ops, tdata, IC; params...)
     # Unpack the parameters
     const_stepsize = get(params, :const_stepsize, true)
 
@@ -508,7 +529,7 @@ end
 
 
 """
-    integrate_PS(A, F, tdata, IC) → u, uhat
+$(SIGNATURES)
 
 Integrator using Crank-Nicholson Adams-Bashforth method for (FFT)
 
@@ -522,7 +543,7 @@ Integrator using Crank-Nicholson Adams-Bashforth method for (FFT)
 - `u`: state matrix
 - `uhat`: state matrix in the Fourier space
 """
-function integrate_PS(A, F, tdata, IC)
+function integrate_pseudo_spectral_model(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
     foo = zeros(ComplexF64, Xdim)
@@ -560,7 +581,7 @@ end
 
 
 """
-    integrate_PS_ew(A, F, tdata, IC) → u, uhat
+$(SIGNATURES)
 
 Integrator using Crank-Nicholson Adams-Bashforth method for (FFT) (element-wise)
 
@@ -574,7 +595,7 @@ Integrator using Crank-Nicholson Adams-Bashforth method for (FFT) (element-wise)
 - `u`: state matrix
 - `uhat`: state matrix in the Fourier space
 """
-function integrate_PS_ew(A, F, tdata, IC)
+function integrate_elementwise_pseudo_spectral_model(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
     foo = zeros(ComplexF64, Xdim)
@@ -611,7 +632,7 @@ end
 
 
 """
-    integrate_SG(A, F, tdata, IC) → u, uhat
+$(SIGNATURES)
 
 Integrator for model produced with Spectral-Galerkin method.
 
@@ -625,7 +646,7 @@ Integrator for model produced with Spectral-Galerkin method.
 - `u`: state matrix
 - `uhat`: state matrix in the Fourier space
 """
-function integrate_SG(A, F, tdata, IC)
+function integrate_spectral_galerkin_model(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
     foo = zeros(ComplexF64, Xdim)
@@ -664,7 +685,7 @@ end
 
 
 """
-    jacob(A, H, n, x) → Jacobian matrix
+$(SIGNATURES)
 
 Generate Jacobian matrix
 
@@ -676,7 +697,7 @@ Generate Jacobian matrix
 ## Returns
 - `J`: Jacobian matrix
 """
-function jacob(ops::Operators, x::AbstractVector{T}) where {T}
+function jacobian(ops::Operators, x::AbstractVector{T}) where {T}
     n = length(x)
     # return ops.A + ops.H * kron(1.0I(n), x) + ops.H * kron(x, 1.0I(n))
     return ops.A + ops.F * elimat(n) * ( kron(1.0I(n), x) + kron(x, 1.0I(n)) )

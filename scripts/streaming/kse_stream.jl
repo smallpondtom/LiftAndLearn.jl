@@ -38,9 +38,10 @@ include("utilities/plotting.jl")
 ######################
 ## KSE equation setup
 ######################
-kse = LnL.ks(
-    [0.0, 60.0], [0.0, 300.0], [1.0, 1.0],
-    512, 0.001, 1, "nc"
+Ω = (0.0, 60.0); dt = 1e-3; L = Ω[2] - Ω[1]; N = 2^9
+kse = LnL.KuramotoSivashinskyModel(
+    spatial_domain=Ω, time_domain=(0.0, 300.0), diffusions_coeffs=1.0,
+    Δx=(Ω[2] - 1/N)/N, Δt=dt, conservation_type=:NC
 )
 
 options = LnL.LSOpInfOption(
@@ -53,7 +54,7 @@ options = LnL.LSOpInfOption(
         N=1,
     ),
     data=LnL.DataStructure(
-        Δt=1e-3,
+        Δt=dt,
         DS=100,
     ),
     optim=LnL.OptimizationSetting(
@@ -62,15 +63,14 @@ options = LnL.LSOpInfOption(
 )
 DS = 100  # downsample rate of data
 # Parameterized function for the initial condition
-L = kse.Omega[2] - kse.Omega[1]  # length of the domain
-u0 = (a,b) -> a * cos.((2*π*kse.x)/L) .+ b * cos.((4*π*kse.x)/L)  # initial condition
+u0 = (a,b) -> a * cos.((2*π*kse.xspan)/L) .+ b * cos.((4*π*kse.xspan)/L)  # initial condition
 
 
 ##########################
 ## Generate training data
 ##########################
-A, F = kse.model_FD(kse, kse.μs[1])
-C = ones(1, kse.Xdim) / kse.Xdim
+A, F = kse.finite_diff_model(kse, kse.diffusion_coeffs)
+C = ones(1, kse.spatial_dim) / kse.spatial_dim
 op_kse = LnL.Operators(A=A, C=C, F=F)
 
 # Initial condition parameters
@@ -92,7 +92,7 @@ else
     # Reference solution
     a_ref = sum(a) / length(a)
     b_ref = sum(b) / length(b)
-    Xref = kse.integrate_FD(A, F, kse.t, u0(a_ref,b_ref))
+    Xref = kse.integrate_model(A, F, kse.tspan, u0(a_ref,b_ref))
     Yref = C * Xref
     @info "Done"
 
@@ -107,7 +107,7 @@ else
     prog = Progress(length(ab_combos))
     Threads.@threads for (i, ic) in collect(enumerate(ab_combos))
         ai, bi = ic
-        states = kse.integrate_FD(A, F, kse.t, u0(ai,bi))
+        states = kse.integrate_model(A, F, kse.tspan, u0(ai,bi))
         tmp = states[:, 2:end]
         Yall[i] = C * tmp[:, 1:DS:end]  # downsample data
         Xall[i] = tmp[:, 1:DS:end]  # downsample data
@@ -155,9 +155,9 @@ with_theme(theme_latexfonts()) do
     tmp = 100
     fig0 = Figure(fontsize=20, size=(1300,500), backgroundcolor="#FFFFFF")
     ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-    surface!(ax1, kse.x, kse.t[1:tmp:end], Xref[:,1:tmp:end])
+    surface!(ax1, kse.xspan, kse.tspan[1:tmp:end], Xref[:,1:tmp:end])
     ax2 = Axis(fig0[1, 2], xlabel="x", ylabel="t")
-    hm = heatmap!(ax2, kse.x, kse.t[1:tmp:end], Xref[:,1:tmp:end])
+    hm = heatmap!(ax2, kse.xspan, kse.tspan[1:tmp:end], Xref[:,1:tmp:end])
     Colorbar(fig0[1, 3], hm)
     display(fig0)
 end
@@ -278,9 +278,9 @@ with_theme(theme_latexfonts()) do
     tmp = 100
     fig0 = Figure(fontsize=20, size=(1300,500))
     ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-    surface!(ax1, kse.x, kse.t[1:tmp:end], (Vr * Xtmp)[:,1:tmp:end])
+    surface!(ax1, kse.xspan, kse.tspan[1:tmp:end], (Vr * Xtmp)[:,1:tmp:end])
     ax2 = Axis(fig0[1, 2], xlabel="x", ylabel="t")
-    hm = heatmap!(ax2, kse.x, kse.t[1:tmp:end], (Vr * Xtmp)[:,1:tmp:end])
+    hm = heatmap!(ax2, kse.xspan, kse.tspan[1:tmp:end], (Vr * Xtmp)[:,1:tmp:end])
     Colorbar(fig0[1, 3], hm)
     display(fig0)
 end
@@ -289,9 +289,9 @@ with_theme(theme_latexfonts()) do
     tmp = 100
     fig0 = Figure(fontsize=20, size=(1300,500))
     ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-    surface!(ax1, kse.x, kse.t[1:tmp:end], (Vr * Xtmp - Xref)[:,1:tmp:end], colormap=:roma)
+    surface!(ax1, kse.xspan, kse.tspan[1:tmp:end], (Vr * Xtmp - Xref)[:,1:tmp:end], colormap=:roma)
     ax2 = Axis(fig0[1, 2], xlabel="x", ylabel="t")
-    hm = heatmap!(ax2, kse.x, kse.t[1:tmp:end], (Vr * Xtmp - Xref)[:,1:tmp:end], colormap=:roma)
+    hm = heatmap!(ax2, kse.xspan, kse.tspan[1:tmp:end], (Vr * Xtmp - Xref)[:,1:tmp:end], colormap=:roma)
     Colorbar(fig0[1, 3], hm)
     display(fig0)
 end
