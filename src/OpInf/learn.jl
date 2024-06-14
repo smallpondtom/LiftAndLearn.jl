@@ -90,7 +90,7 @@ function LS_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
     end
 
     # Extract Quadratic terms if the system includes such terms
-    sv = 0  # initialize this dummy variable just in case
+    # sv = 0  # initialize this dummy variable just in case
     if options.system.is_quad
         if options.optim.which_quad_term == "F"
             Fhat = O[:, TD+1:TD+s2]
@@ -107,10 +107,11 @@ function LS_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray,
     end
 
     # Extract Cubic terms if the system includes such terms
-    sv3 = 0  # initialize this dummy variable just in case
+    # sv3 = 0  # initialize this dummy variable just in case
     if options.system.is_cubic
         if options.optim.which_cubic_term == "E"
             Ehat = O[:, TD+1:TD+s3]
+            Ghat = E2Gs(Ehat)
             TD += s3
         else
             Ghat = O[:, TD+1:TD+v3]

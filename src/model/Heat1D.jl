@@ -21,37 +21,48 @@ $(TYPEDEF)
 ```
 
 ## Fields
-- `Omega::Vector{Float64}`: spatial domain
-- `T::Vector{Float64}`: temporal domain
-- `D::Vector{Float64}`: parameter domain
-- `Δx::Float64`: spatial grid size
-- `Δt::Float64`: temporal step size
-- `Ubc::Matrix{Float64}`: boundary condition (input)
+- `spatial_domain::Tuple{Real,Real}`: spatial domain
+- `time_domain::Tuple{Real,Real}`: temporal domain
+- `param_domain::Tuple{Real,Real}`: parameter domain
+- `Δx::Real`: spatial grid size
+- `Δt::Real`: temporal step size
+- `BC::Symbol`: boundary condition
 - `IC::Array{Float64}`: initial condition
-- `x::Vector{Float64}`: spatial grid points
-- `t::Vector{Float64}`: temporal points
-- `μs::Vector{Float64}`: parameter vector
-- `Xdim::Int64`: spatial dimension
-- `Tdim::Int64`: temporal dimension
-- `Pdim::Int64`: parameter dimension
-- `generateABmatrix::Function`: function to generate A and B matrices
+- `xspan::Vector{Float64}`: spatial grid points
+- `tspan::Vector{Float64}`: temporal points
+- `spatial_dim::Int64`: spatial dimension
+- `time_dim::Int64`: temporal dimension
+- `diffusion_coeffs::Union{Real,AbstractArray{<:Real}}`: parameter vector
+- `param_dim::Int64`: parameter dimension
+- `finite_diff_model::Function`: model using Finite Difference
 """
 mutable struct heat1d <: AbstractModel
-    Omega::Vector{Float64}  # spatial domain
-    T::Vector{Float64}  # temporal domain
-    D::Vector{Float64}  # parameter domain
-    Δx::Float64  # spatial grid size
-    Δt::Float64  # temporal step size
-    Ubc::Matrix{Float64}  # boundary condition (input)
-    IC::Array{Float64}  # initial condition
-    x::Vector{Float64}  # spatial grid points
-    t::Vector{Float64}  # temporal points
-    μs::Vector{Float64}  # parameter vector
-    Xdim::Int64  # spatial dimension
-    Tdim::Int64  # temporal dimension
-    Pdim::Int64  # parameter dimension
+    # Domains
+    spatial_domain::Tuple{Real,Real}  # spatial domain
+    time_domain::Tuple{Real,Real}  # temporal domain
+    param_domain::Tuple{Real,Real}  # parameter domain
 
-    generateABmatrix::Function
+    # Discritization grid
+    Δx::Real  # spatial grid size
+    Δt::Real  # temporal step size
+
+    # Boundary condition
+    BC::Symbol  # boundary condition
+
+    # Initial conditino
+    IC::Array{Float64}  # initial condition
+
+    # grid points
+    xspan::Vector{Float64}  # spatial grid points
+    tspan::Vector{Float64}  # temporal points
+    diffusion_coeffs::Union{Real,AbstractArray{<:Real}}  # parameter vector
+
+    # Dimensions
+    spatial_dim::Int64  # spatial dimension
+    time_dim::Int64  # temporal dimension
+    param_dim::Int64  # parameter dimension
+
+    finite_diff_model::Function
 end
 
 
@@ -61,44 +72,77 @@ $(SIGNATURES)
 1 Dimensional Heat Equation Model
 
 ## Arguments
-- `Omega::Vector{Float64}`: spatial domain
-- `T::Vector{Float64}`: temporal domain
-- `D::Vector{Float64}`: parameter domain
-- `Δx::Float64`: spatial grid size  
-- `Δt::Float64`: temporal step size
-- `Pdim::Int64`: parameter dimension
+- `spatial_domain::Tuple{Real,Real}`: spatial domain
+- `time_domain::Tuple{Real,Real}`: temporal domain
+- `Δx::Real`: spatial grid size
+- `Δt::Real`: temporal step size
+- `diffusion_coeffs::Union{Real,AbstractArray{<:Real}}`: parameter vector
+- `BC::Symbol=:dirichlet`: boundary condition
 
 ## Returns
 - `heat1d`: 1D heat equation model
 """
-function heat1d(Omega, T, D, Δx, Δt, Pdim)
-    x = (Omega[1]:Δx:Omega[2])[2:end-1]
-    t = T[1]:Δt:T[2]
-    μs = range(D[1], D[2], Pdim)
-    Xdim = length(x)
-    Tdim = length(t)
-    Ubc = ones(Tdim,1)
-    IC = zeros(Xdim,1)
+function heat1d(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+                 diffusion_coeffs::Union{Real,AbstractArray{<:Real}}, BC::Symbol=:dirichlet)
+    # Discritization grid info
+    @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
+    if BC == :periodic
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2]-Δx)
+    elseif BC ∈ (:dirichlet, :neumann, :mixed, :robin, :cauchy) 
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2])[2:end-1]
+    end
+    tspan = collect(time_domain[1]:Δt:time_domain[2])
+    spatial_dim = length(xspan)
+    time_dim = length(tspan)
 
-    heat1d(Omega, T, D, Δx, Δt, Ubc, IC, x, t, μs, Xdim, Tdim, Pdim, generateABmatrix)
+    # Initial condition
+    IC = zeros(spatial_dim)
+
+    # Parameter dimensions or number of parameters 
+    param_dim = length(diffusion_coeffs)
+    param_domain = extrema(diffusion_coeffs)
+
+    heat1d(
+        spatial_domain, time_domain, param_domain,
+        Δx, Δt, BC, IC, xspan, tspan, diffusion_coeffs,
+        spatial_dim, time_dim, param_dim, finite_diff_model
+    )
 end
 
 
 """
 $(SIGNATURES)
 
-Generate A and B matrices for the 1D heat equation.
+Finite Difference Model for 1D Heat Equation
 
 ## Arguments
-- `N::Int64`: number of spatial grid points
-- `μ::Float64`: viscosity coefficients
-- `Δx::Float64`: spatial grid size
+- `model::heat1d`: 1D heat equation model
+- `μ::Real`: diffusion coefficient
 
 ## Returns
-- `A::Matrix{Float64}`: A matrix
-- `B::Matrix{Float64}`: B matrix
+- operators
 """
-function generateABmatrix(N, μ, Δx)
+function finite_diff_model(model::heat1d, μ::Real)
+    if model.BC == :periodic
+        return finite_diff_periodic_model(model.spatial_dim, model.Δx, μ)
+    elseif model.BC == :dirichlet
+        return finite_diff_dirichlet_model(model.spatial_dim, model.Δx, μ)
+    else
+        error("Boundary condition not implemented")
+    end
+end
+
+
+function finite_diff_periodic_model(N::Real, Δx::Real, μ::Real)
+    # Create A matrix
+    A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
+    A[1, end] = 1 / Δx^2  # periodic boundary condition
+    A[end, 1] = 1 / Δx^2  
+    return A
+end
+
+
+function finite_diff_dirichlet_model(N::Real, Δx::Real, μ::Real)
     A = diagm(0 => (-2)*ones(N), 1 => ones(N-1), -1 => ones(N-1)) * μ / Δx^2
     B = [1; zeros(N-2,1); 1] * μ / Δx^2   #! Fixed this to generalize input u
     return A, B

@@ -49,7 +49,7 @@ function getDataMat(Xhat::AbstractArray, Xhat_t::AbstractArray, U::AbstractArray
 
     if options.system.is_cubic  # cubic term
         if options.optim.which_cubic_term == "E"
-            Xcu_t = cubicMatStates(Xhat)'
+            Xcu_t = cubeMatStates(Xhat)'
         else
             Xcu_t = kron3MatStates(Xhat)'
         end

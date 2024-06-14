@@ -35,15 +35,15 @@ include("utilities/plotting.jl")
 ##########################
 ## 1D Heat equation setup
 ##########################
-Nx = 2^7
+Nx = 2^7; dt = 1e-3
 heat1d = LnL.heat1d(  # define the model
-    [0.0, 1.0], [0.0, 2.0], [0.1, 0.1],
-    1/Nx, 1e-3, 1
+    spatial_domain=(0.0, 1.0), time_domain=(0.0, 2.0), diffusion_coeffs=0.1,
+    Δx=1/Nx, Δt=1e-3, BC=:dirichlet
 )
-foo = zeros(heat1d.Xdim)
+foo = zeros(heat1d.spatial_dim)
 foo[(Nx÷2+1):end] .= 1
-heat1d.IC = foo .* (0.5 * sin.(2π * heat1d.x))  # change IC
-U = heat1d.Ubc  # boundary condition → control input
+heat1d.IC = foo .* (0.5 * sin.(2π * heat1d.xspan))  # change IC
+U = ones(heat1d.time_dim)  # boundary condition → control input
 
 # OpInf options
 options = LnL.LSOpInfOption(
@@ -56,7 +56,7 @@ options = LnL.LSOpInfOption(
         N=1,  # number of state variables
     ),
     data=LnL.DataStructure(
-        Δt=1e-3, # time step
+        Δt=dt, # time step
         deriv_type="BE"  # backward Euler
     ),
     optim=LnL.OptimizationSetting(
@@ -69,13 +69,13 @@ options = LnL.LSOpInfOption(
 ## Generate Data
 #################
 # Construct full model
-μ = heat1d.μs[1]
-A, B = heat1d.generateABmatrix(heat1d.Xdim, μ, heat1d.Δx)
-C = ones(1, heat1d.Xdim) / heat1d.Xdim
+μ = heat1d.diffusion_coeffs
+A, B = heat1d.finite_diff_model(heat1d, μ)
+C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
 op_heat = LnL.operators(A=A, B=B, C=C)
 
 # Compute the state snapshot data with backward Euler
-X = LnL.backwardEuler(A, B, U, heat1d.t, heat1d.IC)
+X = LnL.backwardEuler(A, B, U, heat1d.tspan, heat1d.IC)
 
 # Compute the SVD for the POD basis
 r = 15  # order of the reduced form
@@ -96,9 +96,9 @@ Ufull = copy(U)
 with_theme(theme_latexfonts()) do
     fig0 = Figure(fontsize=20, size=(1300,500), backgroundcolor="#FFFFFF")
     ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-    surface!(ax1, heat1d.x, heat1d.t, X)
+    surface!(ax1, heat1d.xspan, heat1d.tspan, X)
     ax2 = Axis(fig0[1, 2], xlabel="x", ylabel="t")
-    hm = heatmap!(ax2, heat1d.x, heat1d.t, X)
+    hm = heatmap!(ax2, heat1d.xspan, heat1d.tspan, X)
     Colorbar(fig0[1, 3], hm)
     display(fig0)
 end
@@ -115,7 +115,7 @@ op_int = LnL.pod(op_heat, Vr, options)
 ######################
 # Obtain derivative data
 Xdot = (X[:, 2:end] - X[:, 1:end-1]) / heat1d.Δt
-idx = 2:heat1d.Tdim
+idx = 2:heat1d.time_dim
 X = X[:, idx]  # fix the index of states
 U = U[idx, :]  # fix the index of inputs
 Y = Y[:, idx]  # fix the index of outputs

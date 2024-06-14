@@ -15,7 +15,7 @@ Forward euler scheme integration.
 ## Return
 - `states`: integrated states
 """
-function forwardEuler(A::Matrix, B::Matrix, U::Matrix, tdata::VecOrMat, IC::VecOrMat)::Matrix
+function forwardEuler(A::Array, B::Array, U::Array, tdata::VecOrMat, IC::VecOrMat)::Array
     Xdim = length(IC)
     Tdim = length(tdata)
     states = zeros(Xdim, Tdim)
@@ -69,7 +69,7 @@ Forward euler scheme [dispatch for f(x,u) and u-input as U-matrix]
 ## Return
 - `states`: integrated states
 """
-function forwardEuler(f::Function, U::Matrix, tdata::VecOrMat, IC::VecOrMat)::Matrix
+function forwardEuler(f::Function, U::Array, tdata::VecOrMat, IC::VecOrMat)::Matrix
     Xdim = length(IC)
     Tdim = length(tdata)
     states = zeros(Xdim, Tdim)

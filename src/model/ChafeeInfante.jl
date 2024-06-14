@@ -54,7 +54,7 @@ mutable struct chafeeinfante <: AbstractModel
     time_dim::Int  # temporal dimension
 
     # Parameters
-    diffusion_coeffs::Union{Vector{<:Real},Real}  # diffusion coefficient
+    diffusion_coeffs::Union{AbstractArray{<:Real},Real}  # diffusion coefficient
     param_dim::Int  # parameter dimension
 
     # Initial condition
@@ -70,7 +70,7 @@ end
 
 
 function chafeeinfante(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
-                    diffusion_coeffs::Union{Vector{<:Real},Real}, BC::Symbol=:periodic)
+                    diffusion_coeffs::Union{AbstractArray{<:Real},Real}, BC::Symbol=:periodic)
     # Discritization grid info
     @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
     if BC == :periodic
@@ -89,7 +89,7 @@ function chafeeinfante(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Rea
     param_dim = length(diffusion_coeffs)
     param_domain = extrema(diffusion_coeffs)
 
-    fisherkpp(
+    chafeeinfante(
         spatial_domain, time_domain, param_domain,
         Δx, Δt, xspan, tspan, spatial_dim, time_dim,
         diffusion_coeffs, param_dim, IC, BC,
@@ -250,9 +250,6 @@ function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, E::AbstractAr
     state[:, 1] = IC
     state3_jm1 = 0  # preallocate state3_{j-1}
 
-    # Make input matrix a tall matrix
-    U = reshape(U, (Tdim - 1, 2))
-
     if const_stepsize
         Δt = tspan[2] - tspan[1]  # assuming a constant time step size
         ImdtA_inv = Matrix(I - Δt/2 * A) \ I
@@ -260,9 +257,9 @@ function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, E::AbstractAr
         for j in 2:Tdim
             state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
             if j == 2 
-                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * Δt + B * U[j-1,:] * Δt)
+                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * Δt + B * U[:,j-1] * Δt)
             else
-                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * 3*Δt/2 - E * state3_jm1 * Δt/2 + B * U[j-1,:] * Δt)
+                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * 3*Δt/2 - E * state3_jm1 * Δt/2 + B * U[:,j-1] * Δt)
             end
             state3_jm1 = state3
         end
@@ -271,9 +268,9 @@ function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, E::AbstractAr
             Δt = tspan[j] - tspan[j-1]
             state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
             if j == 2 
-                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * Δt + B * U[j-1,:] * Δt)
+                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * Δt + B * U[:,j-1] * Δt)
             else
-                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * 3*Δt/2 - F * state3_jm1 * Δt/2 + B * U[j-1,:] * Δt)
+                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * 3*Δt/2 - E * state3_jm1 * Δt/2 + B * U[:,j-1] * Δt)
             end
             state3_jm1 = state3
         end

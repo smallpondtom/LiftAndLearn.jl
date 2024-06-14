@@ -83,7 +83,7 @@ function pod(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, o
             op_new.E = Matrix(Ehat)
 
             if op.G == 0
-                Ghat = LnL.E2Gs(Ehat)
+                Ghat = E2Gs(Ehat)
                 op_new.G = Matrix(Ghat)
             end
         end
@@ -92,7 +92,7 @@ function pod(op::operators, Vr::Union{BlockDiagonal, VecOrMat, AbstractArray}, o
             op_new.G = Matrix(Ghat)
 
             if op.E != 0
-                Ehat = LnL.G2E(Ghat)
+                Ehat = G2E(Ghat)
                 op_new.E = Matrix(Ehat)
             end
         end

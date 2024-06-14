@@ -44,7 +44,7 @@ mutable struct heat2d <: AbstractModel
     IC::Array{Float64}  # initial condition
 
     # Parameters
-    diffusion_coeffs::Union{Vector{<:Real},Real} # diffusion coefficients
+    diffusion_coeffs::Union{AbstractArray{<:Real},Real} # diffusion coefficients
 
     # Data
     xspan::Vector{Float64}  # spatial grid points (x-axis)
@@ -68,7 +68,7 @@ $(SIGNATURES)
 - `heat2d`: 2D heat equation model
 """
 function heat2d(;spatial_domain::Tuple{Tuple{Real,Real},Tuple{Real,Real}}, time_domain::Tuple{Real,Real}, 
-                 Δx::Real, Δy::Real, Δt::Real, diffusion_coeffs::Union{Vector{<:Real},Real}, BC::Tuple{Symbol,Symbol})
+                 Δx::Real, Δy::Real, Δt::Real, diffusion_coeffs::Union{AbstractArray{<:Real},Real}, BC::Tuple{Symbol,Symbol})
     # Discritization grid info
     possible_BC = (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux)
     @assert all([BC[i] ∈ possible_BC for i in eachindex(BC)]) "Invalid boundary condition"

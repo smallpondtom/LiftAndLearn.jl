@@ -42,8 +42,8 @@ mutable struct fisherkpp <: AbstractModel
     time_dim::Int  # temporal dimension
 
     # Parameters
-    diffusion_coeffs::Union{Vector{<:Real},Real}  # diffusion coefficient
-    growth_rates::Union{Vector{<:Real},Real}  # growth rate
+    diffusion_coeffs::Union{AbstractArray{<:Real},Real}  # diffusion coefficient
+    growth_rates::Union{AbstractArray{<:Real},Real}  # growth rate
     param_dim::Dict{Symbol,<:Int}  # parameter dimension
 
     # Initial condition
@@ -59,7 +59,8 @@ end
 
 
 function fisherkpp(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
-                    diffusion_coeffs::Union{Vector{<:Real},Real}, growth_rates::Union{Vector{<:Real},Real}, BC::Symbol=:periodic)
+                    diffusion_coeffs::Union{AbstractArray{<:Real},Real}, growth_rates::Union{AbstractArray{<:Real},Real}, 
+                    BC::Symbol=:periodic)
     # Discritization grid info
     @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
     if BC == :periodic
