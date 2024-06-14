@@ -75,6 +75,8 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
         end
     end
 
+    # TODO: Cubic G/E matrices
+
     # Bilinear N matrix
     if options.system.is_bilin
         @variable(model, Nhat[1:n, 1:w])
@@ -95,13 +97,16 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
 
     # Create objective matrix with JuMP expression
     Ot = @expression(model, tmp')
+    n_tmp, m_tmp = size(Rt)
+    @variable(model, X[1:n_tmp, 1:m_tmp])
+    @constraint(model, X .== D * Ot .- Rt)  # this method answer on: https://discourse.julialang.org/t/write-large-least-square-like-problems-in-jump/35931
     if options.λ_lin == 0 && options.λ_quad == 0 
-        REG = @expression(model, sum((D * Ot .- Rt).^2))
+        REG = @expression(model, sum(X.^2))
     else
         if options.optim.which_quad_term == "H"
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+            REG = @expression(model, sum(X.^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
         else
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+            REG = @expression(model, sum(X.^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
         end
     end
 
@@ -173,7 +178,12 @@ function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose},
 
     @variable(model, Chat[1:l, 1:n])
     Chat_t = @expression(model, Chat')
-    @objective(model, Min, sum((Matrix(Xhat_t) * Chat_t .- Yt).^2))
+    
+    n_tmp, m_tmp = size(Yt)
+    @variable(model, X[1:n_tmp, 1:m_tmp])
+    @constraint(model, X .== Matrix(Xhat_t) * Chat_t .- Yt) 
+
+    @objective(model, Min, sum(X.^2))
     @info "Done."
 
     @info "Optimize model."
