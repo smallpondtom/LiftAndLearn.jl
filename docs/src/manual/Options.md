@@ -26,10 +26,10 @@ This structure allows you to input information about the variables in the system
     \frac{dw}{dt} &= \epsilon (v + a - bw)
 \end{align*}
 ```
-Additionally, if we lift this system, it becomes a lifted system of 3 variables. For the `var` you can define the number of unlifted state variables `N=2` and the number of lifted state variables `Nl=3`.
+Additionally, if we lift this system, it becomes a lifted system of 3 variables. For the `VariableStructure` you can define the number of unlifted state variables `N=2` and the number of lifted state variables `Nl=3`.
 
 ```@docs
-vars
+VariableStructure
 ```
 
 ### Data Info

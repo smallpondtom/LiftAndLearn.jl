@@ -17,10 +17,10 @@ $(TYPEDEF)
 
     
 ```math
-\\frac{\\partial u}{\\partial t} =  D\\frac{\\partial^2 u}{\\partial x^2} + ru(1-u)
+\\frac{\\partial u}{\\partial t} =  \\frac{\\partial^2 u}{\\partial x^2} + \\lambda (u - u^3)
 ```
 
-where ``u`` is the state variable, ``D`` is the diffusion coefficient, and ``r`` is the growth rate.
+where ``u`` is the state variable, ``\\lambda`` is the coefficient of nonlinearity.
 
 ## Fields
 - `spatial_domain::Tuple{Real,Real}`: spatial domain
