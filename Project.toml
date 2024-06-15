@@ -1,7 +1,7 @@
 name = "LiftAndLearn"
 uuid = "192fc49d-b0e9-4795-8347-9ce9b8a8946d"
 authors = ["smallpondtom <tkoike45@gmail.com>"]
-version = "1.0.0"
+version = "1.0.1"
 
 [deps]
 Alpine = "07493b3f-dabb-5b16-a503-4139292d7dd4"
