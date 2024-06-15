@@ -23,31 +23,33 @@ const SAVE_FIGURE = true
 ## Generate model
 ##################
 start = time()
-# First order Burger's equation setup
-fhn = LnL.fhn(
-    [0.0, 1.0], [0.0, 4.0], [500, 50000], [10, 15], 2^(-9), 1e-4
+Ω = (0.0, 1.0); dt = 1e-4; Nx = 2^9
+fhn = LnL.FitzHughNagumoModel(
+    spatial_domain=Ω, time_domain=(0.0,4.0), Δx=(Ω[2] - 1/Nx)/Nx, Δt=dt,
+    alpha_input_params=[500, 50000], beta_input_params=[10, 15]
 )
 
 # Some options for operator inference
-options = LnL.LS_options(
-    system=LnL.sys_struct(
+options = LnL.LSOpInfOption(
+    system=LnL.SystemStructure(
         is_lin=true,
         is_quad=true,
         is_bilin=true,
         has_control=true,
+        has_output=true,
         has_const=true,
         has_funcOp=true,
         is_lifted=true,
     ),
-    vars=LnL.vars(
+    vars=LnL.VariableStructure(
         N=2,
         N_lift=3,
     ),
-    data=LnL.data(
-        Δt=1e-4,
+    data=LnL.DataStructure(
+        Δt=dt,
         DS=100,
     ),
-    optim=LnL.opt_settings(
+    optim=LnL.OptimizationSetting(
         verbose=true,
         which_quad_term="H",
         reproject=true,
@@ -55,7 +57,7 @@ options = LnL.LS_options(
 )
 
 # grid points
-gp = Int(1 / fhn.Δx)
+gp = fhn.spatial_dim
 
 # Downsampling
 DS = options.data.DS
@@ -63,8 +65,8 @@ DS = options.data.DS
 ##########################################################
 ## Get the full-order model operators for intrusive model
 ##########################################################
-tmp = fhn.generateFHNmatrices(gp, fhn.Ω[2])
-fomLinOps = LnL.operators(
+tmp = fhn.lifted_finite_diff_model(gp, fhn.spatial_domain[2])
+fomLinOps = LnL.Operators(
     A=tmp[1],
     B=tmp[2][:, :],  # Make sure its matrix
     C=tmp[3][:, :],
@@ -77,8 +79,8 @@ fomLinOps = LnL.operators(
 @info "(t=$(time()-start)) Complete generating intrusive model operators"
 
 # Generic function for FOM
-tmp = fhn.FOM(gp, fhn.Ω[2])  # much efficient to calculate for FOM
-fomOps = LnL.operators(
+tmp = fhn.full_order_model(gp, fhn.spatial_domain[2])  # much efficient to calculate for FOM
+fomOps = LnL.Operators(
     A=tmp[1],
     B=tmp[2][:, :],  # Make sure its a matrix
     C=tmp[3][:, :],
@@ -106,9 +108,9 @@ Utrain_all = Vector{Matrix{Float64}}(undef, length(α_train))
     genU(t) = α * t^3 * exp(-β * t)  # generic function for input
 
     ## training data for inferred dynamical models
-    X = LnL.forwardEuler(fom_state, genU, fhn.t, fhn.ICx)
+    X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
     Xtrain[i] = X[:, 1:DS:end]  # make sure to only record every 0.01s
-    U = genU.(fhn.t)
+    U = genU.(fhn.tspan)
     Utrain_all[i] = U'
     Utrain[i] = U[1:DS:end]'
 end
@@ -118,19 +120,19 @@ Ytr = fomOps.C * Xtr
 
 
 ## Visualize training data
-p = plot(fhn.t[1:DS:end], Xtrain[1][1, :], legend=false, show=true)
-plot!(p, fhn.t[1:DS:end], Xtrain[1][gp+1, :], legend=false)
+p = plot(fhn.tspan[1:DS:end], Xtrain[1][1, :], legend=false, show=true)
+plot!(p, fhn.tspan[1:DS:end], Xtrain[1][gp+1, :], legend=false)
 for i in 2:8
-    plot!(p, fhn.t[1:DS:end], Xtrain[i][1, :], legend=false)
-    plot!(p, fhn.t[1:DS:end], Xtrain[i][gp+1, :], legend=false)
+    plot!(p, fhn.tspan[1:DS:end], Xtrain[i][1, :], legend=false)
+    plot!(p, fhn.tspan[1:DS:end], Xtrain[i][gp+1, :], legend=false)
 end
-plot!(p, fhn.t[1:DS:end], Xtrain[9][1, :], legend=false)
-plot!(p, fhn.t[1:DS:end], Xtrain[9][gp+1, :], legend=false)
+plot!(p, fhn.tspan[1:DS:end], Xtrain[9][1, :], legend=false)
+plot!(p, fhn.tspan[1:DS:end], Xtrain[9][gp+1, :], legend=false)
 display(p)
 
 # Contour plot
-p1 = contourf(fhn.t[1:DS:end],fhn.x,Xtrain[1][1:gp, :],lw=0, xlabel="t", ylabel="x", title="x1")
-p2 = contourf(fhn.t[1:DS:end],fhn.x,Xtrain[1][gp+1:end, :],lw=0, xlabel="t", ylabel="x", title="x2")
+p1 = contourf(fhn.tspan[1:DS:end],fhn.xspan,Xtrain[1][1:gp, :],lw=0, xlabel="t", ylabel="x", title="x1")
+p2 = contourf(fhn.tspan[1:DS:end],fhn.xspan,Xtrain[1][gp+1:end, :],lw=0, xlabel="t", ylabel="x", title="x2")
 
 l = @layout [a b]
 p = plot(p1, p2, layout=l, size=(900, 400), show=true)
@@ -142,8 +144,8 @@ N_tests = 16
 
 # Parameters for the testing data (1)
 @info "Creating test data 1"
-α_test1 = vec(rand(N_tests, 1) .* (fhn.αD[2] - fhn.αD[1]) .+ fhn.αD[1])
-β_test1 = vec(rand(N_tests, 1) .* (fhn.βD[2] - fhn.βD[1]) .+ fhn.βD[1])
+α_test1 = vec(rand(N_tests, 1) .* (fhn.alpha_input_params[2] - fhn.alpha_input_params[1]) .+ fhn.alpha_input_params[1])
+β_test1 = vec(rand(N_tests, 1) .* (fhn.beta_input_params[2] - fhn.beta_input_params[1]) .+ fhn.beta_input_params[1])
 
 Xtest1 = Vector{Matrix{Float64}}(undef, N_tests)
 Utest1 = Vector{Matrix{Float64}}(undef, N_tests)
@@ -152,9 +154,9 @@ Utest1_all = Vector{Matrix{Float64}}(undef, N_tests)
     α, β = α_test1[i], β_test1[i]
     genU(t) = α * t^3 * exp(-β * t)  # generic function for input
 
-    @inbounds X = LnL.forwardEuler(fom_state, genU, fhn.t, fhn.ICx)
+    @inbounds X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
     Xtest1[i] = X[:, 1:DS:end]  # make sure to only record every 0.01s
-    U = genU.(fhn.t)
+    U = genU.(fhn.tspan)
     Utest1_all[i] = U'
     Utest1[i] = U[1:DS:end]'
 end
@@ -173,9 +175,9 @@ Utest2_all = Vector{Matrix{Float64}}(undef, N_tests)
     α, β = α_test2[i], β_test2[i]
     genU(t) = α * t^3 * exp(-β * t)  # generic function for input
 
-    @inbounds X = LnL.forwardEuler(fom_state, genU, fhn.t, fhn.ICx)
+    @inbounds X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
     Xtest2[i] = X[:, 1:DS:end]  # make sure to only record every 0.01s
-    U = genU.(fhn.t)
+    U = genU.(fhn.tspan)
     Utest2_all[i] = U'
     Utest2[i] = U[1:DS:end]'
 end
@@ -216,9 +218,8 @@ test2_err = Dict(
     Vr3 = W3.U[:, 1:r3]
     Vr = BlockDiagonal([Vr1, Vr2, Vr3])
 
-    # infOps = inferOp(Wtr, Utr, Ytr, Vr, fhn.Δt, 0, options)
-    infOps = LnL.inferOp(Wtr, Utr, Ytr, Vr, lifter, fomOps, options)
-    intruOps = LnL.intrusiveMR(fomLinOps, Vr, options)
+    infOps = LnL.opinf(Wtr,Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
+    intruOps = LnL.pod(fomLinOps, Vr, options)
     # At = Vr' * fomLinOps.A * Vr
     # Bt = Vr' * fomLinOps.B
     # Kt = Vr' * fomLinOps.K
@@ -234,8 +235,8 @@ test2_err = Dict(
 
     k, l = 0, 0
     for (X, U) in zip(Xtrain, Utrain_all)
-        Xint = LnL.forwardEuler(fint, U, fhn.t, Vr' * fhn.ICw)
-        Xinf = LnL.forwardEuler(finf, U, fhn.t, Vr' * fhn.ICw)
+        Xint = LnL.forwardEuler(fint, U, fhn.tspan, Vr' * fhn.IC_lift)
+        Xinf = LnL.forwardEuler(finf, U, fhn.tspan, Vr' * fhn.IC_lift)
 
         # Down sample 
         Xint = Xint[:, 1:DS:end]
@@ -247,8 +248,8 @@ test2_err = Dict(
 
     k, l = 0, 0
     for (X, U) in zip(Xtest1, Utest1_all)
-        Xint = LnL.forwardEuler(fint, U, fhn.t, Vr' * fhn.ICw)
-        Xinf = LnL.forwardEuler(finf, U, fhn.t, Vr' * fhn.ICw)
+        Xint = LnL.forwardEuler(fint, U, fhn.tspan, Vr' * fhn.IC_lift)
+        Xinf = LnL.forwardEuler(finf, U, fhn.tspan, Vr' * fhn.IC_lift)
 
         # Down sample
         Xint = Xint[:, 1:DS:end]
@@ -260,8 +261,8 @@ test2_err = Dict(
 
     k, l = 0, 0
     for (X, U) in zip(Xtest2, Utest2_all)
-        Xint = LnL.forwardEuler(fint, U, fhn.t, Vr' * fhn.ICw)
-        Xinf = LnL.forwardEuler(finf, U, fhn.t, Vr' * fhn.ICw)
+        Xint = LnL.forwardEuler(fint, U, fhn.tspan, Vr' * fhn.IC_lift)
+        Xinf = LnL.forwardEuler(finf, U, fhn.tspan, Vr' * fhn.IC_lift)
 
         # Down sample
         Xint = Xint[:, 1:DS:end]

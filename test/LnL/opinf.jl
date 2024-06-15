@@ -7,57 +7,56 @@ const LnL = LiftAndLearn
 
 @testset "1D heat equation test" begin
     ## Set some options
-    provide_R = false
+    PROVIDE_DERIVATIVE = false
 
-    # 1D Heat equation setup
-    heat1d = LnL.heat1d(
-        [0.0, 1.0], [0.0, 1.0], [0.1, 10],
-        2^(-7), 1e-3, 10
+    # # 1D Heat equation setup
+    Nx = 2^7; dt = 1e-3
+    heat1d = LnL.Heat1DModel(
+        spatial_domain=(0.0, 1.0), time_domain=(0.0, 1.0), Δx=1/Nx, Δt=dt, 
+        diffusion_coeffs=range(0.1, 10, 10)
     )
-    heat1d.x = heat1d.x[2:end-1]
-
+    Ubc = ones(heat1d.time_dim)
     # Some options for operator inference
-    options = LnL.LS_options(
-        system=LnL.sys_struct(
+    options = LnL.LSOpInfOption(
+        system=LnL.SystemStructure(
             is_lin=true,
             has_control=true,
             has_output=true,
         ),
-        vars=LnL.vars(
+        vars=LnL.VariableStructure(
             N=1,
         ),
-        data=LnL.data(
-            Δt=1e-3,
+        data=LnL.DataStructure(
+            Δt=dt,
             deriv_type="BE"
         ),
-        optim=LnL.opt_settings(
+        optim=LnL.OptimizationSetting(
             verbose=true,
         ),
     )
 
-    Xfull = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
-    Yfull = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
-    pod_bases = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
+    Xfull = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+    Yfull = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+    pod_bases = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 
-    A_intru = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
-    B_intru = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
-    C_intru = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
+    A_intru = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+    B_intru = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+    C_intru = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 
-    A_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
-    B_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
-    C_opinf = Vector{Matrix{Float64}}(undef, heat1d.Pdim)
+    A_opinf = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+    B_opinf = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+    C_opinf = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 
     ## Generate operators
     r = 15  # order of the reduced form
 
-    for (idx, μ) in enumerate(heat1d.μs)
-        A, B = heat1d.generateABmatrix(heat1d.Xdim, μ, heat1d.Δx)
-        C = ones(1, heat1d.Xdim) / heat1d.Xdim
-
-        op_heat = LnL.operators(A=A, B=B, C=C)
+    for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
+        A, B = heat1d.finite_diff_model(heat1d, μ)
+        C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
+        op_heat = LnL.Operators(A=A, B=B, C=C)
 
         # Compute the states with backward Euler
-        X = LnL.backwardEuler(A, B, heat1d.Ubc, heat1d.t, heat1d.IC)
+        X = LnL.backwardEuler(A, B, Ubc, heat1d.tspan, heat1d.IC)
         Xfull[idx] = X
 
         # Compute the SVD for the POD basis
@@ -70,27 +69,28 @@ const LnL = LiftAndLearn
         Yfull[idx] = Y
 
         # Compute the values for the intrusive model
-        op_heat_new = LnL.intrusiveMR(op_heat, Vr, options)
+        op_heat_new = LnL.pod(op_heat, Vr, options)
         A_intru[idx] = op_heat_new.A
         B_intru[idx] = op_heat_new.B
         C_intru[idx] = op_heat_new.C
 
         # Compute the RHS for the operator inference based on the intrusive operators
-        if provide_R
-            jj = 2:heat1d.Tdim
+        if PROVIDE_DERIVATIVE
+            jj = 2:heat1d.time_dim
             Xn = X[:, jj]
-            Un = heat1d.Ubc[jj, :]
+            Un = Ubc[jj, :]
             Yn = Y[:, jj]
             Xdot = A * Xn + B * Un'
-            op_infer = LnL.inferOp(Xn, Un, Yn, Vr, Xdot, options)
+            op_infer = LnL.opinf(Xn, Vr, options; U=Un, Y=Yn, Xdot=Xdot)
         else
-            op_infer = LnL.inferOp(X, heat1d.Ubc, Y, Vr, options)
+            op_infer = LnL.opinf(X, Vr, options; U=Ubc, Y=Y)
         end
 
         A_opinf[idx] = op_infer.A
         B_opinf[idx] = op_infer.B
         C_opinf[idx] = op_infer.C
     end
+
 
     ## Analyze
     # Error analysis 
@@ -100,7 +100,7 @@ const LnL = LiftAndLearn
     opinf_output_err = zeros(r, 1)
     proj_err = zeros(r, 1)
 
-    for i = 1:r, j = 1:heat1d.Pdim
+    for i = 1:r, j = 1:heat1d.param_dim
         Xf = Xfull[j]  # full order model states
         Yf = Yfull[j]  # full order model outputs
         Vr = pod_bases[j][:, 1:i]  # basis
@@ -116,22 +116,22 @@ const LnL = LiftAndLearn
         Cinf = C_opinf[j]
 
         # Integrate the intrusive model
-        Xint = LnL.backwardEuler(Aint[1:i, 1:i], Bint[1:i, :], heat1d.Ubc, heat1d.t, Vr' * heat1d.IC)
+        Xint = LnL.backwardEuler(Aint[1:i, 1:i], Bint[1:i, :], Ubc, heat1d.tspan, Vr' * heat1d.IC)
         Yint = Cint[1:1, 1:i] * Xint
 
         # Integrate the inferred model
-        Xinf = LnL.backwardEuler(Ainf[1:i, 1:i], Binf[1:i, :], heat1d.Ubc, heat1d.t, Vr' * heat1d.IC)
+        Xinf = LnL.backwardEuler(Ainf[1:i, 1:i], Binf[1:i, :], Ubc, heat1d.tspan, Vr' * heat1d.IC)
         Yinf = Cinf[1:1, 1:i] * Xinf
 
         # Compute errors
         PE, ISE, IOE, OSE, OOE = LnL.compError(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
 
         # Sum of error values
-        proj_err[i] += PE / heat1d.Pdim
-        intru_state_err[i] += ISE / heat1d.Pdim
-        intru_output_err[i] += IOE / heat1d.Pdim
-        opinf_state_err[i] += OSE / heat1d.Pdim
-        opinf_output_err[i] += OOE / heat1d.Pdim
+        proj_err[i] += PE / heat1d.param_dim
+        intru_state_err[i] += ISE / heat1d.param_dim
+        intru_output_err[i] += IOE / heat1d.param_dim
+        opinf_state_err[i] += OSE / heat1d.param_dim
+        opinf_output_err[i] += OOE / heat1d.param_dim
     end
 
     df = DataFrame(
@@ -184,77 +184,76 @@ end
 
 
 @testset "Standard OpInf as Optimization" begin
-    burger = LnL.burgers(
-        [0.0, 1.0], [0.0, 1.0], [0.1, 0.2],
-        2^(-7), 1e-4, 2, "dirichlet"
-    );
+    Ω = (0.0, 1.0)
+    Nx = 2^7; dt = 1e-4
+    burger = LnL.BurgersModel(
+        spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
+        diffusion_coeffs=[0.1,0.2], BC=:dirichlet,
+    )
 
-    options = LnL.LS_options(
-        system=LnL.sys_struct(
+    options = LnL.LSOpInfOption(
+        system=LnL.SystemStructure(
             is_lin=true,
             is_quad=true,
             has_control=true,
             has_output=true,
         ),
-        vars=LnL.vars(
+        vars=LnL.VariableStructure(
             N=1,
         ),
-        data=LnL.data(
-            Δt=1e-4,
+        data=LnL.DataStructure(
+            Δt=dt,
             deriv_type="SI"
         ),
-        optim=LnL.opt_settings(
+        optim=LnL.OptimizationSetting(
             verbose=true,
         ),
         with_tol=true,
         with_reg=true,
         pinv_tol=1e-6,
-        λ=λtik(
+        λ=TikhonovParameter(
             lin=1.0,
             quad=1e-3,
             ctrl=1e-2,
             bilin=0.0
         )
     )
-    Utest = ones(burger.Tdim - 1, 1);  # Reference input/boundary condition for OpInf testing 
+    Utest = ones(burger.time_dim - 1, 1);  # Reference input/boundary condition for OpInf testing 
 
     # Error Values 
     num_inputs = 3
     rmax = 5
     k = 3
-    proj_err = zeros(rmax - k, burger.Pdim)
-    intru_state_err = zeros(rmax - k, burger.Pdim)
-    opinf_state_err = zeros(rmax - k, burger.Pdim)
-    intru_output_err = zeros(rmax - k, burger.Pdim)
-    opinf_output_err = zeros(rmax - k, burger.Pdim)
-    Σr = Vector{Vector{Float64}}(undef, burger.Pdim)  # singular values 
+    proj_err = zeros(rmax - k, burger.param_dim)
+    intru_state_err = zeros(rmax - k, burger.param_dim)
+    opinf_state_err = zeros(rmax - k, burger.param_dim)
+    intru_output_err = zeros(rmax - k, burger.param_dim)
+    opinf_output_err = zeros(rmax - k, burger.param_dim)
+    Σr = Vector{Vector{Float64}}(undef, burger.param_dim)  # singular values 
 
-    # Add 5 extra parameters drawn randomly from the uniform distribution of range [0, 1]
-    μs = vcat(burger.μs)
-
-    for i in 1:length(μs)
-        μ = burger.μs[i]
+    for i in 1:length(burger.diffusion_coeffs)
+        μ = burger.diffusion_coeffs[i]
 
         ## Create testing data
-        A, B, F = burger.generateABFmatrix(burger, μ)
-        C = ones(1, burger.Xdim) / burger.Xdim
-        Xtest = LnL.semiImplicitEuler(A, B, F, Utest, burger.t, burger.IC)
+        A, B, F = burger.finite_diff_model(burger, μ)
+        C = ones(1, burger.spatial_dim) / burger.spatial_dim    
+        Xtest = LnL.semiImplicitEuler(A, B, F, Utest, burger.tspan, burger.IC)
         Ytest = C * Xtest
 
-        op_burger = LnL.operators(A=A, B=B, C=C, F=F)
+        op_burger = LnL.Operators(A=A, B=B, C=C, F=F)
 
         ## training data for inferred dynamical models
-        Urand = rand(burger.Tdim - 1, num_inputs)
+        Urand = rand(burger.time_dim - 1, num_inputs)
         Xall = Vector{Matrix{Float64}}(undef, num_inputs)
         Xdotall = Vector{Matrix{Float64}}(undef, num_inputs)
         for j in 1:num_inputs
-            states = burger.semiImplicitEuler(A, B, F, Urand[:, j], burger.t, burger.IC)
+            states = burger.integrate_model(A, B, F, Urand[:, j], burger.tspan, burger.IC)
             Xall[j] = states[:, 2:end]
             Xdotall[j] = (states[:, 2:end] - states[:, 1:end-1]) / burger.Δt
         end
         X = reduce(hcat, Xall)
         R = reduce(hcat, Xdotall)
-        U = reshape(Urand, (burger.Tdim - 1) * num_inputs, 1)
+        U = reshape(Urand, (burger.time_dim - 1) * num_inputs, 1)
         Y = C * X
 
         # compute the POD basis from the training data
@@ -263,13 +262,13 @@ end
         Σr[i] = tmp.S
 
         # Compute the values for the intrusive model from the basis of the training data
-        op_int = LnL.intrusiveMR(op_burger, Vrmax, options)
+        op_int = LnL.pod(op_burger, Vrmax, options)
 
         # Compute the inferred operators from the training data
         if options.optim.reproject || i == 1
-            op_inf = LnL.inferOp(X, U, Y, Vrmax, op_burger, options)  # Using Reprojection
+            op_inf = LnL.opinf(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
         else
-            op_inf = LnL.inferOp(X, U, Y, Vrmax, R, options)
+            op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=R)
         end
 
         for j = 1+k:rmax
@@ -277,12 +276,12 @@ end
 
             # Integrate the intrusive model
             Fint_extract = LnL.extractF(op_int.F, j)
-            Xint = burger.semiImplicitEuler(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.t, Vr' * burger.IC) # <- use F
+            Xint = burger.integrate_model(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.tspan, Vr' * burger.IC) # <- use F
             Yint = op_int.C[1:1, 1:j] * Xint
 
             # Integrate the inferred model
             Finf_extract = LnL.extractF(op_inf.F, j)
-            Xinf = burger.semiImplicitEuler(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.t, Vr' * burger.IC)  # <- use F
+            Xinf = burger.integrate_model(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.tspan, Vr' * burger.IC)  # <- use F
             Yinf = op_inf.C[1:1, 1:j] * Xinf
 
             # Compute errors
@@ -297,7 +296,7 @@ end
         end
     end
 
-    for i in 1:length(burger.μs)
+    for i in 1:length(burger.diffusion_coeffs)
         _, _ = LnL.choose_ro(Σr[i]; en_low=-12)
     end
 

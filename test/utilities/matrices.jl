@@ -45,11 +45,12 @@ end
 
 
 @testset "Quadratic matrix conversion" begin    # Settings for the KS equation
-    KSE = LnL.ks(
-        [0.0, 22.0], [0.0, 100.0], [1.0, 1.0],
-        32, 0.01, 1, "ep"
+    N = 32
+    KSE = LnL.KuramotoSivashinskyModel(
+        spatial_domain=(0.0, 22.0), time_domain=(0.0, 100.0), diffusion_coeffs=1.0,
+        Δx=(22 - 1/N)/N, Δt=0.01, conservation_type=:EP
     )
-    _, F = KSE.model_SG(KSE, KSE.μs[1])
+    _, F = KSE.spectral_galerkin_model(KSE, KSE.diffusion_coeffs)
     n = size(F, 1)
 
     @test all(F .== LnL.H2F(LnL.F2H(F)))

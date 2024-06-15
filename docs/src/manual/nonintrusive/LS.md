@@ -66,7 +66,7 @@ where ``\mathbf D = [\hat{\mathbf X}^\top, ~\hat{\mathbf X}_\otimes^\top] \in \m
 
 
 ## Implementation
-In this package we implement the standard OpInf along with Tikhonov regularized version with the function `inferOp`.
+In this package we implement the standard OpInf along with Tikhonov regularized version with the function `opinf`.
 
 There are many things going on under the hood when the function: 
 - constructing the data matrix
@@ -77,7 +77,7 @@ But all of those operations are taken care of automatically. For full details pl
 
 
 ```@docs
-inferOp
+opinf
 ```
 
 

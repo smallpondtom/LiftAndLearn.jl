@@ -13,7 +13,7 @@ Create elimination matrix `L` of dimension `m` for the 3-dim tensor.
 - `L3`: elimination matrix
 """
 function elimat3(m::Int)
-    L3 = zeros(Int, m*(m+1)*(m+2) ÷ 6, m^3)
+    L3 = spzeros(Int, m*(m+1)*(m+2) ÷ 6, m^3)
     l = 1
     for i in 1:m
         ei = [Int(p == i) for p in 1:m]
@@ -44,14 +44,14 @@ Create duplication matrix `D` of dimension `n` for the 3-dim tensor.
 """
 function dupmat3(n::Int)
     num_unique_elements = div(n*(n+1)*(n+2), 6)
-    D3 = zeros(Int, n^3, num_unique_elements)
+    D3 = spzeros(Int, n^3, num_unique_elements)
     l = 1 # Column index for the unique elements
     
     for i in 1:n
         for j in i:n
             for k in j:n
                 # Initialize the vector for the column of D3
-                col = zeros(Int, n^3)
+                col = spzeros(Int, n^3)
                 
                 # Assign the elements for all permutations
                 permutations = [
@@ -98,14 +98,14 @@ Create symmetrizer (or symmetric commutation) matrix `N` of dimension `n` for th
 - `N3`: symmetrizer (symmetric commutation) matrix
 """
 function symmtzrmat3(n::Int)
-    N3 = zeros(n^3, n^3)
+    N3 = spzeros(n^3, n^3)
     l = 1 # Column index for the unique elements
     
     for i in 1:n
         for j in 1:n
             for k in 1:n
                 # Initialize the vector for the column of N
-                col = zeros(n^3)
+                col = spzeros(n^3)
                 
                 # Assign the elements for all permutations
                 permutations = [
@@ -295,7 +295,7 @@ function makeCubicOp(n::Int, inds::AbstractArray{Tuple{Int,Int,Int,Int}}, vals::
         end
     end
 
-    G = zeros(n, n^3)
+    G = spzeros(n, n^3)
     for i in 1:n
         G[i, :] = vec(S[:, :, :, i])
     end

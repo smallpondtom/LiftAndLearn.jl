@@ -5,7 +5,7 @@ function compute_LE_oneIC!(RES, type, keys, model, op, IC, Vr, ro, integrator, j
             Ar = op[i].A[1:r,1:r]
             Hr = LnL.extractH(op[i].H, r)
             Fr = LnL.extractF(op[i].F, r)
-            op_tmp = LnL.operators(A=Ar, H=Hr, F=Fr)
+            op_tmp = LnL.Operators(A=Ar, H=Hr, F=Fr)
             if options.history
                 _, foo = CG.lyapunovExponentJacobian(op_tmp, integrator, jacobian, Vr[i][:,1:r]' * IC, options)
                 RES[keys[1]][type][j,i,idx] = foo

@@ -1,4 +1,4 @@
-export operators
+export Operators
 
 """
 $(TYPEDEF)
@@ -19,7 +19,7 @@ supported are up to second order.
 - `N`: bilinear (state-input) operator
 - `f`: nonlinear function operator f(x,u)
 """
-Base.@kwdef mutable struct operators
+Base.@kwdef mutable struct Operators
     A::Union{AbstractArray{<:Number},Real} = 0                                           # linear
     B::Union{AbstractArray{<:Number},Real} = 0                                           # control
     C::Union{AbstractArray{<:Number},Real} = 0                                           # output

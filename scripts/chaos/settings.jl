@@ -6,24 +6,24 @@ KSE = LnL.ks(
 )
 
 # System structure of KSE
-KSE_system = LnL.sys_struct(
+KSE_system = LnL.SystemStructure(
     is_lin=true,
     is_quad=true,
 )
 
 # Variable information of KSE
-KSE_vars = LnL.vars(
+KSE_vars = LnL.VariableStructure(
     N=1,
 )
 
 # Data structure of KSE
-KSE_data = LnL.data(
+KSE_data = LnL.DataStructure(
     Δt=KSE.Δt,
     DS=100,
 )
 
 # Optimization settings for KSE
-KSE_optim = LnL.opt_settings(
+KSE_optim = LnL.OptimizationSetting(
     verbose=true,
     initial_guess=false,
     max_iter=1000,
@@ -34,7 +34,7 @@ KSE_optim = LnL.opt_settings(
 )
 
 # Standard OpInf options for KSE
-options = LnL.LS_options(
+options = LnL.LSOpInfOption(
     system=KSE_system,
     vars=KSE_vars,
     data=KSE_data,

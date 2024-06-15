@@ -7,9 +7,9 @@ using DocStringExtensions
 using LinearAlgebra
 using SparseArrays
 
-import ..LiftAndLearn: Abstract_Model, vech, ⊘, operators
+import ..LiftAndLearn: AbstractModel, vech, ⊘, Operators
 
-export burgers
+export BurgersModel
 
 
 """
@@ -22,92 +22,133 @@ Viscous Burgers' equation model
 ```
 
 ## Fields
-- `Omega::Vector{Float64}`: spatial domain
-- `T::Vector{Float64}`: temporal domain
-- `D::Vector{Float64}`: parameter domain
-- `Δx::Float64`: spatial grid size
-- `Δt::Float64`: temporal step size
-- `IC::VecOrMat{Float64}`: initial condition
-- `x::Vector{Float64}`: spatial grid points
-- `t::Vector{Float64}`: temporal points
-- `μs::Union{Vector{Float64},Float64}`: parameter vector
-- `Xdim::Int64`: spatial dimension
-- `Tdim::Int64`: temporal dimension
-- `Pdim::Int64`: parameter dimension
-- `BC::String`: boundary condition
-- `generateABFmatrix::Function`: function to generate A, B, F matrices
-- `generateMatrix_NC_periodic::Function`: function to generate A, F matrices for the non-energy preserving Burgers' equation. (Non-conservative Periodic boundary condition)
-- `generateMatrix_C_periodic::Function`: function to generate A, F matrices for the non-energy preserving Burgers' equation. (conservative periodic boundary condition)
-- `generateEPmatrix::Function`: function to generate A, F matrices for the Burgers' equation. (Energy-preserving form)
-- `semiImplicitEuler::Function`: function to integrate the system using semi-implicit Euler scheme
+- `spatial_domain::Tuple{Real,Real}`: spatial domain
+- `time_domain::Tuple{Real,Real}`: temporal domain
+- `param_domain::Tuple{Real,Real}`: parameter domain
+- `Δx::Real`: spatial grid size
+- `Δt::Real`: temporal step size
+- `BC::Symbol`: boundary condition
+- `IC::Array{Float64}`: initial condition
+- `xspan::Vector{Float64}`: spatial grid points
+- `tspan::Vector{Float64}`: temporal points
+- `spatial_dim::Int64`: spatial dimension
+- `time_dim::Int64`: temporal dimension
+- `diffusion_coeffs::Union{Real,AbstractArray{<:Real}}`: parameter vector
+- `param_dim::Int64`: parameter dimension
+- `conservation_type::Symbol`: conservation type
+- `finite_diff_model::Function`: model using Finite Difference
+- `integrate_model::Function`: model integration
 """
-mutable struct burgers <: Abstract_Model
-    Omega::Vector{Float64}  # spatial domain
-    T::Vector{Float64}  # temporal domain
-    D::Vector{Float64}  # parameter domain
-    Δx::Float64  # spatial grid size
-    Δt::Float64  # temporal step size
-    IC::VecOrMat{Float64}  # initial condition
-    x::Vector{Float64}  # spatial grid points
-    t::Vector{Float64}  # temporal points
-    μs::Union{Vector{Float64},Float64}  # parameter vector
-    Xdim::Int64  # spatial dimension
-    Tdim::Int64  # temporal dimension
-    Pdim::Int64  # parameter dimension
-    BC::String   # boundary condition
+mutable struct BurgersModel <: AbstractModel
+    # Domains
+    spatial_domain::Tuple{Real,Real}  # spatial domain
+    time_domain::Tuple{Real,Real}  # temporal domain
+    param_domain::Tuple{Real,Real}  # parameter domain
 
-    generateABFmatrix::Function
-    generateMatrix_NC_periodic::Function
-    generateMatrix_C_periodic::Function
-    generateEPmatrix::Function
-    semiImplicitEuler::Function
+    # Discritization grid
+    Δx::Real  # spatial grid size
+    Δt::Real  # temporal step size
+
+    # Boundary condition
+    BC::Symbol  # boundary condition
+
+    # Initial conditino
+    IC::Array{Float64}  # initial condition
+
+    # grid points
+    xspan::Vector{Float64}  # spatial grid points
+    tspan::Vector{Float64}  # temporal points
+    diffusion_coeffs::Union{Real,AbstractArray{<:Real}}  # parameter vector
+
+    # Dimensions
+    spatial_dim::Int64  # spatial dimension
+    time_dim::Int64  # temporal dimension
+    param_dim::Int64  # parameter dimension
+
+    # Convervation type
+    conservation_type::Symbol
+
+    finite_diff_model::Function
+    integrate_model::Function
 end
 
 
 """
-    burgers(Omega, T, D, Δx, Δt, Pdim, BC) → burgers
+$(SIGNATURES)
 
 Constructor for the Burgers' equation model.
 """
-function burgers(Omega, T, D, Δx, Δt, Pdim, BC)
-    if BC == "dirichlet"
-        x = collect(Omega[1]:Δx:Omega[2])  # include boundary conditions
-    elseif BC == "periodic"
-        x = collect(Omega[1]:Δx:Omega[2] - Δx)  # exclude boundary conditions
+function BurgersModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
+                       diffusion_coeffs::Union{Real,AbstractArray{<:Real}}, BC::Symbol=:dirichlet,
+                       conservation_type::Symbol=:NC)
+    # Discritization grid info
+    @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
+    if BC == :periodic
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2]-Δx)
+    elseif BC ∈ (:dirichlet, :neumann, :mixed, :robin, :cauchy) 
+        xspan = collect(spatial_domain[1]:Δx:spatial_domain[2])[2:end-1]
     end
-    t = collect(T[1]:Δt:T[2])
-    μs = Pdim == 1 ? D[1] : collect(range(D[1], D[2], Pdim))
-    Xdim = length(x)
-    Tdim = length(t)
-    IC = zeros(Xdim, 1)
+    tspan = collect(time_domain[1]:Δt:time_domain[2])
+    spatial_dim = length(xspan)
+    time_dim = length(tspan)
 
-    burgers(
-        Omega, T, D, Δx, Δt, IC, x, t, μs, Xdim, Tdim, Pdim, BC,
-        generateABFmatrix, generateMatrix_NC_periodic, generateMatrix_C_periodic,
-        generateEPmatrix, semiImplicitEuler
+    # Initial condition
+    IC = zeros(spatial_dim)
+
+    # Parameter dimensions or number of parameters 
+    param_dim = length(diffusion_coeffs)
+    param_domain = extrema(diffusion_coeffs)
+
+    @assert conservation_type ∈ (:EP, :NC, :C) "Invalid conservation type"
+
+    BurgersModel(
+        spatial_domain, time_domain, param_domain,
+        Δx, Δt, BC, IC, xspan, tspan, diffusion_coeffs,
+        spatial_dim, time_dim, param_dim, conservation_type,
+        finite_diff_model, integrate_model
     )
 end
 
 
 """
-    generateABFmatrix(model, μ) → A, B, F
+$(SIGNATURES)
 
-Generate A, B, F matrices for the Burgers' equation.
+Finite Difference Model for Burgers equation
 
 ## Arguments
-- `model`: Burgers' equation model
-- `μ`: parameter value
+- `model::BurgersModel`: Burgers model
+- `μ::Real`: diffusion coefficient
 
 ## Returns
-- `A`: A matrix
-- `B`: B matrix
-- `F`: F matrix
+- operators
 """
-function generateABFmatrix(model::burgers, μ::Float64)
-    N = model.Xdim
-    Δx = model.Δx
-    Δt = model.Δt
+function finite_diff_model(model::BurgersModel, μ::Real)
+    if model.BC == :periodic
+        if model.conservation_type == :NC
+            return finite_diff_periodic_nonconservative_model(model.spatial_dim, model.Δx, μ)
+        elseif model.conservation_type == :C
+            return finite_diff_periodic_conservative_model(model.spatial_dim, model.Δx, μ)
+        elseif model.conservation_type == :EP
+            return finite_diff_periodic_energy_preserving_model(model.spatial_dim, model.Δx, μ)
+        else
+            error("Conservation type not implemented")
+        end
+    elseif model.BC == :dirichlet
+        return finite_diff_dirichlet_model(model.spatial_dim, model.Δx, model.Δt, μ)
+    else
+        error("Boundary condition not implemented")
+    end
+end
 
+
+
+"""
+    finite_diff_dirichlet_model(N::Real, Δx::Real, μ::Real) → A, B, F
+
+Generate A, B, F matrices for the Burgers' equation for Dirichlet boundary condition.
+This is by default the non-conservative form.
+"""
+function finite_diff_dirichlet_model(N::Real, Δx::Real, Δt::Real, μ::Float64)
     # Create A matrix
     A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, 1:2] = [-1/Δt, 0]
@@ -133,22 +174,11 @@ end
 
 
 """
-    generateMatrix_NC_periodic(model, μ) → A, F
+    finite_diff_periodic_nonconservative_model(N::Real, Δx::Real, μ::Real) → A, F
 
-Generate A, F matrices for the non-energy preserving Burgers' equation. (Non-conservative Periodic boundary condition)
-
-## Arguments
-- `model`: Burgers' equation model
-- `μ`: parameter value
-
-## Returns
-- `A`: A matrix
-- `F`: F matrix
+Generate A, F matrices for the Burgers' equation for periodic boundary condition (Non-conservative).
 """
-function generateMatrix_NC_periodic(model::burgers, μ::Float64)
-    N = model.Xdim
-    Δx = model.Δx
-
+function finite_diff_periodic_nonconservative_model(N::Real, Δx::Real, μ::Real)
     # Create A matrix
     A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, end] = μ / Δx^2  # periodic boundary condition
@@ -176,22 +206,11 @@ end
 
 
 """
-    generateMatrix_C_periodic(model, μ) → A, F
+    finite_diff_periodic_conservative_model(N::Real, Δx::Real, μ::Real) → A, F
 
-Generate A, F matrices for the non-energy preserving Burgers' equation. (conservative periodic boundary condition)
-
-## Arguments
-- `model`: Burgers' equation model
-- `μ`: parameter value
-
-## Returns
-- `A`: A matrix
-- `F`: F matrix
+Generate A, F matrices for the Burgers' equation for periodic boundary condition (Conservative form).
 """
-function generateMatrix_C_periodic(model::burgers, μ::Float64)
-    N = model.Xdim
-    Δx = model.Δx
-
+function finite_diff_periodic_conservative_model(N::Real, Δx::Real, μ::Float64)
     # Create A matrix
     A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, end] = μ / Δx^2  # periodic boundary condition
@@ -222,22 +241,11 @@ end
 
 
 """
-    generateEPmatrix(model, μ) → A, F
+    finite_diff_periodic_energy_preserving_model(N::Real, Δx::Real, μ::Float64) → A, F
 
-Generate A, F matrices for the Burgers' equation. (Energy-preserving form)
-
-## Arguments
-- `model`: Burgers' equation model
-- `μ`: parameter value
-
-## Returns
-- `A`: A matrix
-- `F`: F matrix
+Generate A, F matrices for the Burgers' equation for periodic boundary condition (Energy preserving form).
 """
-function generateEPmatrix(model::burgers, μ::Float64)
-    N = model.Xdim
-    Δx = model.Δx
-
+function finite_diff_periodic_energy_preserving_model(N::Real, Δx::Real, μ::Float64)
     # Create A matrix
     A = spdiagm(0 => (-2) * ones(N), 1 => ones(N - 1), -1 => ones(N - 1)) * μ / Δx^2
     A[1, N] = μ / Δx^2  # periodic boundary condition
@@ -276,22 +284,11 @@ end
 
 
 """
-    semiImplicitEuler(A, B, F, U, tdata, IC) → states
+    integrate_model(A, B, F, U, tdata, IC) → states
 
 Semi-Implicit Euler scheme
-
-## Arguments
-- `A`: linear state operator
-- `B`: linear input operator
-- `F`: quadratic state operator
-- `U`: input data
-- `tdata`: time data
-- `IC`: initial condtions
-
-## Returns
-- `states`: integrated states
 """
-function semiImplicitEuler(A, B, F, U, tdata, IC)
+function integrate_model(A, B, F, U, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
     state = zeros(Xdim, Tdim)
@@ -308,20 +305,11 @@ end
 
 
 """
-    semiImplicitEuler(A, F, tdata, IC) → states
+    integrate_model(A, F, tdata, IC) → states
 
 Semi-Implicit Euler scheme without control (dispatch)
-
-## Arguments
-- `A`: linear state operator
-- `F`: quadratic state operator
-- `tdata`: time data
-- `IC`: initial condtions
-
-## Returns
-- `states`: integrated states
 """
-function semiImplicitEuler(A, F, tdata, IC)
+function integrate_model(A, F, tdata, IC)
     Xdim = length(IC)
     Tdim = length(tdata)
     state = zeros(Xdim, Tdim)
@@ -338,19 +326,11 @@ end
 
 
 """
-    semiImplicitEuler(ops, tdata, IC) → states
+    integrate_model(ops, tdata, IC) → states
 
 Semi-Implicit Euler scheme without control (dispatch)
-
-## Arguments
-- `ops`: operators
-- `tdata`: time data
-- `IC`: initial condtions
-
-## Returns
-- `states`: integrated states
 """
-function semiImplicitEuler(ops, tdata, IC)
+function integrate_model(ops, tdata, IC)
     A = ops.A 
     F = ops.F
     Xdim = length(IC)

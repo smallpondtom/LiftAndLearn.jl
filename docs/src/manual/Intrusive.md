@@ -24,8 +24,5 @@ where the reduced operators are ``\mathbf{\hat{A}} = \mathbf{V}^\top_r \mathbf{A
 The implementation of this corresponds to the following function:
 
 ```@docs
-intrusiveMR
+pod
 ```
-
-!!! note
-    In the next release, we will probably replace the function name `intrusiveMR` with `pod` for precision.

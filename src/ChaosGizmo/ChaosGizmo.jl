@@ -8,7 +8,7 @@ using LinearAlgebra
 using Parameters
 using SparseArrays
 
-import ..LiftAndLearn: Abstract_Model, operators, extractF, extractH
+import ..LiftAndLearn: AbstractModel, Operators, extractF, extractH
 
 include("integrators.jl")
 include("LyapunovExponent.jl")

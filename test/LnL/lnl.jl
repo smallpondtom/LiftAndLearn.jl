@@ -7,14 +7,15 @@ const LnL = LiftAndLearn
 
 @testset "FHN test" begin
     ## Generate models
-    # First order Burger's equation setup
-    fhn = LnL.fhn(
-        [0.0, 1.0], [0.0, 4.0], [500, 50000], [10, 15], 2^(-9), 1e-4
+    Ω = (0.0, 1.0); dt = 1e-4; Nx = 2^9
+    fhn = LnL.FitzHughNagumoModel(
+        spatial_domain=Ω, time_domain=(0.0,4.0), Δx=(Ω[2] - 1/Nx)/Nx, Δt=dt,
+        alpha_input_params=[500, 50000], beta_input_params=[10, 15]
     )
 
     # Some options for operator inference
-    options = LnL.LS_options(
-        system=LnL.sys_struct(
+    options = LnL.LSOpInfOption(
+        system=LnL.SystemStructure(
             is_lin=true,
             is_quad=true,
             is_bilin=true,
@@ -23,15 +24,15 @@ const LnL = LiftAndLearn
             has_funcOp=true,
             is_lifted=true,
         ),
-        vars=LnL.vars(
+        vars=LnL.VariableStructure(
             N=2,
             N_lift=3,
         ),
-        data=LnL.data(
+        data=LnL.DataStructure(
             Δt=1e-4,
             DS=100,
         ),
-        optim=LnL.opt_settings(
+        optim=LnL.OptimizationSetting(
             verbose=true,
             which_quad_term="H",
             reproject=true,
@@ -39,14 +40,14 @@ const LnL = LiftAndLearn
     )
 
     # grid points
-    gp = Int(1 / fhn.Δx)
+    gp = fhn.spatial_dim
 
     # Downsampling
     DS = options.data.DS
 
     # Get the full-order model operators for intrusive model
-    tmp = fhn.generateFHNmatrices(gp, fhn.Ω[2])
-    fomLinOps = LnL.operators(
+    tmp = fhn.lifted_finite_diff_model(gp, fhn.spatial_domain[2])
+    fomLinOps = LnL.Operators(
         A=tmp[1],
         B=tmp[2][:, :],  # Make sure its matrix
         C=tmp[3][:, :],
@@ -58,8 +59,8 @@ const LnL = LiftAndLearn
 
 
     # Generic function for FOM
-    tmp = fhn.FOM(gp, fhn.Ω[2])  # much efficient to calculate for FOM
-    fomOps = LnL.operators(
+    tmp = fhn.full_order_model(gp, fhn.spatial_domain[2])  # much efficient to calculate for FOM
+    fomOps = LnL.Operators(
         A=tmp[1],
         B=tmp[2][:, :],  # Make sure its a matrix
         C=tmp[3][:, :],
@@ -84,9 +85,9 @@ const LnL = LiftAndLearn
         genU(t) = α * t^3 * exp(-β * t)  # generic function for input
 
         ## training data for inferred dynamical models
-        X = LnL.forwardEuler(fom_state, genU, fhn.t, fhn.ICx)
+        X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
         Xtrain[i] = X[:, 1:DS:end]  # make sure to only record every 0.01s
-        U = genU.(fhn.t)
+        U = genU.(fhn.tspan)
         Utrain_all[i] = U'
         Utrain[i] = U[1:DS:end]'
     end
@@ -123,16 +124,16 @@ const LnL = LiftAndLearn
         Vr3 = W3.U[:, 1:r3]
         Vr = BlockDiagonal([Vr1, Vr2, Vr3])
 
-        infOps = LnL.inferOp(Wtr, Utr, Ytr, Vr, lifter, fomOps, options)
-        intruOps = LnL.intrusiveMR(fomLinOps, Vr, options)
+        infOps = LnL.opinf(Wtr, Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
+        intruOps = LnL.pod(fomLinOps, Vr, options)
 
         finf = (x, u) -> infOps.A * x + infOps.B * u + infOps.H * kron(x, x) + (infOps.N * x) * u + infOps.K
         fint = (x, u) -> intruOps.A * x  + intruOps.B * u + intruOps.H * kron(x, x) + (intruOps.N*x)*u + intruOps.K
 
         k, l = 0, 0
         for (X, U) in zip(Xtrain, Utrain_all)
-            Xint = LnL.forwardEuler(fint, U, fhn.t, Vr' * fhn.ICw)
-            Xinf = LnL.forwardEuler(finf, U, fhn.t, Vr' * fhn.ICw)
+            Xint = LnL.forwardEuler(fint, U, fhn.tspan, Vr' * fhn.IC_lift)
+            Xinf = LnL.forwardEuler(finf, U, fhn.tspan, Vr' * fhn.IC_lift)
 
             # Down sample 
             Xint = Xint[:, 1:DS:end]

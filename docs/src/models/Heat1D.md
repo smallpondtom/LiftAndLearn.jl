@@ -1,8 +1,8 @@
 # 1D Heat Equation
 
-Models are under an `Abstract_Model`
+Models are under an `AbstractModel`
 ```@docs
-LiftAndLearn.Abstract_Model
+LiftAndLearn.AbstractModel
 ```
 
 ```@autodocs

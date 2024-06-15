@@ -1,10 +1,10 @@
 # Utilities
 
 ## System operators
-The struct `operators` provides a convenient way to organize and store the full and reduced operators.
+The struct `Operators` provides a convenient way to organize and store the full and reduced operators.
 
 ```@docs
-operators
+Operators
 ```
 
 ## Linear Algebra

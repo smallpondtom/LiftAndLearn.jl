@@ -1,15 +1,14 @@
 export EPHEC_Optimize, EPSIC_Optimize, EPP_Optimize
 
 """
-    EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-        options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+    EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, 
+        options::AbstractOption, IG::Operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserved (Hard Equality Constraint) operator inference optimization (EPHEC)
 
 ## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
-- `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
@@ -17,13 +16,13 @@ Energy preserved (Hard Equality Constraint) operator inference optimization (EPH
 - Inferred operators
 """
 function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
-    dims::Dict, options::Abstract_Option, IG::operators)
+    options::AbstractOption, IG::Operators)
     # Some dimensions to unpack for convenience
-    n = dims[:n]
-    p = dims[:p]
-    s = dims[:s]
-    v = dims[:v]
-    w = dims[:w]
+    n = options.system.dims[:n]
+    m = options.system.dims[:m]
+    s = options.system.dims[:s2]
+    v = options.system.dims[:v2]
+    w = options.system.dims[:w1]
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
@@ -60,7 +59,7 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     end
 
     if options.system.has_control
-        @variable(model, Bhat[1:n, 1:p])
+        @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess 
             set_start_value.(Bhat, IG.B)
         end
@@ -196,15 +195,14 @@ end
 
 
 """
-    EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-        options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+    EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, 
+        options::AbstractOption, IG::Operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserved (Soft Inequality Constraint) operator inference optimization (EPSIC)
 
 ## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
-- `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
@@ -213,13 +211,13 @@ Energy preserved (Soft Inequality Constraint) operator inference optimization (E
 
 """
 function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
-    dims::Dict, options::Abstract_Option, IG::operators)
+    options::AbstractOption, IG::Operators)
     # Some dimensions to unpack for convenience
-    n = dims[:n]
-    p = dims[:p]
-    s = dims[:s]
-    v = dims[:v]
-    w = dims[:w]
+    n = options.system.dims[:n]
+    m = options.system.dims[:m]
+    s = options.system.dims[:s2]
+    v = options.system.dims[:v2]
+    w = options.system.dims[:w1]
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
@@ -256,7 +254,7 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     end
 
     if options.system.has_control
-        @variable(model, Bhat[1:n, 1:p])
+        @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess
             set_start_value.(Bhat, IG.B)
         end
@@ -414,15 +412,14 @@ end
 
 
 """
-    EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, dims::Dict, 
-        options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+    EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, 
+        options::AbstractOption, IG::Operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Energy preserving penalty operator inference optimization (EPP)
 
 ## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
-- `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
@@ -431,13 +428,13 @@ Energy preserving penalty operator inference optimization (EPP)
 
 """
 function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
-    dims::Dict, options::Abstract_Option, IG::operators)
+    options::AbstractOption, IG::Operators)
     # Some dimensions to unpack for convenience
-    n = dims[:n]
-    p = dims[:p]
-    s = dims[:s]
-    v = dims[:v]
-    w = dims[:w]
+    n = options.system.dims[:n]
+    m = options.system.dims[:m]
+    s = options.system.dims[:s2]
+    v = options.system.dims[:v2]
+    w = options.system.dims[:w1]
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
@@ -475,7 +472,7 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     end
 
     if options.system.has_control
-        @variable(model, Bhat[1:n, 1:p])
+        @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess
             set_start_value.(Bhat, IG.B)
         end

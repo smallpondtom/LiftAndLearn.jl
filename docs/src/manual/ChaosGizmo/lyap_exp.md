@@ -148,16 +148,16 @@ values = [
 ]
 H = LnL.makeQuadOp(n, indices, values; which_quad_term="H")
 F = LnL.makeQuadOp(n, indices, values; which_quad_term="F")
-lorenz9_ops = LnL.operators(A=A, H=H, F=F)
+lorenz9_ops = LnL.Operators(A=A, H=H, F=F)
 
 
 # Define some helper functions
-function lorenz_jacobian(ops::LnL.operators, x::AbstractArray)
+function lorenz_jacobian(ops::LnL.Operators, x::AbstractArray)
     n = size(x,1)
     return ops.A + ops.H * kron(I(n),x) + ops.H*kron(x,I(n))
 end
 
-function lorenz_integrator(ops::LnL.operators, tspan::AbstractArray, IC::Array; params...)
+function lorenz_integrator(ops::LnL.Operators, tspan::AbstractArray, IC::Array; params...)
     K = length(tspan)
     N = size(IC,1)
     f = let A = ops.A, H = ops.H, F = ops.F
@@ -191,10 +191,10 @@ data5 = lorenz_integrator(lorenz9_ops, 0:1e-2:1e3, 2*rand(9).-1)
 data = hcat(data1, data2, data3, data4, data5)
 rmax = 7
 Vr = svd(data).U[:,1:rmax]   # choose rmax columns
-rom_option = LnL.LS_options(
-    system=LnL.sys_struct(is_lin=true, is_quad=true),
+rom_option = LnL.LSOpInfOption(
+    system=LnL.SystemStructure(is_lin=true, is_quad=true),
 )
-oprom = LnL.intrusiveMR(lorenz9_ops, Vr, rom_option)
+oprom = LnL.pod(lorenz9_ops, Vr, rom_option)
 
 
 # Now, we can compute the Lyapunov spectrum and the Kaplan-Yorke dimension using the method without the Tangent map

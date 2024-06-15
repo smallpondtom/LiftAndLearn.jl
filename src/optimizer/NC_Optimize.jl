@@ -1,15 +1,14 @@
 export NC_Optimize, NC_Optimize_output
 
 """
-    NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, dims::Dict, 
-        options::Abstract_Option, IG::operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+    NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, 
+        options::AbstractOption, IG::Operators) → Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 
 Optimization version of Standard Operator Inference (NC)
 
 ## Arguments
 - `D`: data matrix
 - `Rt`: transpose of the derivative matrix
-- `dims`: important dimensions
 - `options`: options for the operator inference set by the user
 - `IG`: Initial Guesses
 
@@ -18,13 +17,13 @@ Optimization version of Standard Operator Inference (NC)
 
 """
 function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose}, 
-        dims::Dict, options::Abstract_Option, IG::operators)
+        options::AbstractOption, IG::Operators)
     # Some dimensions to unpack for convenience
-    n = dims[:n]
-    p = dims[:p]
-    s = dims[:s]
-    v = dims[:v]
-    w = dims[:w]
+    n = options.system.dims[:n]
+    m = options.system.dims[:m]
+    s = options.system.dims[:s2]
+    v = options.system.dims[:v2]
+    w = options.system.dims[:w1]
 
     @info "Initialize optimization model."
 
@@ -52,7 +51,7 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
 
     # Input B matrix
     if options.system.has_control
-        @variable(model, Bhat[1:n, 1:p])
+        @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess
             set_start_value.(Bhat, IG.B) # set initial value of Bhat
         end
@@ -76,6 +75,8 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
         end
     end
 
+    # TODO: Cubic G/E matrices
+
     # Bilinear N matrix
     if options.system.is_bilin
         @variable(model, Nhat[1:n, 1:w])
@@ -96,13 +97,16 @@ function NC_Optimize(D::Matrix, Rt::Union{Matrix, Transpose},
 
     # Create objective matrix with JuMP expression
     Ot = @expression(model, tmp')
+    n_tmp, m_tmp = size(Rt)
+    @variable(model, X[1:n_tmp, 1:m_tmp])
+    @constraint(model, X .== D * Ot .- Rt)  # this method answer on: https://discourse.julialang.org/t/write-large-least-square-like-problems-in-jump/35931
     if options.λ_lin == 0 && options.λ_quad == 0 
-        REG = @expression(model, sum((D * Ot .- Rt).^2))
+        REG = @expression(model, sum(X.^2))
     else
         if options.optim.which_quad_term == "H"
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
+            REG = @expression(model, sum(X.^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
         else
-            REG = @expression(model, sum((D * Ot .- Rt).^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
+            REG = @expression(model, sum(X.^2) + options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Fhat.^2))
         end
     end
 
@@ -141,7 +145,7 @@ end
 
 
 """
-    NC_Optimize_output(Y::Matrix, Xt_hat::Union{Matrix, Transpose}, dims::Dict, options::Abstract_Option) → C
+    NC_Optimize_output(Y::Matrix, Xt_hat::Union{Matrix, Transpose}, options::AbstractOption) → C
 
 Output optimization for the standard operator inference (for operator `C`)
 
@@ -153,10 +157,10 @@ Output optimization for the standard operator inference (for operator `C`)
 - the output state matrix `C`
 """
 function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose}, 
-        dims::Dict, options::Abstract_Option)
+        options::AbstractOption)
     # Some dimensions to unpack for convenience
-    n = dims[:n]
-    q = dims[:q]
+    n = options.system.dims[:n]
+    l = options.system.dims[:l]
 
     Yt = transpose(Y)
 
@@ -172,9 +176,14 @@ function NC_Optimize_output(Y::Matrix, Xhat_t::Union{Matrix, Transpose},
         set_silent(model)
     end
 
-    @variable(model, Chat[1:q, 1:n])
+    @variable(model, Chat[1:l, 1:n])
     Chat_t = @expression(model, Chat')
-    @objective(model, Min, sum((Matrix(Xhat_t) * Chat_t .- Yt).^2))
+    
+    n_tmp, m_tmp = size(Yt)
+    @variable(model, X[1:n_tmp, 1:m_tmp])
+    @constraint(model, X .== Matrix(Xhat_t) * Chat_t .- Yt) 
+
+    @objective(model, Min, sum(X.^2))
     @info "Done."
 
     @info "Optimize model."

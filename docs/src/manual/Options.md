@@ -12,10 +12,10 @@ This package works with model reduction for polynomial systems with affine contr
 !!! note "Current Implementations"
     With the current version we have only implemented up to quadratic states and bilinear controls. We plan to implement cubic states (i.e., ``\mathbf{x}\otimes\mathbf{x}\otimes\mathbf{x}``) and linear-quadratic controls in the future, as these types of systems are observed in many applications. 
 
-For such structures, use `sys_struct` struct to define the system.
+For such structures, use `SystemStructure` struct to define the system.
 
 ```@docs
-sys_struct
+SystemStructure
 ```
 
 ### Variable info
@@ -26,24 +26,24 @@ This structure allows you to input information about the variables in the system
     \frac{dw}{dt} &= \epsilon (v + a - bw)
 \end{align*}
 ```
-Additionally, if we lift this system, it becomes a lifted system of 3 variables. For the `var` you can define the number of unlifted state variables `N=2` and the number of lifted state variables `Nl=3`.
+Additionally, if we lift this system, it becomes a lifted system of 3 variables. For the `VariableStructure` you can define the number of unlifted state variables `N=2` and the number of lifted state variables `Nl=3`.
 
 ```@docs
-vars
+VariableStructure
 ```
 
 ### Data Info
-With the `data` struct, the user will define the time-step ``\Delta t`` and optionally the down-sampling and type of numerical scheme used for the Partial Differential Equation.
+With the `DataStructure` struct, the user will define the time-step ``\Delta t`` and optionally the down-sampling and type of numerical scheme used for the Partial Differential Equation.
 
 ```@docs
-data
+DataStructure
 ```
 
 ### Optimization Settings
 This options is only required if you are dealing with the optimization based model reduction methods (e.g., Energy-Preserving Operator Inference) in which you must select some options for the optimization. 
 
 ```@docs
-opt_settings
+OptimizationSetting
 ```
 
 #### Reprojection
@@ -55,12 +55,12 @@ The `SIGE` option is used to run the optimization successive from a lower reduce
 ```julia
 # r = 2
 options.optim.initial_guess = false  # turn off initial guess for the first iteration
-op_tmp = LnL.inferOp(Xdata, zeros(100,1), zeros(100,1), Vr[:,1:2], Vr[:,1:2]' * Rtr[i], options)  # compute the first operator
+op_tmp = LnL.opinf(Xdata, Vr[:,1:2], options; U=zeros(100), Y=zeros(100), Xdot=Xdotdata)  # compute the first operator
 op[1] = op_tmp  # store the first operator
 
 # r =3
 options.optim.initial_guess = true  # turn on initial guess for the next step
-op_tmp = LnL.inferOp(Xdata, zeros(100,1), zeros(100,1), Vr[:,1:3], Vr[:,1:3]' * Rtr[i], options, LnL.operators(A=op_tmp.A, F=op_tmp.F)) # compute the second operator
+op_tmp = LnL.opinf(Xdata, Vr[:,1:3], options; U=zeros(100), Y=zeros(100), Xdot=Xdotdata, IG=LnL.Operators(A=op_tmp.A, F=op_tmp.F)) # compute the second operator
 op[2] = op_tmp
 ```
 
@@ -71,11 +71,11 @@ For the optimization we use [Ipopt](https://coin-or.github.io/Ipopt/), and for i
     To use HSL linear solvers you will need to obtain a license from [here](https://licences.stfc.ac.uk/product/libhsl). Then set the path to the solvers using the option `HSL_lib_path`:
     ```julia
     import HSL_jll
-    opt_settings.HSL_lib_path = HSL_jll.libhsl_path
+    OptimizationSetting.HSL_lib_path = HSL_jll.libhsl_path
     ```
 
 ### Regularization
-Using the `λtik` struct you will define the Tikhonov regularization matrix. This will be a diagonal matrix with diagonal entries having different values corresponding to the operators that it is regulating (e.g., linear, quadratic, bilinear). 
+Using the `TikhonovParameter` struct you will define the Tikhonov regularization matrix. This will be a diagonal matrix with diagonal entries having different values corresponding to the operators that it is regulating (e.g., linear, quadratic, bilinear). 
 
 The Tikhonov regulated optimization problem is defined as 
 ```math
@@ -87,22 +87,22 @@ where ``\mathbf{D}``, ``\mathbf{O}^\top``, ``\dot{\hat{\mathbf{X}}}`` are the da
 ```
 
 ```@docs
-λtik
+TikhonovParameter
 ```
 
 ## Model Reduction Specific Options
 
-These options are all specific to each solution method of Operator Inference. All of the options below are a subtype of `Abstract_Option`.
+These options are all specific to each solution method of Operator Inference. All of the options below are a subtype of `AbstractOption`.
 
 ```@docs
-LiftAndLearn.Abstract_Option
+LiftAndLearn.AbstractOption
 ```
 
 ### Standard Operator Inference
 This option is required when using the standard Operator Inference method.
 
 ```@docs 
-LS_options
+LSOpInfOption
 ```
 
 !!! note
@@ -112,7 +112,7 @@ LS_options
 This optimization is no different from the standard Operator Inference. The difference from the one above is that it is solved using a optimization package and not using simple linear algebra.
 
 ```@docs
-NC_options
+NCOpInfOption
 ```
 
 ### Energy-Preserving Operator Inference Options
@@ -120,7 +120,7 @@ The three options below are for the energy-preserving Operator Inference approac
 
 
 ```@docs
-EPHEC_options
-EPSIC_options
-EPP_options
+EPHECOpInfOption
+EPSICOpInfOption
+EPPOpInfOption
 ```
