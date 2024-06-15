@@ -47,7 +47,7 @@ include("operators/quadratic.jl")
 include("operators/cubic.jl")
 
 # Other utilities (for the sake of ordering)
-include("utilities/opinf_options.jl")
+include("utilities/OpInf_options.jl")
 include("utilities/analyze.jl")
 include("utilities/integrator.jl")
 
