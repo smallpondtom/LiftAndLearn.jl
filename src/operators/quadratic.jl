@@ -442,7 +442,8 @@ function H2Q(H::AbstractArray)
     Q = Array{Float64}(undef, n, n, n)
 
     for i in 1:n
-        Q[:,:,i] = invec(H[i, :], n, n)
+        # Q[:,:,i] = invec(H[i, :], n, n)
+        Q[:, :, i] = reshape(H[i, :], n, n)
     end
 
     return Q
