@@ -275,7 +275,8 @@ constructed such that the row is the state vector and the column is the time.
 - `op::Operators`: inferred operators
 """
 function opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options::AbstractOption;
-                 U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::Operators=Operators())::Operators
+               U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), IG::Operators=Operators(), 
+               return_derivative::Bool=false)
     U = fat2tall(U)
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
@@ -285,7 +286,12 @@ function opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options:
     Rt = reproject(Xhat, Vn, U, full_op, options)
     D = getDataMat(Xhat, Xhat_t, U, options)
     op = run_optimizer(D, Rt, Y, Xhat_t, options, IG)
-    return op
+
+    if return_derivative
+        return op, Rt
+    else
+        return op
+    end
 end
 
 

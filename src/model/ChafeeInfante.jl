@@ -17,7 +17,7 @@ $(TYPEDEF)
 
     
 ```math
-\\frac{\\partial u}{\\partial t} =  \\frac{\\partial^2 u}{\\partial x^2} - μ(u^3-u)
+\\frac{\\partial u}{\\partial t} =  \\mu\\frac{\\partial^2 u}{\\partial x^2} - \\epsilon(u^3-u)
 ```
 
 where ``u`` is the state variable, ``μ`` is the diffusion coefficient.
@@ -43,7 +43,7 @@ mutable struct ChafeeInfanteModel <: AbstractModel
     # Domains
     spatial_domain::Tuple{Real,Real}  # spatial domain
     time_domain::Tuple{Real,Real}  # temporal domain
-    param_domain::Tuple{Real,Real}  # parameter domain (diffusion coeff)
+    param_domain::Dict{Symbol,Tuple{Real,Real}}  # parameter domain 
 
     # Discritization grid
     Δx::Real  # spatial grid size
@@ -55,7 +55,8 @@ mutable struct ChafeeInfanteModel <: AbstractModel
 
     # Parameters
     diffusion_coeffs::Union{AbstractArray{<:Real},Real}  # diffusion coefficient
-    param_dim::Int  # parameter dimension
+    nonlin_coeffs::Union{AbstractArray{<:Real},Real}  # nonlinear coefficient
+    param_dim::Dict{Symbol,<:Int}  # parameter dimension
 
     # Initial condition
     IC::AbstractArray{<:Real}  # initial condition
@@ -70,7 +71,8 @@ end
 
 
 function ChafeeInfanteModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tuple{Real,Real}, Δx::Real, Δt::Real, 
-                    diffusion_coeffs::Union{AbstractArray{<:Real},Real}, BC::Symbol=:periodic)
+                    diffusion_coeffs::Union{AbstractArray{<:Real},Real}, nonlin_coeffs::Union{AbstractArray{<:Real},Real},
+                    BC::Symbol=:periodic)
     # Discritization grid info
     @assert BC ∈ (:periodic, :dirichlet, :neumann, :mixed, :robin, :cauchy, :flux) "Invalid boundary condition"
     if BC == :periodic
@@ -86,13 +88,13 @@ function ChafeeInfanteModel(;spatial_domain::Tuple{Real,Real}, time_domain::Tupl
     IC = zeros(spatial_dim)
 
     # Parameter dimensions or number of parameters 
-    param_dim = length(diffusion_coeffs)
-    param_domain = extrema(diffusion_coeffs)
+    param_dim = Dict(:diffusion_coeff => length(diffusion_coeffs), :nonlin_coeff => length(nonlin_coeffs))
+    param_domain = Dict(:diffusion_coeff => extrema(diffusion_coeffs), :nonlin_coeff => extrema(nonlin_coeffs))
 
     ChafeeInfanteModel(
         spatial_domain, time_domain, param_domain,
         Δx, Δt, xspan, tspan, spatial_dim, time_dim,
-        diffusion_coeffs, param_dim, IC, BC,
+        diffusion_coeffs, nonlin_coeffs, param_dim, IC, BC,
         finite_diff_model, integrate_model
     )
 end
@@ -107,11 +109,11 @@ Create the matrices A (linear operator) and E (cubic operator) for the Chafee-In
 - `model::ChafeeInfanteModel`: Chafee-Infante model
 - `μ::Real`: diffusion coefficient
 """
-function finite_diff_model(model::ChafeeInfanteModel, μ::Real)
+function finite_diff_model(model::ChafeeInfanteModel, μ::Real, ϵ::Real)
     if model.BC == :periodic
-        return finite_diff_periodic_model(model.spatial_dim, model.Δx, μ)
+        return finite_diff_periodic_model(model.spatial_dim, model.Δx, μ, ϵ)
     elseif model.BC == :mixed
-        return finite_diff_mixed_model(model.spatial_dim, model.Δx, μ)
+        return finite_diff_mixed_model(model.spatial_dim, model.Δx, μ, ϵ)
     end
 end
 
@@ -130,15 +132,15 @@ Create the matrices A (linear operator) and E (cubic operator) for the Chafee-In
 - `A::SparseMatrixCSC{Float64,Int}`: linear operator
 - `E::SparseMatrixCSC{Float64,Int}`: cubic operator
 """
-function finite_diff_periodic_model(N::Real, Δx::Real, μ::Real)
+function finite_diff_periodic_model(N::Real, Δx::Real, μ::Real, ϵ::Real)
     # Create A matrix
-    A = spdiagm(0 => (μ-2/Δx^2) * ones(N), 1 => (1/Δx^2) * ones(N - 1), -1 => (1/Δx^2) * ones(N - 1))
-    A[1, end] = 1 / Δx^2  # periodic boundary condition
-    A[end, 1] = 1 / Δx^2  
+    A = spdiagm(0 => (ϵ-2*μ/Δx^2) * ones(N), 1 => (μ/Δx^2) * ones(N - 1), -1 => (μ/Δx^2) * ones(N - 1))
+    A[1, end] = μ / Δx^2  # periodic boundary condition
+    A[end, 1] = μ / Δx^2  
 
     # Create E matrix
     indices = [(i,i,i,i) for i in 1:N]
-    values = [-μ for _ in 1:N]
+    values = [-ϵ for _ in 1:N]
     E = makeCubicOp(N, indices, values, which_cubic_term='E')
     return A, E
 end
@@ -161,14 +163,14 @@ homogeneous dirichlet boundary condition and u(1,t) to be Neumann boundary condi
 - `B::SparseMatrixCSC{Float64,Int}`: input operator
 - `E::SparseMatrixCSC{Float64,Int}`: cubic operator
 """
-function finite_diff_mixed_model(N::Real, Δx::Real, μ::Real)
+function finite_diff_mixed_model(N::Real, Δx::Real, μ::Real, ϵ::Real)
     # Create A matrix
-    A = spdiagm(0 => (μ-2/Δx^2) * ones(N), 1 => (1/Δx^2) * ones(N - 1), -1 => (1/Δx^2) * ones(N - 1))
-    A[end,end] = μ - 1/Δx^2  # influence of Neumann boundary condition
+    A = spdiagm(0 => (ϵ-2*μ/Δx^2) * ones(N), 1 => (μ/Δx^2) * ones(N - 1), -1 => (μ/Δx^2) * ones(N - 1))
+    A[end,end] = ϵ - μ/Δx^2  # influence of Neumann boundary condition
 
     # Create E matrix
     indices = [(i,i,i,i) for i in 1:N]
-    values = [-μ for _ in 1:N]
+    values = [-ϵ for _ in 1:N]
     E = makeCubicOp(N, indices, values, which_cubic_term='E')
 
     # Create B matrix

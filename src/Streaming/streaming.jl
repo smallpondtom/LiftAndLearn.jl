@@ -272,10 +272,14 @@ function stream!(stream::StreamingOpInf, X_k::AbstractArray{T}, R_k::AbstractArr
                  Q_k::Union{T,AbstractArray{T}}=size(X_k,2)==1 ? 1.0 : 1.0I(size(X_k,2)),
                  γs_k::T=0.0) where T<:Real
     stream.dims[:K] = size(X_k, 2)
-    stream.dims[:m] = size(U_k, 2)
+    tmp, stream.dims[:m] = size(U_k)
 
     # Construct the data matrix
-    D_k = getDataMat(X_k, U_k, stream.options)
+    if tmp == 1 && stream.dims[:m] != 1
+        D_k = getDataMat(X_k, U_k, stream.options)
+    else
+        D_k = getDataMat(X_k, U_k', stream.options)
+    end
 
     if stream.algorithm == :RLS
         # Execute the update
@@ -438,6 +442,7 @@ function unpack_operators(stream::StreamingOpInf)
     if options.system.is_cubic
         if options.optim.which_cubic_term == "E"
             Ehat = O[:, TD+1:TD+s3]
+            Ghat = E2Gs(Ehat)
             TD += s3
         else
             Ghat = O[:, TD+1:TD+v3]
@@ -471,7 +476,7 @@ function unpack_operators(stream::StreamingOpInf)
     # Output matrix
     Chat = options.system.has_output ? Matrix(transpose(stream.C_k)) : 0
 
-    return operators(
+    return Operators(
         A=Ahat, B=Bhat, C=Chat, F=Fhat, H=Hhat, E=Ehat, G=Ghat, N=Nhat, K=Khat
     )
 end
