@@ -38,7 +38,7 @@ include("utilities/plotting.jl")
 ##########################
 Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-4
-burger = LnL.BurgersModel(
+burgers = LnL.BurgersModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
     diffusion_coeffs=0.5, BC=:dirichlet,
 )
@@ -74,7 +74,7 @@ C = ones(1, burgers.spatial_dim) / burgers.spatial_dim
 op_burgers = LnL.Operators(A=A, B=B, C=C, F=F)
 
 # Reference solution
-Uref = ones(burgers.Tdim - 1, 1)  # Reference input/boundary condition
+Uref = ones(burgers.time_dim - 1, 1)  # Reference input/boundary condition
 Xref = burgers.integrate_model(A, B, F, Uref, burgers.tspan, burgers.IC)
 Yref = C * Xref
 
@@ -183,7 +183,7 @@ op_dict = Dict(
     "TR-OpInf" => op_inf_reg,
     "TR-Streaming-OpInf" => op_stream
 )
-rse, roe = analysis_1(op_dict, burgers, Vrmax, Xref, Uref, Yref, [:A, :B, :F], burgers.semiImplicitEuler)
+rse, roe = analysis_1(op_dict, burgers, Vrmax, Xref, Uref, Yref, [:A, :B, :F], burgers.integrate_model)
 
 ## Plot
 fig1 = plot_rse(rse, roe, rmax, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "TR-Streaming-OpInf"])
@@ -197,7 +197,7 @@ r_select = 1:rmax
 analysis_results = analysis_2( # Attention: This will take some time to run
     Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
     op_inf_reg, Xref, Vrmax, Uref, Yref, burgers, r_select, options, 
-    [:A, :B, :F], burgers.semiImplicitEuler; VR=false, α=γs, β=γo, algo=algo
+    [:A, :B, :F], burgers.integrate_model; VR=false, α=γs, β=γo, algo=algo
 )
 
 ## Plot
