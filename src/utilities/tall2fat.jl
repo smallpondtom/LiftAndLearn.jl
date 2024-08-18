@@ -11,17 +11,7 @@ of rows is less than the number of columns.
 - `A::AbstractArray`: output matrix
 """
 function tall2fat(A::AbstractArray)
-    m, n = nothing, nothing
-    try
-        m, n = size(A)
-    catch e
-        if isa(e, BoundsError)
-            m, n = length(A), 1
-        else
-            rethrow(e)
-        end
-    end
-
+    m, n = checksize(A)
     if m <= n
         return A
     else
