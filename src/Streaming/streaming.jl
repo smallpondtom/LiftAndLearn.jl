@@ -262,6 +262,9 @@ function iQRRLS(d_k::AbstractArray{T}, r_k::AbstractArray{T}, O_km1::AbstractArr
 end
 
 
+
+
+
 """
 $(SIGNATURES)
 
@@ -272,14 +275,35 @@ function stream!(stream::StreamingOpInf, X_k::AbstractArray{T}, R_k::AbstractArr
                  Q_k::Union{T,AbstractArray{T}}=size(X_k,2)==1 ? 1.0 : 1.0I(size(X_k,2)),
                  γs_k::T=0.0) where T<:Real
     stream.dims[:K] = size(X_k, 2)
-    tmp, stream.dims[:m] = size(U_k)
+    # tmp, stream.dims[:m] = size(U_k)
 
     # Construct the data matrix
-    if tmp == 1 && stream.dims[:m] != 1
-        D_k = getDataMat(X_k, U_k, stream.options)
-    else
+    # reorganize the dimension of the input matrix
+    foo, bar = checksize(U_k)
+    if foo == stream.dims[:m] && bar == stream.dims[:K]
+        if foo == bar && foo != 1
+            @warn "Assuming the row dim is the input dim and the column dim is the number of data points."
+        end
         D_k = getDataMat(X_k, U_k', stream.options)
+    else
+        D_k = getDataMat(X_k, U_k, stream.options)
     end
+
+    # Reorganize the dimension of the derivative data matrix
+    foo, bar = checksize(R_k)
+    if foo == stream.dims[:n] && bar == stream.dims[:K]
+        if foo == bar
+            @warn "Assuming the row dim is the state dim and the column dim is the number of data points."
+        end
+        R_k = R_k'
+    end
+
+    # # Construct the data matrix
+    # if tmp == 1 && stream.dims[:m] != 1
+    #     D_k = getDataMat(X_k, U_k, stream.options)
+    # else
+    #     D_k = getDataMat(X_k, U_k', stream.options)
+    # end
 
     if stream.algorithm == :RLS
         # Execute the update
@@ -341,11 +365,20 @@ end
 
 function stream_output!(stream::StreamingOpInf, X_k::AbstractArray{T}, Y_k::AbstractArray{T}; γo_k::Real=0.0, 
                         Z_k::Union{T,AbstractArray{T}}=size(X_k,2)==1 ? 1.0 : 1.0I(size(X_k,2))) where T<:Real
-    K, l = size(Y_k)
-    @assert K == size(X_k, 2) "The number of data points should be the same."
-    Xt_k = transpose(X_k)
-    stream.dims[:l] = l
-    stream.dims[:K] = K
+    foo, bar = checksize(Y_k)
+    if foo == stream.dims[:l] && bar == stream.dims[:K]
+        if foo == bar && foo != 1
+            @warn "Assuming the row dim is the output dim and the column dim is the number of data points."
+        end
+        Y_k = Y_k'
+        stream.dims[:l] = foo
+        stream.dims[:K] = bar
+    else
+        stream.dims[:l] = bar
+        stream.dims[:K] = foo
+    end
+    # @assert K == size(X_k, 2) "The number of data points should be the same."
+    Xt_k = X_k'
 
     if stream.algorithm == :RLS
         if stream.variable_regularize  # if variable regularization is enabled
