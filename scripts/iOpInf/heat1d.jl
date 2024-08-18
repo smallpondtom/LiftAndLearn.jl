@@ -224,7 +224,7 @@ stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
 stream.stream_output!(stream, Xhat_stream, Y_stream)
 
 # Unpack solution operators
-op_stream = stream.unpack_operators(stream)
+op_inc = stream.unpack_operators(stream)
 
 
 
@@ -238,7 +238,7 @@ op_dict = Dict(
     "TR-OpInf" => op_inf_reg,
 )
 op_ipod_dict = Dict(
-    "Naive-iOpInf" => op_stream
+    "iOpInf" => op_inc
 )
 rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
 rse_ipod, roe_ipod = analysis_1(op_ipod_dict, heat1d, iVr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
@@ -246,5 +246,5 @@ rse = merge(rse, rse_ipod)
 roe = merge(roe, roe_ipod)
 
 ## Plot
-fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "Naive-iOpInf"])
+fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "iOpInf"])
 display(fig1)
