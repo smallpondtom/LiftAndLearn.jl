@@ -37,6 +37,7 @@ include("utilities/vech.jl")
 include("utilities/invec.jl")
 export ⊘, vech, invec
 include("utilities/streamify.jl")
+include("utilities/checksize.jl")
 include("utilities/fat2tall.jl")
 include("utilities/tall2fat.jl")
 
