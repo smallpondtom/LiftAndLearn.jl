@@ -33,7 +33,7 @@ include("utilities/plotting.jl")
 
 
 ##########################
-## 1D Heat equation setup
+## 2D Heat equation setup
 ##########################
 Ω = ((0.0, 1.0), (0.0, 1.0))
 Nx = 2^6

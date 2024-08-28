@@ -33,7 +33,7 @@ include("utilities/plotting.jl")
 
 
 #############################
-## Fisher-KPP equation setup
+## Allen-Cahn equation setup
 #############################
 Ω = (0.0, 1.0)
 T = (0.0, 0.1)

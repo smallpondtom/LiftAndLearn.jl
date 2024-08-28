@@ -32,9 +32,9 @@ include("utilities/plotting.jl")
 
 
 
-#############################
-## Fisher-KPP equation setup
-#############################
+#################################
+## Chafee-Infante equation setup
+#################################
 Ω = (0.0, 1.0)
 Nx = 2^6
 dt = 1e-3
