@@ -40,7 +40,7 @@ include("utilities/plotting.jl")
 ######################
 Ω = (0.0, 60.0); dt = 1e-3; L = Ω[2] - Ω[1]; N = 2^9
 kse = LnL.KuramotoSivashinskyModel(
-    spatial_domain=Ω, time_domain=(0.0, 300.0), diffusions_coeffs=1.0,
+    spatial_domain=Ω, time_domain=(0.0, 300.0), diffusion_coeffs=1.0,
     Δx=(Ω[2] - 1/N)/N, Δt=dt, conservation_type=:NC
 )
 
