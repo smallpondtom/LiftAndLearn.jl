@@ -22,8 +22,11 @@ mutable struct StreamingOpInf <: AbstractOption
     qy_k::AbstractArray  # auxiliary matrix (QRRLS)
 
     # Regularization terms (state and output)
-    γs_k::Union{Real}
-    γo_k::Union{Real}
+    γs_k::Real
+    γo_k::Real
+
+    # Forgetting factor
+    λ::Real 
 
     # Tolerance of the pseudo-inverse for state and output
     atol::Array{<:Real,1}  # absolute tolerance (state, output)
@@ -47,7 +50,7 @@ end
 
 function StreamingOpInf(options::AbstractOption, n::Int, m::Int=0, l::Int=0; 
                         variable_regularize::Bool=false, algorithm::Symbol=:RLS,
-                        atol=[0.0,0.0], rtol=[0.0,0.0], γs_k=0.0, γo_k=0.0)
+                        atol=[0.0,0.0], rtol=[0.0,0.0], γs_k=0.0, γo_k=0.0, λ=1.0)
     @assert length(atol) <= 2 "The length of the absolute tolerance should be at most 2."
 
     # Initialize the dimensions
@@ -124,7 +127,7 @@ function StreamingOpInf(options::AbstractOption, n::Int, m::Int=0, l::Int=0;
     return StreamingOpInf(
         O_k, P_k, K_k, Φ_k, q_k,
         C_k, Py_k, Ky_k, Φy_k, qy_k,
-        γs_k, γo_k, atol, rtol, 
+        γs_k, γo_k, λ, atol, rtol, 
         dims, options, variable_regularize, 
         zero_reg_start_state, zero_reg_start_output,
         algorithm, stream!, stream_output!, unpack_operators
@@ -269,7 +272,8 @@ end
 $(SIGNATURES)
 
 Update the streaming operator inference with new data. Including standard RLS, fixed regularization, 
-and variable regularization.
+and variable regularization. Attention: make sure the row dimension of state snapshot matrix corresponds
+to the basis dimension and the column dimension corresponds to the number of data points.
 """
 function stream!(stream::StreamingOpInf, X_k::AbstractArray{T}, R_k::AbstractArray{T}; U_k::AbstractArray{T}=T[], 
                  Q_k::Union{T,AbstractArray{T}}=size(X_k,2)==1 ? 1.0 : 1.0I(size(X_k,2)),
