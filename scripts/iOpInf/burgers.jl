@@ -16,8 +16,6 @@ const LnL = LiftAndLearn
 ## Global Settings
 ###################
 TOL = 1e-10
-ALGO = :baker
-SAVEFIG = true
 
 
 ###############################
@@ -88,7 +86,7 @@ for j in 1:num_of_inputs
 end
 X = reduce(hcat, Xall)
 Xdot = reduce(hcat, Xdotall)
-U = reshape(Urand, (burgers.time_dim - 1) * num_of_inputs, 1)
+U = reshape(Urand, (burgers.time_dim - 1) * num_of_inputs, 1)'
 Y = C * X
 
 
@@ -105,40 +103,11 @@ Vr = V[:, 1:r]
 #########################
 ## Compute the iPOD basis
 #########################
-if ALGO == :baker
-    ipod = iPOD(x1=X[:,1], algo=ALGO, kselect=r)
-    ipod.full_increment!(ipod, X[:,2:end], tol=1e-10)
-    iVr = ipod.Q[:,1:r]
-    iΣ = ipod.Σ
-    iΣr = sort(iΣ, rev=true)[1:r]
-elseif ALGO == :brand1
-    ipod = iPOD(x1=X[:,1], algo=ALGO, reorth_method=:qr)
-    ipod.full_increment!(ipod, X[:,2:end], tol=1e-11)
-    iVr = ipod.Q[:,1:r]
-    iΣr = ipod.Σ[1:r]
-elseif ALGO == :brand2
-    ipod = iPOD(x1=X[:,1], algo=ALGO, reorth_method=:qr)
-    ipod.full_increment!(ipod, X[:,2:end], tol=1e-10)
-    iVr = (ipod.Q * ipod.Qt)[:,1:r]
-    iΣr = ipod.Σ[1:r]
-elseif ALGO == :zhang1
-    ipod = iPOD(x1=X[:,1], algo=ALGO)
-    ipod.full_increment!(ipod, X[:,2:end], tol=1e-10)
-    iVr = ipod.Q[:,1:r]
-    iΣr = ipod.Σ[1:r]
-elseif ALGO == :zhang2
-    ipod = iPOD(x1=X[:,1], algo=ALGO)
-    ipod.full_increment!(ipod, X[:,2:end], tol=1e-10)
-    iVr = ipod.Q[:,1:r]
-    iΣr = ipod.Σ[1:r]
-else
-    error("Invalid algorithm. Available options are :brand1, :brand2, :zhang1, :zhang2, and :baker.")
-end
-
-# Copy the data for later analysis
-Xfull = copy(X)
-Yfull = copy(Y)
-Ufull = copy(U)
+ipod = iPOD(x1=X[:,1], algo=:baker, kselect=r)
+ipod.full_increment!(ipod, X[:,2:end], tol=1e-12, verbose=true)
+iVr = ipod.Q[:,1:r]
+iΣ = ipod.Σ
+iΣr = sort(iΣ, rev=true)[1:r]
 
 # Match the signs 
 for i in 1:r
@@ -183,6 +152,17 @@ axislegend(ax, labelsize=20, position=:rt)
 display(fig0)
 
 
+#########################
+## Plot Singular Vectors
+#########################
+fig0 = Figure()
+ax = Axis(fig0[1,1], yreversed=true)
+ax.title = "Difference between POD and iPOD basis"
+hm = heatmap!(ax, (Vr - iVr)')
+Colorbar(fig0[1,2], hm)
+display(fig0)
+
+
 #######################
 ## Intrusive-POD model
 #######################
@@ -215,19 +195,14 @@ op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 streamsize = 1
 Xhat_stream = LnL.streamify(iVr' * X, streamsize)
 U_stream = LnL.streamify(U, streamsize)
-Y_stream = LnL.streamify(Y', streamsize)
-R_stream = LnL.streamify((iVr' * Xdot)', streamsize)
+Y_stream = LnL.streamify(Y, streamsize)
+R_stream = LnL.streamify(iVr' * Xdot, streamsize)
 num_of_streams = length(Xhat_stream)
 
 # Initialize the stream
-# TR-Streaming-OpInf
-# γs = 1e-7
-# γo = 1e-6
-# iQR/QR-Streaming-OpInf
-γs = 1e-13
-γo = 1e-10
-algo=:iQRRLS
-stream = LnL.StreamingOpInf(options, rmax, 1, 1; variable_regularize=false, γs_k=γs, γo_k=γo, algorithm=algo)
+γs = 1e-7
+γo = 1e-6
+stream = LnL.StreamingOpInf(options, rmax, 1, 1; γs_k=γs, γo_k=γo, algorithm=:QRRLS)
 
 # Stream all at once
 stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
@@ -247,7 +222,7 @@ op_dict = Dict(
     "TR-OpInf" => op_inf_reg,
 )
 op_ipod_dict = Dict(
-    "Naive-iOpInf" => op_stream
+    "iOpInf" => op_stream
 )
 rse, roe = analysis_1(op_dict, burgers, Vr, Xref, Uref, Yref, [:A, :B, :F], burgers.integrate_model)
 rse_ipod, roe_ipod = analysis_1(op_ipod_dict, burgers, iVr, Xref, Uref, Yref, [:A, :B, :F], burgers.integrate_model)
@@ -255,5 +230,5 @@ rse = merge(rse, rse_ipod)
 roe = merge(roe, roe_ipod)
 
 ## Plot
-fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "Naive-iOpInf"])
+fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "iOpInf"])
 display(fig1)

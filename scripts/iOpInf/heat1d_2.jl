@@ -100,32 +100,38 @@ Ycopy = Y[:, idx]  # fix the index of outputs
 # Initialize the RLS object
 γs = 1e-10
 γo = 7.6e-9
-stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo)
+stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo, algorithm=:QRRLS)
 
 K = size(Xcopy,2)
 reach_r = false
-keep_idx = []
 for i in 2:K
     ipod.Q, ipod.Σ, ipod.W = ipod.increment(ipod.Q, ipod.Σ, ipod.W, Xcopy[:,i], ipod.kselect, 1e-10)
 
     if !reach_r 
-        if size(ipod.Q,2) == r
+        rankQ = size(ipod.Q, 2)
+        if rankQ == r
+            @info "The POD-basis is rank $r at iteration $i. Start learning..."
             reach_r = true
-            stream.stream!(
-                stream, ipod.Q' * Xcopy[:,1:i], ipod.Q' * Xdot[:,1:i]; 
-                U_k=Ucopy[1:end, 1:i], γs_k=γs
-            )
-            stream.stream_output!(stream, ipod.Q' * Xcopy[:,1:i], Ycopy[:,1:i]'; γo_k=γo)
+            for j in 1:i  # learn each column data from the beginning
+                stream.stream!(
+                    stream, ipod.Q' * Xcopy[:,j], ipod.Q' * Xdot[:,j]; 
+                    U_k=Ucopy[1:end, j], γs_k=γs
+                )
+                stream.stream_output!(stream, ipod.Q' * Xcopy[:,j], Ycopy[:,j]'; γo_k=γo)
+            end
+        else
+            @info "The POD-basis is rank $(rankQ) at iteration $i. Waiting to reach rank $r..."
         end
     else
+        @info "Learning at iteration $i..."
         stream.stream!(
             stream, ipod.Q[:,1:r]' * Xcopy[:,i], ipod.Q[:,1:r]' * Xdot[:,i]; 
             U_k=Ucopy[1:end, i], γs_k=γs
         )
         stream.stream_output!(stream, ipod.Q[:,1:r]' * Xcopy[:,i], Ycopy[:,i]'; γo_k=γo)
     end
-    @info "Iteration $i"
 end
+@info "Learning is done"
 iVr = ipod.Q[:,1:r]
 
 # Unpack solution operators

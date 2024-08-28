@@ -93,7 +93,7 @@ for j in 1:num_of_inputs
 end
 X = reduce(hcat, Xall)
 Xdot = reduce(hcat, Xdotall)
-U = reshape(Urand, (burgers.time_dim - 1) * num_of_inputs, 1)
+U = reshape(Urand, (burgers.time_dim - 1) * num_of_inputs, 1)'
 Y = C * X
 
 # compute the POD basis from the training data
@@ -155,15 +155,15 @@ end
 # INFO: Remember to make data matrices a tall matrix except X matrix
 Xhat_stream = LnL.streamify(Vrmax' * X, streamsize)
 U_stream = LnL.streamify(U, streamsize)
-Y_stream = LnL.streamify(Y', streamsize)
-R_stream = LnL.streamify((Vrmax' * Xdot)', streamsize)
+Y_stream = LnL.streamify(Y, streamsize)
+R_stream = LnL.streamify(Vrmax' * Xdot, streamsize)
 num_of_streams = length(Xhat_stream)
 
 # Initialize the stream
 γs = 1e-7
 γo = 1e-6
-algo=:RLS
-stream = LnL.StreamingOpInf(options, rmax, 1, 1; variable_regularize=false, γs_k=γs, γo_k=γo, algorithm=algo)
+algo=:QRRLS
+stream = LnL.StreamingOpInf(options, rmax, 1, 1; γs_k=γs, γo_k=γo, algorithm=algo)
 
 # Stream all at once
 stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)

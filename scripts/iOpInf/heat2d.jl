@@ -1,5 +1,5 @@
 """
-1D heat equation iOpInf example
+2D heat equation iOpInf example
 """
 
 #################
@@ -28,17 +28,20 @@ include("utilities/plotting.jl")
 
 
 ##########################
-## 1D Heat equation setup
+## 2D Heat equation setup
 ##########################
-Nx = 2^7; dt = 1e-3
-heat1d = LnL.Heat1DModel(  # define the model
-    spatial_domain=(0.0, 1.0), time_domain=(0.0, 2.0), diffusion_coeffs=0.1,
-    Δx=1/Nx, Δt=1e-3, BC=:dirichlet
+Ω = ((0.0, 1.0), (0.0, 1.0))
+Nx = 2^6
+Ny = 2^6
+heat2d = LnL.Heat2DModel(
+    spatial_domain=Ω, time_domain=(0,2), 
+    Δx=(Ω[1][2] + 1/Nx)/Nx, Δy=(Ω[2][2] + 1/Ny)/Ny, Δt=1e-3,
+    diffusion_coeffs=0.1, BC=(:dirichlet, :dirichlet)
 )
-foo = zeros(heat1d.spatial_dim)
-foo[(Nx÷2+1):end] .= 1
-heat1d.IC = foo .* (0.5 * sin.(2π * heat1d.xspan))  # change IC
-U = ones(heat1d.time_dim)'  # boundary condition → control input (make sure to let column dim be # of time steps)
+xgrid0 = heat2d.xspan' .* ones(heat2d.spatial_dim[1])
+ygrid0 = ones(heat2d.spatial_dim[2])' .* heat2d.yspan
+ux0 = sin.(2π * xgrid0) .* cos.(2π * ygrid0)
+heat2d.IC = vec(ux0)  # initial condition
 
 # OpInf options
 options = LnL.LSOpInfOption(
@@ -51,7 +54,7 @@ options = LnL.LSOpInfOption(
         N=1,  # number of state variables
     ),
     data=LnL.DataStructure(
-        Δt=dt, # time step
+        Δt=1e-3, # time step
         deriv_type="BE"  # backward Euler
     ),
     optim=LnL.OptimizationSetting(
@@ -64,22 +67,25 @@ options = LnL.LSOpInfOption(
 ## Generate Data
 #################
 # Construct full model
-μ = heat1d.diffusion_coeffs
-A, B = heat1d.finite_diff_model(heat1d, μ)
-C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
+μ = heat2d.diffusion_coeffs
+A, B = heat2d.finite_diff_model(heat2d, μ)
+C = ones(1, (Int ∘ prod)(heat2d.spatial_dim)) / heat2d.spatial_dim[1] / heat2d.spatial_dim[2]
 op_heat = LnL.Operators(A=A, B=B, C=C)
 
+# Generate the input data
+U = [1.0, 1.0, -1.0, -1.0]
+U = repeat(U, 1, heat2d.time_dim)
+
 # Compute the state snapshot data with backward Euler
-X = LnL.backwardEuler(A, B, U, heat1d.tspan, heat1d.IC)
+X = heat2d.integrate_model(A, B, U, heat2d.tspan, heat2d.IC)
 
 # Compute the output of the system
 Y = C * X
 
-
 ####################################
 ## Compute the SVD for the POD basis
 ####################################
-r = 12  # order of the reduced form
+r = 15  # order of the reduced form
 V, Σ, _ = svd(X)
 Vr = V[:, 1:r]
 Σr = Σ[1:r]
@@ -89,7 +95,7 @@ Vr = V[:, 1:r]
 ## Compute the iPOD basis
 #########################
 ipod = iPOD(x1=X[:,1], algo=:baker, kselect=r)
-ipod.full_increment!(ipod, X[:,2:end], tol=1e-10)
+ipod.full_increment!(ipod, X[:,2:end], tol=1e-9, verbose=true)
 iVr = ipod.Q[:,1:r]
 iΣ = ipod.Σ
 iΣr = sort(iΣ, rev=true)[1:r]
@@ -103,20 +109,6 @@ end
 
 # Error
 error = norm(Vr - iVr) / norm(Vr)
-
-
-######################
-## Plot Data to Check
-######################
-with_theme(theme_latexfonts()) do
-    fig0 = Figure(fontsize=20, size=(1300,500), backgroundcolor="#FFFFFF")
-    ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
-    surface!(ax1, heat1d.xspan, heat1d.tspan, X)
-    ax2 = Axis(fig0[1, 2], xlabel="x", ylabel="t")
-    hm = heatmap!(ax2, heat1d.xspan, heat1d.tspan, X)
-    Colorbar(fig0[1, 3], hm)
-    display(fig0)
-end
 
 
 ########################
@@ -167,9 +159,9 @@ op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y)
 ##############################
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(
-    lin = 1e-13,
-    ctrl = 1e-13,
-    output = 1e-10
+    lin = 1e-6,
+    ctrl = 1e-6,
+    output = 1e-3
 )
 op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y)
 
@@ -183,31 +175,31 @@ Yfull = copy(Y)
 Ufull = copy(U)
 
 # Obtain derivative data and adjust data
-Xdot = (X[:, 2:end] - X[:, 1:end-1]) / heat1d.Δt
-idx = 2:heat1d.time_dim
+Xdot = (X[:, 2:end] - X[:, 1:end-1]) / heat2d.Δt
+idx = 2:heat2d.time_dim
 X = X[:, idx]  
 U = U[:, idx]
 Y = Y[:, idx] 
 
 # Streamify the data based on the selected streamsizes
 streamsize = 1
-Xhat_stream = LnL.streamify(iVr' * X, streamsize)
+Xhat_stream = LnL.streamify(Vr' * X, streamsize)
 U_stream = LnL.streamify(U, streamsize)
 Y_stream = LnL.streamify(Y, streamsize)
-R_stream = LnL.streamify(iVr' * Xdot, streamsize)
+Xhatdot_stream = LnL.streamify(Vr' * Xdot, streamsize)
 num_of_streams = length(Xhat_stream)
 
 # Initialize the stream
 # TR-Streaming-OpInf
-# γs = 1e-10
-# γo = 7.6e-9
+# γs = 0.0
+# γo = 0.0
 # iQR/QR-Streaming-OpInf
-γs = 1e-13
-γo = 1e-10
+γs = 1e-9
+γo = 1e-8
 stream = LnL.StreamingOpInf(options, r, size(U,1), size(Y,1); γs_k=γs, γo_k=γo, algorithm=:QRRLS)
 
 # Stream all at once
-stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
+stream.stream!(stream, Xhat_stream, Xhatdot_stream; U_k=U_stream)
 stream.stream_output!(stream, Xhat_stream, Y_stream)
 
 # Unpack solution operators
@@ -227,8 +219,8 @@ op_dict = Dict(
 op_ipod_dict = Dict(
     "iOpInf" => op_inc
 )
-rse, roe = analysis_1(op_dict, heat1d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
-rse_ipod, roe_ipod = analysis_1(op_ipod_dict, heat1d, iVr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
+rse, roe = analysis_1(op_dict, heat2d, Vr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
+rse_ipod, roe_ipod = analysis_1(op_ipod_dict, heat2d, iVr, Xfull, Ufull, Yfull, [:A, :B], LnL.backwardEuler)
 rse = merge(rse, rse_ipod)
 roe = merge(roe, roe_ipod)
 
