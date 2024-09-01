@@ -8,13 +8,13 @@ using BlockDiagonals
 using Distributions: Uniform
 using Kronecker
 using Parameters
-using QuasiMonteCarlo
 using SparseArrays
 using StatsBase: countmap
 using MatrixEquations: lyapc
 using Random: rand, rand!, shuffle
+using Combinatorics: permutations, factorial, binomial, with_replacement_combinations
 using JuMP
-using Ipopt, SCS, Alpine
+using Ipopt, SCS
 using FFTW
 using DocStringExtensions
 
@@ -32,31 +32,21 @@ Abstract type for the model.
 abstract type AbstractModel end
 
 # Utilities
-include("utilities/unique_kronecker.jl")
-include("utilities/vech.jl")
-include("utilities/invec.jl")
-export ⊘, vech, invec
-include("utilities/streamify.jl")
-include("utilities/checksize.jl")
-include("utilities/fat2tall.jl")
-include("utilities/tall2fat.jl")
+include("utilities/utilities.jl")
 
 # Operators and tools
 include("operators/operators.jl")
-include("operators/bilinear.jl")
-include("operators/quadratic.jl")
-include("operators/cubic.jl")
-
-# Other utilities (for the sake of ordering)
-include("utilities/OpInf_options.jl")
-include("utilities/analyze.jl")
-include("utilities/integrator.jl")
 
 # Intrusive POD
 include("POD/pod.jl")
 
 # Operator Inference
 include("OpInf/learn.jl")
+include("OpInf/OpInf_options.jl")
+
+# Other utilities (for the sake of ordering)
+include("utilities/analyze.jl")
+include("utilities/integrator.jl")
 
 # Lift & Learn
 include("LnL/lift.jl")
@@ -68,8 +58,9 @@ include("optimizer/EP_Optimize.jl")
 
 # Streaming OpInf
 include("Streaming/streaming.jl")
+include("Streaming/streamify.jl")
 
-# [Submodule] Analysis of chaos analysis tools
+# [Submodule] Chaos analysis tools
 include("ChaosGizmo/ChaosGizmo.jl")
 
 # Include the system models
