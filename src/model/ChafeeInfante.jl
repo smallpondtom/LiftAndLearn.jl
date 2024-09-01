@@ -184,7 +184,7 @@ end
 
 """
     integrate_model(A::AbstractArray{<:Real}, E::AbstractArray{<:Real}, tspan::AbstractArray{<:Real}, 
-                    IC::AbstractArray{<:Real}; const_stepsize::Bool=false)
+                    IC::AbstractArray{<:Real}; const_stepsize::Bool=false, method::Symbol=:EE)
     
 Integrate the Chafee-Infante model using the Crank-Nicholson (linear) Explicit (nonlinear) method.
 
@@ -194,12 +194,14 @@ Integrate the Chafee-Infante model using the Crank-Nicholson (linear) Explicit (
 - `IC::AbstractArray{<:Real}`: initial condition
 - `tspan::AbstractArray{<:Real}`: time span
 - `const_stepsize::Bool=false`: constant time step size
+- `method`::Symbol: integration method
 
 ## Returns
 - `state::AbstractArray{<:Real}`: solution
 """
 function integrate_model(A::AbstractArray{<:Real}, E::AbstractArray{<:Real}, tspan::AbstractArray{<:Real}, 
-                         IC::AbstractArray{<:Real}; const_stepsize::Bool=false)
+                         IC::AbstractArray{<:Real}; const_stepsize::Bool=false, method::Symbol=:EE)
+    @assert method ∈ (:EE, :AB) "Invalid integration method. Choose from Explicit Euler (EE) or Adam-Bashforth (AB)"
     Xdim = length(IC)
     Tdim = length(tspan)
     state = zeros(Xdim, Tdim)
@@ -207,17 +209,32 @@ function integrate_model(A::AbstractArray{<:Real}, E::AbstractArray{<:Real}, tsp
 
     if const_stepsize
         Δt = tspan[2] - tspan[1]  # assuming a constant time step size
-        ImdtA_inv = Matrix(I - Δt/2 * A) \ I
-        IpdtA = (I + Δt/2 * A)
-        for j in 2:Tdim
-            state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
-            state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * Δt)
+        if method == :AB
+            ImdtA_inv = Matrix(I - Δt/2 * A) \ I
+            IpdtA = (I + Δt/2 * A)
+            for j in 2:Tdim
+                state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
+                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * Δt)
+            end
+        else
+            for j in 2:Tdim
+                state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
+                state[:, j] = (I + Δt*A) * state[:, j-1] + E * state3 * Δt
+            end
         end
     else
-        for j in 2:Tdim
-            Δt = tspan[j] - tspan[j-1]
-            state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
-            state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * Δt)
+        if method == :AB
+            for j in 2:Tdim
+                Δt = tspan[j] - tspan[j-1]
+                state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
+                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * Δt)
+            end
+        else
+            for j in 2:Tdim
+                Δt = tspan[j] - tspan[j-1]
+                state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
+                state[:, j] = (I + Δt*A) * state[:, j-1] + E * state3 * Δt
+            end
         end
     end
     return state
@@ -226,7 +243,7 @@ end
 
 """
     integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, E::AbstractArray{T}, U::AbstractArray{T}, 
-                    tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false) where T<:Real
+                    tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false, method::Symbol=:EE) where T<:Real
 
 Integrate the Chafee-Infante model using the Crank-Nicholson (linear) Adam-Bashforth (nonlinear) method.
 
@@ -238,12 +255,14 @@ Integrate the Chafee-Infante model using the Crank-Nicholson (linear) Adam-Bashf
 - `tspan::AbstractArray{T}`: time span
 - `IC::AbstractArray{T}`: initial condition
 - `const_stepsize::Bool=false`: constant time step size
+- `method`::Symbol: integration method
 
 ## Returns
 - `state::AbstractArray{T}`: solution
 """
 function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, E::AbstractArray{T}, U::AbstractArray{T}, 
-                         tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false) where T<:Real
+                         tspan::AbstractArray{T}, IC::AbstractArray{T}; const_stepsize::Bool=false, method::Symbol=:EE) where T<:Real
+    @assert method ∈ (:EE, :AB) "Invalid integration method. Choose from Explicit Euler (EE) or Adam-Bashforth (AB)"
     Xdim = length(IC)
     Tdim = length(tspan)
     state = zeros(Xdim, Tdim)
@@ -252,27 +271,42 @@ function integrate_model(A::AbstractArray{T}, B::AbstractArray{T}, E::AbstractAr
 
     if const_stepsize
         Δt = tspan[2] - tspan[1]  # assuming a constant time step size
-        ImdtA_inv = Matrix(I - Δt/2 * A) \ I
-        IpdtA = (I + Δt/2 * A)
-        for j in 2:Tdim
-            state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
-            if j == 2 
-                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * Δt + B * U[:,j-1] * Δt)
-            else
-                state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * 3*Δt/2 - E * state3_jm1 * Δt/2 + B * U[:,j-1] * Δt)
+        if method == :AB
+            ImdtA_inv = Matrix(I - Δt/2 * A) \ I
+            IpdtA = (I + Δt/2 * A)
+            for j in 2:Tdim
+                state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
+                if j == 2 
+                    state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * Δt + B * U[:,j-1] * Δt)
+                else
+                    state[:, j] = ImdtA_inv * (IpdtA * state[:, j-1] + E * state3 * 3*Δt/2 - E * state3_jm1 * Δt/2 + B * U[:,j-1] * Δt)
+                end
+                state3_jm1 = state3
             end
-            state3_jm1 = state3
+        else
+            for j in 2:Tdim
+                state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
+                state[:, j] = (I + Δt*A) * state[:, j-1] + E * state3 * Δt + B * U[:,j-1] * Δt
+            end
         end
     else
-        for j in 2:Tdim
-            Δt = tspan[j] - tspan[j-1]
-            state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
-            if j == 2 
-                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * Δt + B * U[:,j-1] * Δt)
-            else
-                state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * 3*Δt/2 - E * state3_jm1 * Δt/2 + B * U[:,j-1] * Δt)
+        if method == :AB
+            for j in 2:Tdim
+                Δt = tspan[j] - tspan[j-1]
+                state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
+                if j == 2 
+                    state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * Δt + B * U[:,j-1] * Δt)
+                else
+                    state[:, j] = (I - Δt/2 * A) \ ((I + Δt/2 * A) * state[:, j-1] + E * state3 * 3*Δt/2 - E * state3_jm1 * Δt/2 + B * U[:,j-1] * Δt)
+                end
+                state3_jm1 = state3
             end
-            state3_jm1 = state3
+        else
+            for j in 2:Tdim
+                Δt = tspan[j] - tspan[j-1]
+                state3 = ⊘(state[:, j-1], state[:, j-1], state[:, j-1])
+                state[:, j] = (I + Δt*A) * state[:, j-1] + E * state3 * Δt + B * U[:,j-1] * Δt
+            end
         end
     end
     return state

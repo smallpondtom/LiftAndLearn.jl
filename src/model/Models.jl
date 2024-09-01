@@ -6,6 +6,7 @@ include("FisherKPP.jl")
 include("Heat2D.jl")
 include("ChafeeInfante.jl")
 include("AllenCahn.jl")
+include("Gardner.jl")
 using .Heat1D: Heat1DModel
 using .Burgers: BurgersModel
 using .FitzHughNagumo: FitzHughNagumoModel
@@ -14,3 +15,4 @@ using .FisherKPP: FisherKPPModel
 using .Heat2D: Heat2DModel
 using .ChafeeInfante: ChafeeInfanteModel
 using .AllenCahn: AllenCahnModel
+using .Gardner: GardnerModel
