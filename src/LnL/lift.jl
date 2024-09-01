@@ -73,7 +73,7 @@ end
 
 
 """
-    liftedBasis(W, Nl, gp, ro) → Vr
+    lifted_basis(W, Nl, gp, ro) → Vr
 
 Create the block-diagonal POD basis for the new lifted system data
 
@@ -87,7 +87,7 @@ Create the block-diagonal POD basis for the new lifted system data
 - `Vr`: block diagonal POD basis
 
 """
-function liftedBasis(W::Matrix, Nl::Real, gp::Integer, ro::Vector)
+function lifted_basis(W::Matrix, Nl::Real, gp::Integer, ro::Vector)
     @assert size(W, 1) == Nl*gp "Number of rows of W must be equal to Nl*gp"
     @assert all(ro .<= gp) "Reduced order must be less than or equal to the number of grid points"
 
