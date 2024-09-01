@@ -1,5 +1,8 @@
 export Operators
 
+include("polytools.jl")
+include("legacy.jl")
+
 """
 $(TYPEDEF)
 
@@ -32,3 +35,18 @@ Base.@kwdef mutable struct Operators
     N::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0  # bilinear
     f::Function = x -> x                                                                 # nonlinear function
 end
+
+# INFO: Make this into a dictionary
+# Base.@kwdef mutable struct Operators
+#     A::Union{AbstractArray{<:Number},Real} = 0                                             # linear
+#     B::Union{AbstractArray{<:Number},Real} = 0                                             # control
+#     C::Union{AbstractArray{<:Number},Real} = 0                                             # output
+#     A2::Union{AbstractArray{<:Number},Real} = 0                                            # quadratic redundant
+#     Ah2::Union{AbstractArray{<:Number},Real} = 0                                           # quadratic non-redundant
+#     As2::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0  # quadratic (array of 2D "s"quare matrices)
+#     A3::Union{AbstractArray{<:Number},Real} = 0                                            # cubic redundant
+#     Ah3::Union{AbstractArray{<:Number},Real} = 0                                           # cubic non-redundant
+#     K::Union{AbstractArray{<:Number},Real} = 0                                             # constant
+#     E::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0    # bilinear
+#     f::Function = x -> x                                                                   # nonlinear function
+# end
