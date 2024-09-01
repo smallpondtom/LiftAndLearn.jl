@@ -1,6 +1,3 @@
-export compProjError, compStateError, compOutputError, compError
-export EPConstraintResidual, EPConstraintViolation
-
 """
     compProjError(Xf, Vr) → PE
 

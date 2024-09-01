@@ -1,5 +1,3 @@
-export forwardEuler, backwardEuler, crankNicolson, semiImplicitEuler
-
 """
 $(SIGNATURES)
 
