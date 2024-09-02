@@ -39,10 +39,9 @@ rmax = 25
 
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        is_lin=true,
-        is_quad=true,
-        has_control=true,
-        has_output=true,
+        state=[1,2],
+        control=1,
+        output=1
     ),
     vars=LnL.VariableStructure(
         N=1,
@@ -83,7 +82,7 @@ for i in 1:length(burger.diffusion_coeffs)
     Xtest = burger.integrate_model(A, B, F, Utest, burger.tspan, burger.IC)
     Ytest = C * Xtest
 
-    op_burger = LnL.Operators(A=A, B=B, C=C, F=F)
+    op_burger = LnL.Operators(A=A, B=B, C=C, A2u=F)
 
     ## training data for inferred dynamical models
     Urand = rand(burger.time_dim - 1, num_inputs)
@@ -105,7 +104,7 @@ for i in 1:length(burger.diffusion_coeffs)
     Σr[i] = tmp.S
 
     # Compute the values for the intrusive model from the basis of the training data
-    op_int = LnL.pod(op_burger, Vrmax, options)
+    op_int = LnL.pod(op_burger, Vrmax, options.system)
 
     # Compute the inferred operators from the training data
     if options.optim.reproject 
@@ -118,12 +117,12 @@ for i in 1:length(burger.diffusion_coeffs)
         Vr = Vrmax[:, 1:j]  # basis
 
         # Integrate the intrusive model
-        Fint_extract = LnL.extractF(op_int.F, j)
+        Fint_extract = LnL.extractF(op_int.A2u, j)
         Xint = burger.integrate_model(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.tspan, Vr' * burger.IC) # <- use F
         Yint = op_int.C[1:1, 1:j] * Xint
 
         # Integrate the inferred model
-        Finf_extract = LnL.extractF(op_inf.F, j)
+        Finf_extract = LnL.extractF(op_inf.A2u, j)
         Xinf = burger.integrate_model(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.tspan, Vr' * burger.IC)  # <- use F
         Yinf = op_inf.C[1:1, 1:j] * Xinf
 

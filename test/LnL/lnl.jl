@@ -16,13 +16,11 @@ const LnL = LiftAndLearn
     # Some options for operator inference
     options = LnL.LSOpInfOption(
         system=LnL.SystemStructure(
-            is_lin=true,
-            is_quad=true,
-            is_bilin=true,
-            has_control=true,
-            has_const=true,
-            has_funcOp=true,
-            is_lifted=true,
+            state=[1, 2],
+            control=1,
+            output=1,
+            coupled_input=1,
+            constant=1,
         ),
         vars=LnL.VariableStructure(
             N=2,
@@ -34,7 +32,7 @@ const LnL = LiftAndLearn
         ),
         optim=LnL.OptimizationSetting(
             verbose=true,
-            which_quad_term="H",
+            nonredundant_operators=true,
             reproject=true,
         ),
     )
@@ -51,12 +49,11 @@ const LnL = LiftAndLearn
         A=tmp[1],
         B=tmp[2][:, :],  # Make sure its matrix
         C=tmp[3][:, :],
-        H=tmp[4],
-        F=LnL.H2F(tmp[4]),
+        A2=tmp[4],
+        A2u=LnL.eliminate(tmp[4],2),
         N=tmp[5],
         K=tmp[6]
     )
-
 
     # Generic function for FOM
     tmp = fhn.full_order_model(gp, fhn.spatial_domain[2])  # much efficient to calculate for FOM
@@ -67,8 +64,7 @@ const LnL = LiftAndLearn
         K=tmp[4],
         f=tmp[5]
     )
-    fom_state(x, u) = fomOps.A * x + fomOps.B * u + fomOps.f(x) + fomOps.K
-
+    fom_state(x, u) = fomOps.A * x + fomOps.B * u + fomOps.f(x,u) + fomOps.K
 
     ## Generate training data
     # parameters for the training data
@@ -125,10 +121,11 @@ const LnL = LiftAndLearn
         Vr = BlockDiagonal([Vr1, Vr2, Vr3])
 
         infOps = LnL.opinf(Wtr, Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
-        intruOps = LnL.pod(fomLinOps, Vr, options)
+        infOps.A2 = duplicate(infOps.A2u, 2)
+        intruOps = LnL.pod(fomLinOps, Vr, options.system)
 
-        finf = (x, u) -> infOps.A * x + infOps.B * u + infOps.H * kron(x, x) + (infOps.N * x) * u + infOps.K
-        fint = (x, u) -> intruOps.A * x  + intruOps.B * u + intruOps.H * kron(x, x) + (intruOps.N*x)*u + intruOps.K
+        finf = (x, u) -> infOps.A * x + infOps.B * u + infOps.A2 * kron(x, x) + (infOps.N * x) * u[1] + infOps.K
+        fint = (x, u) -> intruOps.A * x  + intruOps.B * u + intruOps.A2 * kron(x, x) + (intruOps.N * x) * u[1] + intruOps.K
 
         k, l = 0, 0
         for (X, U) in zip(Xtrain, Utrain_all)

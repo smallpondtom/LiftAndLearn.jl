@@ -32,14 +32,12 @@ fhn = LnL.FitzHughNagumoModel(
 # Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        is_lin=true,
-        is_quad=true,
-        is_bilin=true,
-        has_control=true,
-        has_output=true,
-        has_const=true,
-        has_funcOp=true,
-        is_lifted=true,
+        state=[1, 2],
+        control=1,
+        output=1,
+        coupled_input=1,
+        constant=1,
+        lifted=true,
     ),
     vars=LnL.VariableStructure(
         N=2,
@@ -51,7 +49,7 @@ options = LnL.LSOpInfOption(
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
-        which_quad_term="H",
+        nonredundant_operators=true,
         reproject=true,
     ),
 )
@@ -70,8 +68,8 @@ fomLinOps = LnL.Operators(
     A=tmp[1],
     B=tmp[2][:, :],  # Make sure its matrix
     C=tmp[3][:, :],
-    H=tmp[4],
-    F=LnL.H2F(tmp[4]),
+    A2=tmp[4],
+    A2u=LnL.eliminate(tmp[4],2),  # takes too long
     N=tmp[5],
     K=tmp[6]
 )
@@ -87,7 +85,7 @@ fomOps = LnL.Operators(
     K=tmp[4],
     f=tmp[5]
 )
-fom_state(x, u) = fomOps.A * x + fomOps.B * u + fomOps.f(x) + fomOps.K
+fom_state(x, u) = fomOps.A * x + fomOps.B * u + fomOps.f(x,u) + fomOps.K
 
 @info "(t=$(time()-start)) Complete generating full-order model operators"
 
@@ -218,8 +216,9 @@ test2_err = Dict(
     Vr3 = W3.U[:, 1:r3]
     Vr = BlockDiagonal([Vr1, Vr2, Vr3])
 
-    infOps = LnL.opinf(Wtr,Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
-    intruOps = LnL.pod(fomLinOps, Vr, options)
+    infOps = LnL.opinf(Wtr, Vr, lifter, fomOps, options; U=Utr, Y=Ytr)
+    infOps.A2 = duplicate(infOps.A2u, 2)
+    intruOps = LnL.pod(fomLinOps, Vr, options.system)
     # At = Vr' * fomLinOps.A * Vr
     # Bt = Vr' * fomLinOps.B
     # Kt = Vr' * fomLinOps.K
@@ -227,10 +226,10 @@ test2_err = Dict(
     # Nt = Vr' * fomLinOps.N * Vr
 
     # fint(x, u) = fF(intruOps.A, intruOps.B, intruOps.F, intruOps.N, intruOps.K, x, u)
-    finf = (x, u) -> infOps.A * x + infOps.B * u + infOps.H * (x ⊗ x) + (infOps.N * x) * u + infOps.K
+    finf = (x, u) -> infOps.A * x + infOps.B * u + infOps.A2 * (x ⊗ x) + (infOps.N * x) * u[1] + infOps.K
 
     # fint(x, u) = fF(intruOps.A, intruOps.B, intruOps.F, intruOps.N, intruOps.K, x, u)
-    fint = (x, u) -> intruOps.A * x  + intruOps.B * u + intruOps.H * (x ⊗ x) + (intruOps.N*x)*u + intruOps.K
+    fint = (x, u) -> intruOps.A * x  + intruOps.B * u + intruOps.A2 * (x ⊗ x) + (intruOps.N*x)*u[1] + intruOps.K
     # fint = (x, u) -> At * x + Bt * u + Ht * (x ⊗ x) + (Nt * x) * u + Kt
 
     k, l = 0, 0

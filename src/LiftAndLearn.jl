@@ -34,6 +34,9 @@ abstract type AbstractModel end
 # Utilities
 include("utilities/utilities.jl")
 
+# Options
+include("OpInf/opinf_options.jl")
+
 # Operators and tools
 include("operators/operators.jl")
 
@@ -42,7 +45,6 @@ include("POD/pod.jl")
 
 # Operator Inference
 include("OpInf/learn.jl")
-include("OpInf/OpInf_options.jl")
 
 # Other utilities (for the sake of ordering)
 include("utilities/analyze.jl")
@@ -53,15 +55,15 @@ include("LnL/lift.jl")
 include("LnL/learn.jl")
 
 # Include the optimization methods
-include("optimizer/NC_Optimize.jl")
-include("optimizer/EP_Optimize.jl")
+# include("optimizer/NC_Optimize.jl")
+# include("optimizer/EP_Optimize.jl")
 
 # Streaming OpInf
-include("Streaming/streaming.jl")
-include("Streaming/streamify.jl")
+# include("Streaming/streaming.jl")
+# include("Streaming/streamify.jl")
 
 # [Submodule] Chaos analysis tools
-include("ChaosGizmo/ChaosGizmo.jl")
+# include("ChaosGizmo/ChaosGizmo.jl")
 
 # Include the system models
 include("model/Models.jl")

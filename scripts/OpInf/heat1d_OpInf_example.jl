@@ -38,9 +38,9 @@ heat1d = LnL.Heat1DModel(
 # Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        is_lin=true,
-        has_control=true,
-        has_output=true,
+        state=1,
+        control=1,
+        output=1,
     ),
     vars=LnL.VariableStructure(
         N=1,
@@ -93,7 +93,7 @@ for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
     Yfull[idx] = Y
 
     # Compute the values for the intrusive model
-    op_heat_new = LnL.pod(op_heat, Vr, options)
+    op_heat_new = LnL.pod(op_heat, Vr, options.system)
     A_intru[idx] = op_heat_new.A
     B_intru[idx] = op_heat_new.B
     C_intru[idx] = op_heat_new.C

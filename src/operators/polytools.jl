@@ -29,40 +29,59 @@ julia> dupmat(2,2)
 SIAM. J. on Algebraic and Discrete Methods, vol. 1, no. 4, pp. 422–449, Dec. 1980, doi: 10.1137/0601049.
 """
 function dupmat(n::Int, p::Int)
-    # Calculate the number of unique elements in a symmetric tensor of order p
-    num_unique_elements = binomial(n + p - 1, p)
-    
-    # Create the duplication matrix with appropriate size
-    Dp = spzeros(Int, n^p, num_unique_elements)
+    if p == 2  # fast algorithm for quadratic case
+        m = n * (n + 1) / 2
+        nsq = n^2
+        r = 1
+        a = 1
+        v = zeros(nsq)
+        cn = cumsum(n:-1:2)
+        for i = 1:n
+            v[r:(r+i-2)] = (i - n) .+ cn[1:(i-1)]
+            r = r + i - 1
 
-    function elements!(D, l, indices)
-        perms = unique([sum((indices[σ[i]] - 1) * n^(p - i) for i in 1:p) + 1 for σ in permutations(1:p)])
-        
-        @inbounds for p in perms
-            D[p, l] = 1
+            v[r:r+n-i] = a:a.+(n-i)
+            r = r + n - i + 1
+            a = a + n - i + 1
         end
+        D = sparse(1:nsq, v, ones(length(v)), nsq, m)
+        return D
+    else  # general algorithm for any order p
+        # Calculate the number of unique elements in a symmetric tensor of order p
+        num_unique_elements = binomial(n + p - 1, p)
+        
+        # Create the duplication matrix with appropriate size
+        Dp = spzeros(Int, n^p, num_unique_elements)
+
+        function elements!(D, l, indices)
+            perms = unique([sum((indices[σ[i]] - 1) * n^(p - i) for i in 1:p) + 1 for σ in permutations(1:p)])
+            
+            @inbounds for p in perms
+                D[p, l] = 1
+            end
+        end
+        elements!(D, l, indices...) = elements!(D, l, indices)
+
+        # function generate_nonredundant_combinations(n::Int, p::Int)
+        #     if p == 1
+        #         return [[i] for i in 1:n]
+        #     else
+        #         lower_combs = generate_nonredundant_combinations(n, p - 1)
+        #         return [vcat(comb, [i]) for comb in lower_combs for i in comb[end]:n]
+        #     end
+        # end
+
+        # Generate all combinations (i1, i2, ..., ip) with i1 ≤ i2 ≤ ... ≤ ip
+        # combs = generate_nonredundant_combinations(n, p)
+        combs = with_replacement_combinations(1:n, p) 
+        combs = reduce(hcat, combs)
+        combs = Vector{eltype(combs)}[eachrow(combs)...]
+        
+        # # Fill in the duplication matrix using the computed combinations
+        elements!.(Ref(Dp), 1:num_unique_elements, combs...)
+
+        return Dp
     end
-    elements!(D, l, indices...) = elements!(D, l, indices)
-
-    # function generate_nonredundant_combinations(n::Int, p::Int)
-    #     if p == 1
-    #         return [[i] for i in 1:n]
-    #     else
-    #         lower_combs = generate_nonredundant_combinations(n, p - 1)
-    #         return [vcat(comb, [i]) for comb in lower_combs for i in comb[end]:n]
-    #     end
-    # end
-
-    # Generate all combinations (i1, i2, ..., ip) with i1 ≤ i2 ≤ ... ≤ ip
-    # combs = generate_nonredundant_combinations(n, p)
-    combs = with_replacement_combinations(1:n, p) 
-    combs = reduce(hcat, combs)
-    combs = Vector{eltype(combs)}[eachrow(combs)...]
-    
-    # # Fill in the duplication matrix using the computed combinations
-    elements!.(Ref(Dp), 1:num_unique_elements, combs...)
-
-    return Dp
 end
 
 
@@ -89,38 +108,43 @@ julia> symmtzrmat(2,2)
 ```
 """
 function symmtzrmat(n::Int, p::Int)
-    # Create the symmetrizer matrix with appropriate size
-    np = Int(n^p)
-    Sp = spzeros(Float64, np, np)
+    if p == 2  # fast algorithm for quadratic case
+        np = n^p
+        return 0.5 * (sparse(1.0I, np, np) + commat(n, n))
+    else
+        # Create the symmetrizer matrix with appropriate size
+        np = Int(n^p)
+        Sp = spzeros(Float64, np, np)
 
-    function elements!(N, l, indices)
-        perms = [sum((indices[σ[i]] - 1) * n^(p - i) for i in 1:p) + 1 for σ in permutations(1:p)]
-        
-        # For cases where two or all indices are the same, 
-        # we should not count permutations more than once.
-        unique_perms = countmap(perms)
+        function elements!(N, l, indices)
+            perms = [sum((indices[σ[i]] - 1) * n^(p - i) for i in 1:p) + 1 for σ in permutations(1:p)]
+            
+            # For cases where two or all indices are the same, 
+            # we should not count permutations more than once.
+            unique_perms = countmap(perms)
 
-        # Assign the column to the matrix N
-        @inbounds for (perm, count) in unique_perms
-            N[perm, l] = count / factorial(p)
+            # Assign the column to the matrix N
+            @inbounds for (perm, count) in unique_perms
+                N[perm, l] = count / factorial(p)
+            end
         end
+        elements!(N, l, indices...) = elements!(N, l, indices)
+
+        function generate_redundant_combinations(n::Int, p::Int)
+            iterators = ntuple(_ -> 1:n, p)
+            return [collect(product) for product in Iterators.product(iterators...)]
+        end
+
+        # Generate all combinations (i1, i2, ..., ip) with i1 ≤ i2 ≤ ... ≤ ip
+        combs = generate_redundant_combinations(n, p)
+        combs = reduce(hcat, combs)
+        combs = Vector{eltype(combs)}[eachrow(combs)...]
+        
+        # Fill in the duplication matrix using the computed combinations
+        elements!.(Ref(Sp), 1:np, combs...)
+
+        return Sp
     end
-    elements!(N, l, indices...) = elements!(N, l, indices)
-
-    function generate_redundant_combinations(n::Int, p::Int)
-        iterators = ntuple(_ -> 1:n, p)
-        return [collect(product) for product in Iterators.product(iterators...)]
-    end
-
-    # Generate all combinations (i1, i2, ..., ip) with i1 ≤ i2 ≤ ... ≤ ip
-    combs = generate_redundant_combinations(n, p)
-    combs = reduce(hcat, combs)
-    combs = Vector{eltype(combs)}[eachrow(combs)...]
-    
-    # Fill in the duplication matrix using the computed combinations
-    elements!.(Ref(Sp), 1:np, combs...)
-
-    return Sp
 end
 
 
@@ -146,26 +170,40 @@ julia> elimat(2,2)
 ```
 """
 function elimat(n::Int, p::Int)
-    # Calculate the number of rows in L
-    num_rows = binomial(n + p - 1, p)
+    if p == 2  # fast algorithm for quadratic case
+        T = tril(ones(n, n)) # Lower triangle of 1's
+        f = findall(x -> x == 1, T[:]) # Get linear indexes of 1's
+        k = n * (n + 1) / 2 # Row size of L
+        n2 = n * n # Colunm size of L
+        x = f + n2 * (0:k-1) # Linear indexes of the 1's within L'
 
-    # Initialize the output matrix L
-    Lp = spzeros(Int, num_rows, n^p)
+        row = [mod(a, n2) != 0 ? mod(a, n2) : n2 for a in x]
+        col = [mod(a, n2) != 0 ? div(a, n2) + 1 : div(a, n2) for a in x]
+        L = sparse(row, col, ones(length(x)), n2, k)
+        L = L' # Now transpose to actual L
+        return L
+    else   # general algorithm for any order p
+        # Calculate the number of rows in L
+        num_rows = binomial(n + p - 1, p)
 
-    # Generate all combinations with repetition of n elements from {1, 2, ..., n}
-    combs = with_replacement_combinations(1:n, p) 
+        # Initialize the output matrix L
+        Lp = spzeros(Int, num_rows, n^p)
 
-    # Fill the matrix L
-    for (l, comb) in enumerate(combs)
-        v = [1]  # Start with a scalar 1
-        @inbounds for d in 1:p
-            e = collect(1:n .== comb[d])  # Create the indicator vector
-            v = v ⊗ e  # Build the Kronecker product
+        # Generate all combinations with repetition of n elements from {1, 2, ..., n}
+        combs = with_replacement_combinations(1:n, p) 
+
+        # Fill the matrix L
+        for (l, comb) in enumerate(combs)
+            v = [1]  # Start with a scalar 1
+            @inbounds for d in 1:p
+                e = collect(1:n .== comb[d])  # Create the indicator vector
+                v = v ⊗ e  # Build the Kronecker product
+            end
+            Lp[l, :] = v  # Assign the row
         end
-        Lp[l, :] = v  # Assign the row
-    end
 
-    return Lp
+        return Lp
+    end
 end
 
 

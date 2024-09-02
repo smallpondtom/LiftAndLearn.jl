@@ -215,7 +215,7 @@ function full_order_model(k, l)
     Clift[2, 1+k] = 1
     C = Clift[:, 1:2*k]
 
-    f = x -> [-x[1:k, :] .^ 3 + 1.1 * x[1:k, :] .^ 2; spzeros(k, size(x, 2))] / gamma
+    f = (x,u) -> [-x[1:k, :] .^ 3 + 1.1 * x[1:k, :] .^ 2; spzeros(k, size(x, 2))] / gamma
 
     return A, B, C, K, f
 end

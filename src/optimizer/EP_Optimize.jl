@@ -16,13 +16,14 @@ Energy preserved (Hard Equality Constraint) operator inference optimization (EPH
 - Inferred operators
 """
 function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
-    options::AbstractOption, IG::Operators)
+                        dims::AbstractArray, operators_symbols::AbstractArray,
+                        options::AbstractOption, IG::Operators)
     # Some dimensions to unpack for convenience
-    n = options.system.dims[:n]
-    m = options.system.dims[:m]
-    s = options.system.dims[:s2]
-    v = options.system.dims[:v2]
-    w = options.system.dims[:w1]
+    # n = options.system.dims[:n]
+    # m = options.system.dims[:m]
+    # s = options.system.dims[:s2]
+    # v = options.system.dims[:v2]
+    # w = options.system.dims[:w1]
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
@@ -36,7 +37,8 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         set_silent(model)
     end
 
-    if options.system.is_lin
+    # if options.system.is_lin
+    if 1 in options.system.state
         @variable(model, Ahat[1:n, 1:n])
 
         # Set it to be symmetric or nearly symmetric
@@ -58,7 +60,8 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = Ahat
     end
 
-    if options.system.has_control
+    if 1 in options.system.control
+    # if options.system.has_control
         @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess 
             set_start_value.(Bhat, IG.B)
@@ -66,8 +69,10 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = (@isdefined tmp) ? hcat(tmp, Bhat) : Bhat
     end
 
-    if options.system.is_quad
-        if options.optim.which_quad_term == "H"
+    if 2 in options.system.state
+    # if options.system.is_quad
+        if !options.optim.nonredundant_operators
+        # if options.optim.which_quad_term == "H"
             @variable(model, Hhat[1:n, 1:v])
             if options.optim.initial_guess
                 set_start_value.(Hhat, IG.H)
@@ -98,7 +103,8 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         end
     end
 
-    if options.system.is_bilin
+    if 1 in options.system.coupled_state
+    # if options.system.is_bilin
         @variable(model, Nhat[1:n, 1:w])
         if options.optim.initial_guess
             set_start_value.(Nhat, IG.N)
@@ -106,7 +112,8 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = (@isdefined tmp) ? hcat(tmp, Nhat) : Nhat
     end
 
-    if options.system.has_const
+    if !iszero(options.system.constant)
+    # if options.system.has_const
         @variable(model, Khat[1:n, 1])
         if options.optim.initial_guess
             set_start_value.(Khat, IG.K)
@@ -116,7 +123,8 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
 
     @info "Add constraints"
     # Energy preserving Hard equality constraint
-    if options.optim.which_quad_term == "H"
+    if !options.optim.nonredundant_operators
+    # if options.optim.which_quad_term == "H"
         # NOTE: H matrix version
         @constraint(
             model,
@@ -147,7 +155,8 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         # @objective(model, Min, REG)
         @objective(model, Min, sum(X.^2))
     else
-        if options.optim.which_quad_term == "H"
+        if !options.optim.nonredundant_operators
+        # if options.optim.which_quad_term == "H"
             PEN = @expression(model, options.λ_lin*sum(Ahat.^2) + options.λ_quad*sum(Hhat.^2))
             @objective(model, Min, sum(X.^2) + PEN)
         else
@@ -183,14 +192,19 @@ function EPHEC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     objective_value      = $(objective_value(model))
     """
 
-    Ahat = value.(Ahat)
-    Bhat = options.system.has_control ? value.(Bhat)[:, :] : 0
-    Fhat = options.system.is_quad ? options.optim.which_quad_term=="F" ? value.(Fhat) : H2F(value.(Hhat)) : 0
-    Hhat = options.system.is_quad ? options.optim.which_quad_term=="H" ? value.(Hhat) : F2Hs(value.(Fhat)) : 0
-    Nhat = options.system.is_bilin ? value.(Nhat) : 0
-    Khat = options.system.has_const ? value.(Khat) : 0
-    @info "Done."
-    return Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+    # Ahat = value.(Ahat)
+    # Bhat = options.system.has_control ? value.(Bhat)[:, :] : 0
+    # Fhat = options.system.is_quad ? options.optim.which_quad_term=="F" ? value.(Fhat) : H2F(value.(Hhat)) : 0
+    # Hhat = options.system.is_quad ? options.optim.which_quad_term=="H" ? value.(Hhat) : F2Hs(value.(Fhat)) : 0
+    # Nhat = options.system.is_bilin ? value.(Nhat) : 0
+    # Khat = options.system.has_const ? value.(Khat) : 0
+    # @info "Done."
+    # return Ahat, Bhat, Fhat, Hhat, Nhat, Khat
+
+
+    operators = Operators()
+    unpack_operators!(operators, value.(Ot)', dims, operators_symbols, options)
+    return operators
 end
 
 
@@ -210,14 +224,15 @@ Energy preserved (Soft Inequality Constraint) operator inference optimization (E
 - Inferred operators
 
 """
-function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
-    options::AbstractOption, IG::Operators)
-    # Some dimensions to unpack for convenience
-    n = options.system.dims[:n]
-    m = options.system.dims[:m]
-    s = options.system.dims[:s2]
-    v = options.system.dims[:v2]
-    w = options.system.dims[:w1]
+function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose}, 
+                        dims::AbstractArray, operators_symbols::AbstractArray,
+                        options::AbstractOption, IG::Operators)
+    # # Some dimensions to unpack for convenience
+    # n = options.system.dims[:n]
+    # m = options.system.dims[:m]
+    # s = options.system.dims[:s2]
+    # v = options.system.dims[:v2]
+    # w = options.system.dims[:w1]
 
     @info "Initialize optimization model."
     model = Model(Ipopt.Optimizer; add_bridges = false)
@@ -231,7 +246,8 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         set_silent(model)
     end
 
-    if options.system.is_lin
+    if 1 in options.system.state
+    # if options.system.is_lin
         @variable(model, Ahat[1:n, 1:n])
 
         # # Set it to be symmetric or nearly symmetric
@@ -253,7 +269,8 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = Ahat
     end
 
-    if options.system.has_control
+    if 1 in options.system.control
+    # if options.system.has_control
         @variable(model, Bhat[1:n, 1:m])
         if options.optim.initial_guess
             set_start_value.(Bhat, IG.B)
@@ -261,8 +278,10 @@ function EPSIC_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
         tmp = (@isdefined tmp) ? hcat(tmp, Bhat) : Bhat
     end
 
-    if options.system.is_quad
-        if options.optim.which_quad_term == "H"
+    if 2 in options.system.state
+    # if options.system.is_quad
+        if !options.optim.nonredundant_operators
+        # if options.optim.which_quad_term == "H"
             @variable(model, Hhat[1:n, 1:v])
             if options.optim.initial_guess
                 set_start_value.(Hhat, IG.H)

@@ -20,9 +20,7 @@ function forwardEuler(A::Array, B::Array, U::Array, tdata::VecOrMat, IC::VecOrMa
     states[:, 1] = IC
 
     # If row dim corresponds to # of time steps, transpose the input data
-    if size(U, 1) == Tdim
-        U = U'
-    end
+    U = tall2fat(U)
 
     for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
@@ -80,9 +78,7 @@ function forwardEuler(f::Function, U::Array, tdata::VecOrMat, IC::VecOrMat)::Mat
     states[:, 1] = IC
 
     # If row dim corresponds to # of time steps, transpose the input data
-    if size(U, 1) == Tdim
-        U = U'
-    end
+    U = tall2fat(U)
 
     @inbounds @views for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
@@ -114,9 +110,7 @@ function backwardEuler(A, B, U, tdata, IC)
     state[:, 1] = IC
 
     # If row dim corresponds to # of time steps, transpose the input data
-    if size(U, 1) == Tdim
-        U = U'
-    end
+    U = tall2fat(U)
 
     @inbounds @views for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
@@ -149,9 +143,7 @@ function crankNicolson(A, B, U, tdata, IC)
     states[:, 1] = IC
 
     # If row dim corresponds to # of time steps, transpose the input data
-    if size(U, 1) == Tdim
-        U = U'
-    end
+    U = tall2fat(U)
 
     @inbounds @views for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
@@ -184,9 +176,7 @@ function semiImplicitEuler(A, B, F, U, tdata, IC)
     state[:, 1] = IC
 
     # If row dim corresponds to # of time steps, transpose the input data
-    if size(U, 1) == Tdim
-        U = U'
-    end
+    U = tall2fat(U)
 
     @inbounds @views for j in 2:Tdim
         Δt = tdata[j] - tdata[j-1]
@@ -221,9 +211,7 @@ function semiImplicitEuler(A, B, F_or_H, U, tdata, IC, options)
     state[:, 1] = IC
 
     # If row dim corresponds to # of time steps, transpose the input data
-    if size(U, 1) == Tdim
-        U = U'
-    end
+    U = tall2fat(U)
     
     if options.which_quad_term == "F"
         @inbounds @views for j in 2:Tdim

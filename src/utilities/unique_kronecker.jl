@@ -260,6 +260,7 @@ Generalized Kronecker product operator for multiple vectors.
 - unique Kronecker product of all vectors
 """
 ⊘(x::AbstractArray{T}, p::Int) where {T<:Number} = 
+    p == 1 ? x :
     p == 2 ? unique_kronecker(x, x) :
     p == 3 ? unique_kronecker(x, x, x) :
     p == 4 ? unique_kronecker(x, x, x, x) :

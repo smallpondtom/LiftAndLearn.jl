@@ -30,20 +30,30 @@ Structure of the given system.
 - `w1`: the dimension of bilinear state-input coupling
 - `d`: the total dimension of the operator matrix
 """
-@with_kw mutable struct SystemStructure 
-    is_lin::Bool = true
-    has_control::Bool = false
-    has_output::Bool = false
-    is_quad::Bool = false
-    is_cubic::Bool = false
-    is_bilin::Bool = false
-    has_const::Bool = false
-    has_funcOp::Bool = false
-    is_lifted::Bool = false
-    dims::Dict{Symbol, Int64} = Dict(:n=>0, :K=>0, :m=>0, :l=>0, :v2=>0, :s2=>0,
-                                     :v3=>0, :s3=>0, :w1=>0, :d=>0)
+# @with_kw mutable struct SystemStructure 
+#     has_linear::Bool = true
+#     has_control::Bool = false
+#     has_output::Bool = false
+#     has_const::Bool = false
+#     has_funcOp::Bool = false
+#     is_lifted::Bool = false
+#     has_poly_order::Array{<:Int} = Int[]
+#     dims::Dict{Symbol, Int64} = Dict(:n=>0, :K=>0, :m=>0, :l=>0, :v2=>0, :s2=>0,
+#                                      :v3=>0, :s3=>0, :w1=>0, :d=>0)
 
-    @assert !(has_control==false && is_bilin==true) "Bilinear system must have control input. Check the option 'has_control'."
+#     @assert !(has_control==false && is_bilin==true) "Bilinear system must have control input. Check the option 'has_control'."
+# end
+
+@with_kw mutable struct SystemStructure
+    state::Union{Array{<:Int,1},Int} = 0
+    control::Union{Array{<:Int,1},Int} = 0
+    output::Union{Array{<:Int,1},Int} = 0
+    coupled_input::Union{Array{<:Int,1},Int} = 0
+    coupled_output::Union{Array{<:Int,1},Int} = 0
+    constant::Int = 0
+    constant_output::Int = 0
+    # function_operator::Bool = false
+    # lifted::Bool = false
 end
 
 
@@ -99,8 +109,11 @@ Information about the optimization.
     verbose::Bool = false
     initial_guess::Bool = false
     max_iter::Int64 = 3000
-    which_quad_term::String = "F"
-    which_cubic_term::String = "E"
+
+    nonredundant_operators::Bool = true
+
+    # which_quad_term::String = "F"
+    # which_cubic_term::String = "E"
     reproject::Bool = false
     SIGE::Bool = false  # Successive Initial Guess Estimation
     with_bnds::Bool = false  # add bounds to the variables
@@ -121,13 +134,22 @@ Tikhonov regularization parameters.
 - `bilin::Float64`: the Tikhonov regularization parameter for bilinear state operator
 - `output::Float64`: the Tikhonov regularization parameter for output operator
 """
+# @with_kw struct TikhonovParameter
+#     lin::Union{Real, AbstractArray{Real}} = 0.0
+#     quad::Real = 0.0
+#     cubic::Real = 0.0
+#     ctrl::Real = 0.0
+#     bilin::Real = 0.0
+#     output::Real = 0.0
+# end
 @with_kw struct TikhonovParameter
-    lin::Union{Real, AbstractArray{Real}} = 0.0
-    quad::Real = 0.0
-    cubic::Real = 0.0
-    ctrl::Real = 0.0
-    bilin::Real = 0.0
-    output::Real = 0.0
+    A::Union{Real, AbstractArray{Real}} = 0.0
+    A2::Real = 0.0
+    A3::Real = 0.0
+    B::Real = 0.0
+    N::Real = 0.0
+    C::Real = 0.0
+    K::Real = 0.0
 end
 
 

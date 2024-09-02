@@ -19,9 +19,9 @@ const LnL = LiftAndLearn
     # Some options for operator inference
     options = LnL.LSOpInfOption(
         system=LnL.SystemStructure(
-            is_lin=true,
-            has_control=true,
-            has_output=true,
+            state=1,
+            control=1,
+            output=1,
         ),
         vars=LnL.VariableStructure(
             N=1,
@@ -69,7 +69,7 @@ const LnL = LiftAndLearn
         Yfull[idx] = Y
 
         # Compute the values for the intrusive model
-        op_heat_new = LnL.pod(op_heat, Vr, options)
+        op_heat_new = LnL.pod(op_heat, Vr, options.system)
         A_intru[idx] = op_heat_new.A
         B_intru[idx] = op_heat_new.B
         C_intru[idx] = op_heat_new.C
@@ -193,10 +193,9 @@ end
 
     options = LnL.LSOpInfOption(
         system=LnL.SystemStructure(
-            is_lin=true,
-            is_quad=true,
-            has_control=true,
-            has_output=true,
+            state=[1,2],
+            control=1,
+            output=1,
         ),
         vars=LnL.VariableStructure(
             N=1,
@@ -212,10 +211,10 @@ end
         with_reg=true,
         pinv_tol=1e-6,
         λ=TikhonovParameter(
-            lin=1.0,
-            quad=1e-3,
-            ctrl=1e-2,
-            bilin=0.0
+            A=1.0,
+            A2=1e-3,
+            B=1e-2,
+            N=0.0
         )
     )
     Utest = ones(burger.time_dim - 1, 1);  # Reference input/boundary condition for OpInf testing 
@@ -240,7 +239,7 @@ end
         Xtest = LnL.semiImplicitEuler(A, B, F, Utest, burger.tspan, burger.IC)
         Ytest = C * Xtest
 
-        op_burger = LnL.Operators(A=A, B=B, C=C, F=F)
+        op_burger = LnL.Operators(A=A, B=B, C=C, A2u=F)
 
         ## training data for inferred dynamical models
         Urand = rand(burger.time_dim - 1, num_inputs)
@@ -262,7 +261,7 @@ end
         Σr[i] = tmp.S
 
         # Compute the values for the intrusive model from the basis of the training data
-        op_int = LnL.pod(op_burger, Vrmax, options)
+        op_int = LnL.pod(op_burger, Vrmax, options.system)
 
         # Compute the inferred operators from the training data
         if options.optim.reproject || i == 1
@@ -275,12 +274,12 @@ end
             Vr = Vrmax[:, 1:j]  # basis
 
             # Integrate the intrusive model
-            Fint_extract = LnL.extractF(op_int.F, j)
+            Fint_extract = LnL.extractF(op_int.A2u, j)
             Xint = burger.integrate_model(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.tspan, Vr' * burger.IC) # <- use F
             Yint = op_int.C[1:1, 1:j] * Xint
 
             # Integrate the inferred model
-            Finf_extract = LnL.extractF(op_inf.F, j)
+            Finf_extract = LnL.extractF(op_inf.A2u, j)
             Xinf = burger.integrate_model(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.tspan, Vr' * burger.IC)  # <- use F
             Yinf = op_inf.C[1:1, 1:j] * Xinf
 
