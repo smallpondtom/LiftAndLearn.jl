@@ -36,6 +36,7 @@ bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"))
 makedocs(
     sitename = "LiftAndLearn.jl",
     clean = true, doctest = false, linkcheck = false,
+    authors = "Tomoki Koike <tkoike45@gmail.com>",
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
         edit_link = "https://github.com/smallpondtom/LiftAndLearn.jl",

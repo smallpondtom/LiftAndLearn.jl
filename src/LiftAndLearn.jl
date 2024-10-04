@@ -5,18 +5,13 @@ module LiftAndLearn
 
 using LinearAlgebra
 using BlockDiagonals
-using Distributions: Uniform
 using Kronecker
 using Parameters
 using SparseArrays
-using StatsBase: countmap
-using MatrixEquations: lyapc
-using Random: rand, rand!, shuffle
-using Combinatorics: permutations, factorial, binomial, with_replacement_combinations
 using JuMP
 using Ipopt, SCS
-using FFTW
 using DocStringExtensions
+using UniqueKronecker
 
 """
     AbstractOption
@@ -24,12 +19,6 @@ using DocStringExtensions
 Abstract type for the options.
 """
 abstract type AbstractOption end
-"""
-    AbstractModel
-
-Abstract type for the model.
-"""
-abstract type AbstractModel end
 
 # Utilities
 include("utilities/utilities.jl")
@@ -46,9 +35,8 @@ include("POD/pod.jl")
 # Operator Inference
 include("OpInf/learn.jl")
 
-# Other utilities (for the sake of ordering)
+# Utilities
 include("utilities/analyze.jl")
-include("utilities/integrator.jl")
 
 # Lift & Learn
 include("LnL/lift.jl")
@@ -64,8 +52,5 @@ include("LnL/learn.jl")
 
 # [Submodule] Chaos analysis tools
 # include("ChaosGizmo/ChaosGizmo.jl")
-
-# Include the system models
-include("model/Models.jl")
 
 end # module LiftAndLearn

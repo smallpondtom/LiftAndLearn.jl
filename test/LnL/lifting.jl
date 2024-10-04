@@ -1,9 +1,3 @@
-using LiftAndLearn
-using Test
-
-const LnL = LiftAndLearn
-
-
 @testset "Test lifting with simple pendulum" begin
     """
      For a simple pendulum we have 

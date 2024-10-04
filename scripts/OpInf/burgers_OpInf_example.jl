@@ -12,6 +12,9 @@ using Plots
 using ProgressMeter
 using Random
 using Statistics
+using UniqueKronecker
+using PolynomialModelReductionDataset
+const Pomoreda = PolynomialModelReductionDataset
 
 ############
 ## Load LnL
@@ -30,7 +33,7 @@ SAVEDATA = false
 ####################
 Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-4
-burger = LnL.BurgersModel(
+burger = Pomoreda.BurgersModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
     diffusion_coeffs=range(0.1, 1.0, length=10), BC=:dirichlet,
 )
@@ -54,7 +57,7 @@ options = LnL.LSOpInfOption(
         verbose=true,
     ),
 )
-Utest = ones(burger.time_dim - 1, 1);  # Reference input/boundary condition for OpInf testing 
+Utest = ones(burger.time_dim, 1);  # Reference input/boundary condition for OpInf testing 
 
 # Error Values 
 k = 3
@@ -79,23 +82,25 @@ for i in 1:length(burger.diffusion_coeffs)
     ## Create testing data
     A, B, F = burger.finite_diff_model(burger, μ)
     C = ones(1, burger.spatial_dim) / burger.spatial_dim
-    Xtest = burger.integrate_model(A, B, F, Utest, burger.tspan, burger.IC)
+    Xtest = burger.integrate_model(burger.tspan, burger.IC, Utest; linear_matrix=A,
+                                   control_matrix=B, quadratic_matrix=F, system_input=true)
     Ytest = C * Xtest
 
     op_burger = LnL.Operators(A=A, B=B, C=C, A2u=F)
 
     ## training data for inferred dynamical models
-    Urand = rand(burger.time_dim - 1, num_inputs)
+    Urand = rand(burger.time_dim, num_inputs)
     Xall = Vector{Matrix{Float64}}(undef, num_inputs)
     Xdotall = Vector{Matrix{Float64}}(undef, num_inputs)
     for j in 1:num_inputs
-        states = burger.integrate_model(A, B, F, Urand[:, j], burger.tspan, burger.IC)
+        states = burger.integrate_model(burger.tspan, burger.IC, Urand[:, j], linear_matrix=A,
+                                        control_matrix=B, quadratic_matrix=F, system_input=true) 
         Xall[j] = states[:, 2:end]
         Xdotall[j] = (states[:, 2:end] - states[:, 1:end-1]) / burger.Δt
     end
     X = reduce(hcat, Xall)
     R = reduce(hcat, Xdotall)
-    U = reshape(Urand, (burger.time_dim - 1) * num_inputs, 1)
+    U = reshape(Urand[2:end,:], (burger.time_dim - 1) * num_inputs, 1)
     Y = C * X
 
     # compute the POD basis from the training data
@@ -117,13 +122,15 @@ for i in 1:length(burger.diffusion_coeffs)
         Vr = Vrmax[:, 1:j]  # basis
 
         # Integrate the intrusive model
-        Fint_extract = LnL.extractF(op_int.A2u, j)
-        Xint = burger.integrate_model(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.tspan, Vr' * burger.IC) # <- use F
+        Fint_extract = UniqueKronecker.extractF(op_int.A2u, j)
+        Xint = burger.integrate_model(burger.tspan, Vr' * burger.IC, Utest; linear_matrix=op_int.A[1:j, 1:j],
+                                      control_matrix=op_int.B[1:j, :], quadratic_matrix=Fint_extract, system_input=true) # <- use F
         Yint = op_int.C[1:1, 1:j] * Xint
 
         # Integrate the inferred model
-        Finf_extract = LnL.extractF(op_inf.A2u, j)
-        Xinf = burger.integrate_model(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.tspan, Vr' * burger.IC)  # <- use F
+        Finf_extract = UniqueKronecker.extractF(op_inf.A2u, j)
+        Xinf = burger.integrate_model(burger.tspan, Vr' * burger.IC, Utest; linear_matrix=op_inf.A[1:j, 1:j],
+                                      control_matrix=op_inf.B[1:j, :], quadratic_matrix=Finf_extract, system_input=true) # <- use F
         Yinf = op_inf.C[1:1, 1:j] * Xinf
 
         # Compute errors

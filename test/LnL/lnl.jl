@@ -1,14 +1,8 @@
 ## Setups 
-using BlockDiagonals
-using LinearAlgebra
-
-using LiftAndLearn
-const LnL = LiftAndLearn
-
 @testset "FHN test" begin
     ## Generate models
     Ω = (0.0, 1.0); dt = 1e-4; Nx = 2^9
-    fhn = LnL.FitzHughNagumoModel(
+    fhn = Pomoreda.FitzHughNagumoModel(
         spatial_domain=Ω, time_domain=(0.0,4.0), Δx=(Ω[2] - 1/Nx)/Nx, Δt=dt,
         alpha_input_params=[500, 50000], beta_input_params=[10, 15]
     )
@@ -81,7 +75,7 @@ const LnL = LiftAndLearn
         genU(t) = α * t^3 * exp(-β * t)  # generic function for input
 
         ## training data for inferred dynamical models
-        X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
+        X = fhn.integrate_model(fhn.tspan, fhn.IC, genU; functional=fom_state)
         Xtrain[i] = X[:, 1:DS:end]  # make sure to only record every 0.01s
         U = genU.(fhn.tspan)
         Utrain_all[i] = U'
@@ -129,8 +123,8 @@ const LnL = LiftAndLearn
 
         k, l = 0, 0
         for (X, U) in zip(Xtrain, Utrain_all)
-            Xint = LnL.forwardEuler(fint, U, fhn.tspan, Vr' * fhn.IC_lift)
-            Xinf = LnL.forwardEuler(finf, U, fhn.tspan, Vr' * fhn.IC_lift)
+            Xint = fhn.integrate_model(fhn.tspan, Vr' * fhn.IC_lift, U; functional=fint)
+            Xinf = fhn.integrate_model(fhn.tspan, Vr' * fhn.IC_lift, U; functional=finf)
 
             # Down sample 
             Xint = Xint[:, 1:DS:end]

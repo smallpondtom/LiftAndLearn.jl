@@ -200,14 +200,18 @@ end
 Unique Kronecker product operation generalized for power `p`.
 
 ## Arguments
-- `x::AbstractArray{T}`: vector to perform the unique Kronecker product
+- `x::Union{T,AbstractArray{T}}`: vector (or scalar) to perform the unique Kronecker product
 - `p::Int`: power of the unique Kronecker product
 
 ## Returns
 - `result`: unique Kronecker product
 """
-@inline function unique_kronecker_power(x::AbstractArray{T}, p::Int) where {T<:Number}
+@inline function unique_kronecker_power(x::Union{T,AbstractArray{T}}, p::Int) where {T<:Number}
     n = length(x)
+
+    if n == 1  # If x is a scalar
+        return x^p
+    end
 
     # Calculate the correct number of unique elements
     num_unique_elements = binomial(n + p - 1, p)
@@ -246,6 +250,13 @@ Unique Kronecker product operation
 ⊘(x::AbstractArray{T}, y::AbstractArray{T}) where {T} = unique_kronecker(x, y)
 ⊘(x::AbstractArray{T}, y::AbstractArray{T}, z::AbstractArray{T}) where {T} = unique_kronecker(x,y,z)
 ⊘(x::AbstractArray{T}, y::AbstractArray{T}, z::AbstractArray{T}, w::AbstractArray{T}) where {T} = unique_kronecker(x,y,z,w)
+
+# Scalars
+unique_kronecker(x::Number, y::Number) = x * y
+unique_kronecker(x::Number, y::Number, z::Number) = x * y * z
+unique_kronecker(x::Number, y::Number, z::Number, w::Number) = x * y * z * w
+⊘(x::Number, y::Number, z::Number) = unique_kronecker(x, y, z)
+⊘(x::Number, y::Number, z::Number, w::Number) = unique_kronecker(x, y, z, w)
 
 
 """

@@ -10,6 +10,8 @@ using DataFrames
 using LinearAlgebra
 using Plots
 using ProgressMeter
+using PolynomialModelReductionDataset
+const Pomoreda = PolynomialModelReductionDataset
 
 ############
 ## Load LnL
@@ -29,10 +31,10 @@ SAVEDATA = false
 #########################
 Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-3
-heat1d = LnL.Heat1DModel(
+heat1d = Pomoreda.Heat1DModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), 
-    Δx=Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt, 
-    diffusion_coeffs=range(0.1, 10, 10)
+    Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt, 
+    diffusion_coeffs=range(0.1, 10, 10),
 )
 
 # Some options for operator inference
@@ -80,7 +82,8 @@ for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
     op_heat = LnL.Operators(A=A, B=B, C=C)
 
     # Compute the states with backward Euler
-    X = LnL.backwardEuler(A, B, Ubc, heat1d.tspan, heat1d.IC)
+    X = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
+                               system_input=true, integrator_type=:BackwardEuler)
     Xfull[idx] = X
 
     # Compute the SVD for the POD basis
@@ -145,11 +148,19 @@ proj_err = zeros(r, 1)
     Cinf = C_opinf[j]
 
     # Integrate the intrusive model
-    Xint = LnL.backwardEuler(Aint[1:i, 1:i], Bint[1:i, :], Ubc, heat1d.tspan, Vr' * heat1d.IC)
+    Xint = heat1d.integrate_model(
+        heat1d.tspan, Vr' * heat1d.IC, Ubc,
+        linear_matrix=Aint[1:i, 1:i], control_matrix=Bint[1:i,:],
+        system_input=true, integrator_type=:BackwardEuler
+    )
     Yint = Cint[1:1, 1:i] * Xint
 
     # Integrate the inferred model
-    Xinf = LnL.backwardEuler(Ainf[1:i, 1:i], Binf[1:i, :], Ubc, heat1d.tspan, Vr' * heat1d.IC)
+    Xinf = heat1d.integrate_model(
+        heat1d.tspan, Vr' * heat1d.IC, Ubc,
+        linear_matrix=Ainf[1:i, 1:i], control_matrix=Binf[1:i,:],
+        system_input=true, integrator_type=:BackwardEuler
+    )
     Yinf = Cinf[1:1, 1:i] * Xinf
 
     # Compute errors

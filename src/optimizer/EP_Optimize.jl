@@ -633,3 +633,42 @@ function EPP_Optimize(D::Matrix, Rt::Union{Matrix,Transpose},
     return Ahat, Bhat, Fhat, Hhat, Nhat, Khat
 end
 
+
+
+"""
+    fidx(n::Int, j::Int, k::Int) → Int
+
+Auxiliary function for the `F` matrix indexing.
+
+## Arguments 
+- `n`: row dimension of the F matrix
+- `j`: row index 
+- `k`: col index
+
+## Returns
+- index corresponding to the `F` matrix
+"""
+function fidx(n,j,k)
+    if j >= k
+        return Int((n - k/2)*(k - 1) + j)
+    else
+        return Int((n - j/2)*(j - 1) + k)
+    end
+end
+
+
+"""
+    delta(v::Int, w::Int) → Float64
+
+Another auxiliary function for the `F` matrix
+
+## Arguments
+- `v`: first index
+- `w`: second index
+
+## Returns
+- coefficient of 1.0 or 0.5
+"""
+function delta(v,w)
+    return v == w ? 1.0 : 0.5
+end

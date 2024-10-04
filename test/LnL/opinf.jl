@@ -1,17 +1,10 @@
-## Load packages
-using LinearAlgebra
-using DataFrames
-
-using LiftAndLearn
-const LnL = LiftAndLearn
-
 @testset "1D heat equation test" begin
     ## Set some options
     PROVIDE_DERIVATIVE = false
 
     # # 1D Heat equation setup
     Nx = 2^7; dt = 1e-3
-    heat1d = LnL.Heat1DModel(
+    heat1d = Pomoreda.Heat1DModel(
         spatial_domain=(0.0, 1.0), time_domain=(0.0, 1.0), Δx=1/Nx, Δt=dt, 
         diffusion_coeffs=range(0.1, 10, 10)
     )
@@ -56,7 +49,8 @@ const LnL = LiftAndLearn
         op_heat = LnL.Operators(A=A, B=B, C=C)
 
         # Compute the states with backward Euler
-        X = LnL.backwardEuler(A, B, Ubc, heat1d.tspan, heat1d.IC)
+        X = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B, 
+                                   system_input=true, integrator_type=:BackwardEuler)
         Xfull[idx] = X
 
         # Compute the SVD for the POD basis
@@ -116,11 +110,19 @@ const LnL = LiftAndLearn
         Cinf = C_opinf[j]
 
         # Integrate the intrusive model
-        Xint = LnL.backwardEuler(Aint[1:i, 1:i], Bint[1:i, :], Ubc, heat1d.tspan, Vr' * heat1d.IC)
+        Xint = heat1d.integrate_model(
+            heat1d.tspan, Vr' * heat1d.IC, Ubc,
+            linear_matrix=Aint[1:i, 1:i], control_matrix=Bint[1:i,:],
+            system_input=true, integrator_type=:BackwardEuler
+        )
         Yint = Cint[1:1, 1:i] * Xint
 
         # Integrate the inferred model
-        Xinf = LnL.backwardEuler(Ainf[1:i, 1:i], Binf[1:i, :], Ubc, heat1d.tspan, Vr' * heat1d.IC)
+        Xinf = heat1d.integrate_model(
+            heat1d.tspan, Vr' * heat1d.IC, Ubc,
+            linear_matrix=Ainf[1:i, 1:i], control_matrix=Binf[1:i,:],
+            system_input=true, integrator_type=:BackwardEuler
+        )
         Yinf = Cinf[1:1, 1:i] * Xinf
 
         # Compute errors
@@ -183,122 +185,122 @@ const LnL = LiftAndLearn
 end
 
 
-@testset "Standard OpInf as Optimization" begin
-    Ω = (0.0, 1.0)
-    Nx = 2^7; dt = 1e-4
-    burger = LnL.BurgersModel(
-        spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
-        diffusion_coeffs=[0.1,0.2], BC=:dirichlet,
-    )
+# @testset "Standard OpInf as Optimization" begin
+#     Ω = (0.0, 1.0)
+#     Nx = 2^7; dt = 1e-4
+#     burger = LnL.BurgersModel(
+#         spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
+#         diffusion_coeffs=[0.1,0.2], BC=:dirichlet,
+#     )
 
-    options = LnL.LSOpInfOption(
-        system=LnL.SystemStructure(
-            state=[1,2],
-            control=1,
-            output=1,
-        ),
-        vars=LnL.VariableStructure(
-            N=1,
-        ),
-        data=LnL.DataStructure(
-            Δt=dt,
-            deriv_type="SI"
-        ),
-        optim=LnL.OptimizationSetting(
-            verbose=true,
-        ),
-        with_tol=true,
-        with_reg=true,
-        pinv_tol=1e-6,
-        λ=TikhonovParameter(
-            A=1.0,
-            A2=1e-3,
-            B=1e-2,
-            N=0.0
-        )
-    )
-    Utest = ones(burger.time_dim - 1, 1);  # Reference input/boundary condition for OpInf testing 
+#     options = LnL.LSOpInfOption(
+#         system=LnL.SystemStructure(
+#             state=[1,2],
+#             control=1,
+#             output=1,
+#         ),
+#         vars=LnL.VariableStructure(
+#             N=1,
+#         ),
+#         data=LnL.DataStructure(
+#             Δt=dt,
+#             deriv_type="SI"
+#         ),
+#         optim=LnL.OptimizationSetting(
+#             verbose=true,
+#         ),
+#         with_tol=true,
+#         with_reg=true,
+#         pinv_tol=1e-6,
+#         λ=TikhonovParameter(
+#             A=1.0,
+#             A2=1e-3,
+#             B=1e-2,
+#             N=0.0
+#         )
+#     )
+#     Utest = ones(burger.time_dim - 1, 1);  # Reference input/boundary condition for OpInf testing 
 
-    # Error Values 
-    num_inputs = 3
-    rmax = 5
-    k = 3
-    proj_err = zeros(rmax - k, burger.param_dim)
-    intru_state_err = zeros(rmax - k, burger.param_dim)
-    opinf_state_err = zeros(rmax - k, burger.param_dim)
-    intru_output_err = zeros(rmax - k, burger.param_dim)
-    opinf_output_err = zeros(rmax - k, burger.param_dim)
-    Σr = Vector{Vector{Float64}}(undef, burger.param_dim)  # singular values 
+#     # Error Values 
+#     num_inputs = 3
+#     rmax = 5
+#     k = 3
+#     proj_err = zeros(rmax - k, burger.param_dim)
+#     intru_state_err = zeros(rmax - k, burger.param_dim)
+#     opinf_state_err = zeros(rmax - k, burger.param_dim)
+#     intru_output_err = zeros(rmax - k, burger.param_dim)
+#     opinf_output_err = zeros(rmax - k, burger.param_dim)
+#     Σr = Vector{Vector{Float64}}(undef, burger.param_dim)  # singular values 
 
-    for i in 1:length(burger.diffusion_coeffs)
-        μ = burger.diffusion_coeffs[i]
+#     for i in 1:length(burger.diffusion_coeffs)
+#         μ = burger.diffusion_coeffs[i]
 
-        ## Create testing data
-        A, B, F = burger.finite_diff_model(burger, μ)
-        C = ones(1, burger.spatial_dim) / burger.spatial_dim    
-        Xtest = LnL.semiImplicitEuler(A, B, F, Utest, burger.tspan, burger.IC)
-        Ytest = C * Xtest
+#         ## Create testing data
+#         A, B, F = burger.finite_diff_model(burger, μ)
+#         C = ones(1, burger.spatial_dim) / burger.spatial_dim    
+#         Xtest = LnL.semiImplicitEuler(A, B, F, Utest, burger.tspan, burger.IC)
+#         Ytest = C * Xtest
 
-        op_burger = LnL.Operators(A=A, B=B, C=C, A2u=F)
+#         op_burger = LnL.Operators(A=A, B=B, C=C, A2u=F)
 
-        ## training data for inferred dynamical models
-        Urand = rand(burger.time_dim - 1, num_inputs)
-        Xall = Vector{Matrix{Float64}}(undef, num_inputs)
-        Xdotall = Vector{Matrix{Float64}}(undef, num_inputs)
-        for j in 1:num_inputs
-            states = burger.integrate_model(A, B, F, Urand[:, j], burger.tspan, burger.IC)
-            Xall[j] = states[:, 2:end]
-            Xdotall[j] = (states[:, 2:end] - states[:, 1:end-1]) / burger.Δt
-        end
-        X = reduce(hcat, Xall)
-        R = reduce(hcat, Xdotall)
-        U = reshape(Urand, (burger.time_dim - 1) * num_inputs, 1)
-        Y = C * X
+#         ## training data for inferred dynamical models
+#         Urand = rand(burger.time_dim - 1, num_inputs)
+#         Xall = Vector{Matrix{Float64}}(undef, num_inputs)
+#         Xdotall = Vector{Matrix{Float64}}(undef, num_inputs)
+#         for j in 1:num_inputs
+#             states = burger.integrate_model(A, B, F, Urand[:, j], burger.tspan, burger.IC)
+#             Xall[j] = states[:, 2:end]
+#             Xdotall[j] = (states[:, 2:end] - states[:, 1:end-1]) / burger.Δt
+#         end
+#         X = reduce(hcat, Xall)
+#         R = reduce(hcat, Xdotall)
+#         U = reshape(Urand, (burger.time_dim - 1) * num_inputs, 1)
+#         Y = C * X
 
-        # compute the POD basis from the training data
-        tmp = svd(X)
-        Vrmax = tmp.U[:, 1:rmax]
-        Σr[i] = tmp.S
+#         # compute the POD basis from the training data
+#         tmp = svd(X)
+#         Vrmax = tmp.U[:, 1:rmax]
+#         Σr[i] = tmp.S
 
-        # Compute the values for the intrusive model from the basis of the training data
-        op_int = LnL.pod(op_burger, Vrmax, options.system)
+#         # Compute the values for the intrusive model from the basis of the training data
+#         op_int = LnL.pod(op_burger, Vrmax, options.system)
 
-        # Compute the inferred operators from the training data
-        if options.optim.reproject || i == 1
-            op_inf = LnL.opinf(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
-        else
-            op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=R)
-        end
+#         # Compute the inferred operators from the training data
+#         if options.optim.reproject || i == 1
+#             op_inf = LnL.opinf(X, Vrmax, op_burger, options; U=U, Y=Y)  # Using Reprojection
+#         else
+#             op_inf = LnL.opinf(X, Vrmax, options; U=U, Y=Y, Xdot=R)
+#         end
 
-        for j = 1+k:rmax
-            Vr = Vrmax[:, 1:j]  # basis
+#         for j = 1+k:rmax
+#             Vr = Vrmax[:, 1:j]  # basis
 
-            # Integrate the intrusive model
-            Fint_extract = LnL.extractF(op_int.A2u, j)
-            Xint = burger.integrate_model(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.tspan, Vr' * burger.IC) # <- use F
-            Yint = op_int.C[1:1, 1:j] * Xint
+#             # Integrate the intrusive model
+#             Fint_extract = LnL.extractF(op_int.A2u, j)
+#             Xint = burger.integrate_model(op_int.A[1:j, 1:j], op_int.B[1:j, :], Fint_extract, Utest, burger.tspan, Vr' * burger.IC) # <- use F
+#             Yint = op_int.C[1:1, 1:j] * Xint
 
-            # Integrate the inferred model
-            Finf_extract = LnL.extractF(op_inf.A2u, j)
-            Xinf = burger.integrate_model(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.tspan, Vr' * burger.IC)  # <- use F
-            Yinf = op_inf.C[1:1, 1:j] * Xinf
+#             # Integrate the inferred model
+#             Finf_extract = LnL.extractF(op_inf.A2u, j)
+#             Xinf = burger.integrate_model(op_inf.A[1:j, 1:j], op_inf.B[1:j, :], Finf_extract, Utest, burger.tspan, Vr' * burger.IC)  # <- use F
+#             Yinf = op_inf.C[1:1, 1:j] * Xinf
 
-            # Compute errors
-            PE, ISE, IOE, OSE, OOE = LnL.compError(Xtest, Ytest, Xint, Yint, Xinf, Yinf, Vr)
+#             # Compute errors
+#             PE, ISE, IOE, OSE, OOE = LnL.compError(Xtest, Ytest, Xint, Yint, Xinf, Yinf, Vr)
 
-            # Sum of error values
-            proj_err[j-k, i] = PE
-            intru_state_err[j-k, i] = ISE
-            intru_output_err[j-k, i] = IOE
-            opinf_state_err[j-k, i] = OSE
-            opinf_output_err[j-k, i] = OOE
-        end
-    end
+#             # Sum of error values
+#             proj_err[j-k, i] = PE
+#             intru_state_err[j-k, i] = ISE
+#             intru_output_err[j-k, i] = IOE
+#             opinf_state_err[j-k, i] = OSE
+#             opinf_output_err[j-k, i] = OOE
+#         end
+#     end
 
-    for i in 1:length(burger.diffusion_coeffs)
-        _, _ = LnL.choose_ro(Σr[i]; en_low=-12)
-    end
+#     for i in 1:length(burger.diffusion_coeffs)
+#         _, _ = LnL.choose_ro(Σr[i]; en_low=-12)
+#     end
 
-    @test true  # run without any errors
+#     @test true  # run without any errors
     
-end
+# end

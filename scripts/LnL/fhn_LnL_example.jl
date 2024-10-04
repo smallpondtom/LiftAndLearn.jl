@@ -14,6 +14,9 @@ using ProgressMeter
 using Random
 using SparseArrays
 using Statistics
+using UniqueKronecker
+using PolynomialModelReductionDataset
+const Pomoreda = PolynomialModelReductionDataset
 
 using LiftAndLearn
 const LnL = LiftAndLearn
@@ -24,7 +27,7 @@ const SAVE_FIGURE = true
 ##################
 start = time()
 Ω = (0.0, 1.0); dt = 1e-4; Nx = 2^9
-fhn = LnL.FitzHughNagumoModel(
+fhn = Pomoreda.FitzHughNagumoModel(
     spatial_domain=Ω, time_domain=(0.0,4.0), Δx=(Ω[2] - 1/Nx)/Nx, Δt=dt,
     alpha_input_params=[500, 50000], beta_input_params=[10, 15]
 )
@@ -37,7 +40,7 @@ options = LnL.LSOpInfOption(
         output=1,
         coupled_input=1,
         constant=1,
-        lifted=true,
+        # lifted=true,
     ),
     vars=LnL.VariableStructure(
         N=2,
@@ -106,7 +109,7 @@ Utrain_all = Vector{Matrix{Float64}}(undef, length(α_train))
     genU(t) = α * t^3 * exp(-β * t)  # generic function for input
 
     ## training data for inferred dynamical models
-    X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
+    X = fhn.integrate_model(fhn.tspan, fhn.IC, genU; functional=fom_state)
     Xtrain[i] = X[:, 1:DS:end]  # make sure to only record every 0.01s
     U = genU.(fhn.tspan)
     Utrain_all[i] = U'
@@ -152,7 +155,7 @@ Utest1_all = Vector{Matrix{Float64}}(undef, N_tests)
     α, β = α_test1[i], β_test1[i]
     genU(t) = α * t^3 * exp(-β * t)  # generic function for input
 
-    @inbounds X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
+    @inbounds X = fhn.integrate_model(fhn.tspan, fhn.IC, genU; functional=fom_state)
     Xtest1[i] = X[:, 1:DS:end]  # make sure to only record every 0.01s
     U = genU.(fhn.tspan)
     Utest1_all[i] = U'
@@ -173,7 +176,8 @@ Utest2_all = Vector{Matrix{Float64}}(undef, N_tests)
     α, β = α_test2[i], β_test2[i]
     genU(t) = α * t^3 * exp(-β * t)  # generic function for input
 
-    @inbounds X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
+    # @inbounds X = LnL.forwardEuler(fom_state, genU, fhn.tspan, fhn.IC)
+    @inbounds X = fhn.integrate_model(fhn.tspan, fhn.IC, genU,  functional=fom_state)
     Xtest2[i] = X[:, 1:DS:end]  # make sure to only record every 0.01s
     U = genU.(fhn.tspan)
     Utest2_all[i] = U'
@@ -234,8 +238,8 @@ test2_err = Dict(
 
     k, l = 0, 0
     for (X, U) in zip(Xtrain, Utrain_all)
-        Xint = LnL.forwardEuler(fint, U, fhn.tspan, Vr' * fhn.IC_lift)
-        Xinf = LnL.forwardEuler(finf, U, fhn.tspan, Vr' * fhn.IC_lift)
+        Xint = fhn.integrate_model(fhn.tspan, Vr' * fhn.IC_lift, U; functional=fint)
+        Xinf = fhn.integrate_model(fhn.tspan, Vr' * fhn.IC_lift, U; functional=finf)
 
         # Down sample 
         Xint = Xint[:, 1:DS:end]
@@ -247,8 +251,8 @@ test2_err = Dict(
 
     k, l = 0, 0
     for (X, U) in zip(Xtest1, Utest1_all)
-        Xint = LnL.forwardEuler(fint, U, fhn.tspan, Vr' * fhn.IC_lift)
-        Xinf = LnL.forwardEuler(finf, U, fhn.tspan, Vr' * fhn.IC_lift)
+        Xint = fhn.integrate_model(fhn.tspan, Vr' * fhn.IC_lift, U; functional=fint)
+        Xinf = fhn.integrate_model(fhn.tspan, Vr' * fhn.IC_lift, U; functional=finf)
 
         # Down sample
         Xint = Xint[:, 1:DS:end]
@@ -260,8 +264,8 @@ test2_err = Dict(
 
     k, l = 0, 0
     for (X, U) in zip(Xtest2, Utest2_all)
-        Xint = LnL.forwardEuler(fint, U, fhn.tspan, Vr' * fhn.IC_lift)
-        Xinf = LnL.forwardEuler(finf, U, fhn.tspan, Vr' * fhn.IC_lift)
+        Xint = fhn.integrate_model(fhn.tspan, Vr' * fhn.IC_lift, U; functional=fint)
+        Xinf = fhn.integrate_model(fhn.tspan, Vr' * fhn.IC_lift, U; functional=finf)
 
         # Down sample
         Xint = Xint[:, 1:DS:end]
