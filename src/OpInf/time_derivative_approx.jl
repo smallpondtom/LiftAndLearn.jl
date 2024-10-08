@@ -1,5 +1,5 @@
 """
-    dtApprox(X::VecOrMat, options::AbstractOption) → dXdt, idx
+$(SIGNATURES)
 
 Approximating the derivative values of the data with different integration schemes
 
@@ -11,7 +11,7 @@ Approximating the derivative values of the data with different integration schem
 - `dXdt`: derivative data
 - `idx`: index for the specific integration scheme (important for later use)
 """
-function dtApprox(X::VecOrMat, options::AbstractOption)
+function time_derivative_approx(X::VecOrMat, options::AbstractOption)
     N = size(X, 2)
     choice = options.data.deriv_type
 
@@ -25,7 +25,7 @@ function dtApprox(X::VecOrMat, options::AbstractOption)
         dXdt = (X[:, 2:end] - X[:, 1:end-1]) / options.data.Δt
         idx = 2:N
     else
-        error("Undefined choice of numerical integration. Choose only an accepted method.")
+        error("Undefined choice of numerical integration. Choose only an accepted method from: FE (Forward Euler), BE (Backward Euler), SI (Semi-implicit Euler)")
     end
     return dXdt, idx
 end

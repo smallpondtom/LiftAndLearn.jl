@@ -80,7 +80,7 @@ for i in 1:length(burger.diffusion_coeffs)
     μ = burger.diffusion_coeffs[i]
 
     ## Create testing data
-    A, B, F = burger.finite_diff_model(burger, μ)
+    A, F, B = burger.finite_diff_model(burger, μ)
     C = ones(1, burger.spatial_dim) / burger.spatial_dim
     Xtest = burger.integrate_model(burger.tspan, burger.IC, Utest; linear_matrix=A,
                                    control_matrix=B, quadratic_matrix=F, system_input=true)

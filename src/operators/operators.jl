@@ -1,59 +1,37 @@
 export Operators
 
-# include("polytools.jl")
-# include("legacy.jl")
-
 """
 $(TYPEDEF)
 
 Organize the operators of the system in a structure. The operators currently 
 supported are up to second order.
 
-## Fields
+# Fields
 - `A`: linear state operator
 - `B`: linear input operator
 - `C`: linear output operator
-- `F`: quadratic state operator with no redundancy
-- `H`: quadratic state operator with redundancy
-- `Q`: quadratic state operator with redundancy in 3-dim tensor form
-- `G`: cubic state operator with redundancy
-- `E`: cubic state operator with no redundancy
-- `K`: constant operator
+- `D`: linear input-output coupling operator
+- `A2`: quadratic state operator with redundancy
+- `A3`: cubic state operator with redundancy
+- `A4`: quartic state operator with redundancy
+- `A2u`: quadratic state operator with no redundancy
+- `A3u`: cubic state operator with no redundancy
+- `A4u`: quartic state operator with no redundancy
+- `A2t`: quadratic state operator with redundancy in 3-dim tensor form
 - `N`: bilinear (state-input) operator
+- `K`: constant operator
 - `f`: nonlinear function operator f(x,u)
+- `dims`: dimensions of the operators
+
+# Note 
+- Currently only supports
+    - state: up to 4th order
+    - input: only B matrix
+    - output: only C and D matrices
+    - state-input-coupling: bilinear 
+    - constant term: K matrix
+    - nonlinearity: f(x,u)
 """
-# Base.@kwdef mutable struct Operators
-#     A::Union{AbstractArray{<:Number},Real} = 0                                           # linear
-#     B::Union{AbstractArray{<:Number},Real} = 0                                           # control
-#     C::Union{AbstractArray{<:Number},Real} = 0                                           # output
-#     H::Union{AbstractArray{<:Number},Real} = 0                                           # quadratic redundant
-#     F::Union{AbstractArray{<:Number},Real} = 0                                           # quadratic non-redundant
-#     Q::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0  # quadratic (array of 2D square matrices)
-#     G::Union{AbstractArray{<:Number},Real} = 0                                           # cubic redundant
-#     E::Union{AbstractArray{<:Number},Real} = 0                                           # cubic non-redundant
-#     K::Union{AbstractArray{<:Number},Real} = 0                                           # constant
-#     N::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0  # bilinear
-#     f::Function = x -> x                                                                 # nonlinear function
-# end
-
-# INFO: Make this into a dictionary
-# Base.@kwdef mutable struct Operators
-#     A::Union{AbstractArray{<:Number},Real} = 0                                             # linear
-#     B::Union{AbstractArray{<:Number},Real} = 0                                             # control
-#     C::Union{AbstractArray{<:Number},Real} = 0                                             # output
-#     A2::Union{AbstractArray{<:Number},Real} = 0                                            # quadratic redundant
-#     Ah2::Union{AbstractArray{<:Number},Real} = 0                                           # quadratic non-redundant
-#     As2::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0  # quadratic (array of 2D "s"quare matrices)
-#     A3::Union{AbstractArray{<:Number},Real} = 0                                            # cubic redundant
-#     Ah3::Union{AbstractArray{<:Number},Real} = 0                                           # cubic non-redundant
-#     K::Union{AbstractArray{<:Number},Real} = 0                                             # constant
-#     E::Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real} = 0    # bilinear
-#     f::Function = x -> x                                                                   # nonlinear function
-# end
-
-
-
-
 Base.@kwdef mutable struct Operators
     # Linear IO sytem operators
     A::Union{AbstractArray{<:Number},Real} = 0                                             # linear
@@ -80,8 +58,8 @@ Base.@kwdef mutable struct Operators
     # Constant operators
     K::Union{AbstractArray{<:Number},Real} = 0                                             # constant
 
-    # Nonlinear function operator
-    f::Function = 
+    # Nonlinear function operator (default using defined operators)
+    f::Function =
         begin
             if size(B,2) == 1
                 (x,u) -> A2u*⊘(x, iszero(A2u) ? 1 : 2) + A3u*⊘(x, iszero(A3u) ? 1 : 3) + A4u*⊘(x, iszero(A4u) ? 1 : 4) + (N*x)*u[1]
@@ -104,20 +82,3 @@ Base.@kwdef mutable struct Operators
         :A4u => iszero(A4u) ? 0 : size(A4u,2), 
     ) 
 end
-
-
-
-# Base.@kwdef mutable struct Operators 
-#     A::Union{AbstractArray{<:Number},Real} = 0  # linear state operator
-#     Ak::Dict{<:Int,Union{AbstractArray{<:Number},Real}} = Dict(1=>0)  # polynomial state operators (quadratic, cubic, etc.)
-#     Aku::Dict{<:Int,Union{AbstractArray{<:Number},Real}} = Dict(1=>0)  # "u"nique polynomial state operators (quadratic, cubic, etc.)
-#     Akt::Dict{<:Int,Union{AbstractArray{<:Number},Real}} = Dict(1=>0)  # "t"ensor (unflattened) polynomial state operators (quadratic, cubic, etc.)
-#     B::Union{AbstractArray{<:Number},Real} = 0  # control operator
-#     Nk::Dict{<:Int,Union{AbstractArray{<:Number},AbstractArray{<:AbstractArray{<:Number}},Real}} = Dict(1=>0)  # polynomial state-input coupled operators (bilinaer etc.)
-#     C::Union{AbstractArray{<:Number},Real} = 0  # output operator
-#     K::Union{AbstractArray{<:Number},Real} = 0  # constant operator
-#     f::Function = x -> x  # nonlinear function operator f(x,u)
-
-#     # dimensions
-#     dims::Dict{}
-# end

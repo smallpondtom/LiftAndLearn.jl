@@ -1,6 +1,6 @@
 """
     tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real;
-        flag::Bool=false) → x
+        flag::Bool=false)
 
 Tikhonov regression
 
@@ -48,58 +48,6 @@ Construct the Tikhonov matrix
 ## Returns
 - `Γ`: Tikhonov matrix (pass by reference)
 """
-# function tikhonovMatrix!(Γ::AbstractArray, options::AbstractOption)
-#     n = options.system.dims[:n]
-#     m = options.system.dims[:m]
-#     s2 = options.system.dims[:s2]
-#     v2 = options.system.dims[:v2]
-#     s3 = options.system.dims[:s3]
-#     v3 = options.system.dims[:v3]
-#     w1 = options.system.dims[:w1]
-
-#     λ = options.λ
-#     si = 0  # start index
-#     if n != 0
-#         Γ[1:n] .= λ.lin
-#         si += n 
-#     end
-
-#     if m != 0
-#         Γ[si+1:si+m] .= λ.ctrl
-#         si += m
-#     end
-
-#     if options.optim.which_quad_term == "F"
-#         if s2 != 0
-#             Γ[si+1:si+s2] .= λ.quad
-#         end
-#         si += s2
-#     else
-#         if v2 != 0
-#             Γ[si+1:si+v2] .= λ.quad
-#         end
-#         si += v2
-#     end
-
-#     if options.system.is_cubic
-#         if options.optim.which_cubic_term == "E"
-#             if s3 != 0
-#                 Γ[si+1:si+s3] .= λ.cubic
-#             end
-#             si += s3
-#         else
-#             if v3 != 0
-#                 Γ[si+1:si+v3] .= λ.cubic
-#             end
-#             si += v3
-#         end
-#     end
-
-#     if w1 != 0
-#         Γ[si+1:si+w1] .= λ.bilin
-#     end
-# end
-
 function tikhonovMatrix!(Γ::AbstractArray, dims::AbstractArray, operator_symbols::AbstractArray, 
                          λ::TikhonovParameter)
     si = 1

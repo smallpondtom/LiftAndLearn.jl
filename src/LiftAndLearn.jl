@@ -26,16 +26,16 @@ include("utilities/utilities.jl")
 # Options
 include("OpInf/opinf_options.jl")
 
-# Operators and tools
+# Operators 
 include("operators/operators.jl")
 
 # Intrusive POD
 include("POD/pod.jl")
 
 # Operator Inference
-include("OpInf/learn.jl")
+include("OpInf/opinf.jl")
 
-# Utilities
+# Analysis
 include("utilities/analyze.jl")
 
 # Lift & Learn
@@ -43,14 +43,10 @@ include("LnL/lift.jl")
 include("LnL/learn.jl")
 
 # Include the optimization methods
-# include("optimizer/NC_Optimize.jl")
-# include("optimizer/EP_Optimize.jl")
+include("EP-OpInf/epopinf.jl")
 
 # Streaming OpInf
 # include("Streaming/streaming.jl")
 # include("Streaming/streamify.jl")
-
-# [Submodule] Chaos analysis tools
-# include("ChaosGizmo/ChaosGizmo.jl")
 
 end # module LiftAndLearn

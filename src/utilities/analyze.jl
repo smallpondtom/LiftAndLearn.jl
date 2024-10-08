@@ -1,5 +1,5 @@
 """
-    compProjError(Xf, Vr) → PE
+    proj_error(Xf, Vr) → PE
 
 Compute the projection error
 
@@ -10,7 +10,7 @@ Compute the projection error
 # Return
 - `PE`: projection error
 """
-function compProjError(Xf, Vr)
+function proj_error(Xf, Vr)
     # Projection error
     Xf_norm = norm(Xf, 2)
     PE = norm(Xf - Vr * Vr' * Xf, 2) / Xf_norm
@@ -19,9 +19,9 @@ end
 
 
 """
-    compStateError(Xf, X, Vr) → SE
+    rel_state_error(Xf, X, Vr) → SE
 
-Compute the state error
+Compute the relative state error
 
 # Arguments
 - `Xf`: reference state data
@@ -31,7 +31,7 @@ Compute the state error
 # Return
 - `SE`: state error
 """
-function compStateError(Xf, X, Vr)
+function rel_state_error(Xf, X, Vr)
     n = size(Xf, 1)
     Xf_norm = norm(Xf, 2)
     SE = norm(Xf - Vr[1:n, :] * X, 2) / Xf_norm
@@ -40,9 +40,9 @@ end
 
 
 """
-    compOutputError(Yf, Y) → OE
+    rel_output_error(Yf, Y) → OE
 
-Compute output error
+Compute relative output error
 
 # Arguments
 - `Yf`: reference output data
@@ -51,7 +51,7 @@ Compute output error
 # Return
 - `OE`: output error
 """
-function compOutputError(Yf, Y)
+function compute_rel_output(Yf, Y)
     n = size(Yf, 1)
     Yf_norm = norm(Yf, 2)
     OE = norm(Yf - Y[1:n, :], 2) / Yf_norm
@@ -60,7 +60,7 @@ end
 
 
 """
-    compError(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr) → PE, ISE, IOE, OSE, OOE
+    compute_all_errors(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr) → PE, ISE, IOE, OSE, OOE
 
 Compute all projection, state, and output errors
 
@@ -80,7 +80,7 @@ Compute all projection, state, and output errors
 - `OSE`: operator inference state error
 - `OOE`: operator inference output error
 """
-function compError(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
+function compute_all_errors(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
     # Projection error
     Xf_norm = norm(Xf, 2)
     Yf_norm = norm(Yf, 2)
@@ -99,7 +99,7 @@ end
 #
 
 """
-    EPConstraintResidual(X, r, which_quad="H"; with_mmt=false) → ϵX, mmt
+$(SIGNATURES)
 
 Compute the constraint residual which is the residual of the energy-preserving constraint 
 ```math
@@ -107,21 +107,21 @@ Compute the constraint residual which is the residual of the energy-preserving c
 ```
 
 ## Arguments
-- `X::Union{Matrix,SparseMatrixCSC}`: the matrix to compute the constraint residual
+- `X::AbstractArray`: the matrix to compute the constraint residual
 - `r::Real`: the dimension of the system
-- `which_quad::String`: the type of the quadratic operator (H or F)
-- `with_mmt::Bool`: whether to compute the moment of the constraint residual
+- `redundant::Bool`: redundant or nonredundant operator
+- `with_moment::Bool`: whether to compute the moment of the constraint residual
 
 ## Returns
 - `ϵX`: the constraint residual
 - `mmt`: the moment which is the sum of the constraint residual without absolute value
 """
-function EPConstraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_quad::String="H"; with_mmt=false)
+function ep_constraint_residual(X::AbstractArray, r::Real, redundant::Bool=false; with_moment::Bool=false)
     ϵX = 0
     mmt = 0
 
-    if with_mmt
-        if which_quad == "H"
+    if with_moment
+        if redundant
             for i in 1:r, j in 1:r, k in 1:r
                 foo = X[i, r*(k-1)+j] + X[j, r*(k-1)+i] + X[k, r*(i-1)+j]
                 ϵX += abs(foo)
@@ -136,7 +136,7 @@ function EPConstraintResidual(X::Union{Matrix, SparseMatrixCSC}, r::Real, which_
         end
         return ϵX, mmt
     else
-        if which_quad == "H"
+        if redundant
             for i in 1:r, j in 1:r, k in 1:r
                 foo = X[i, r*(k-1)+j] + X[j, r*(k-1)+i] + X[k, r*(i-1)+j]
                 ϵX += abs(foo)
@@ -153,7 +153,7 @@ end
 
 
 """
-    EPConstraintViolation(Data, X, which_quad="H") → viol
+$(SIGNATURES)
 
 Compute the constraint violation which is the violation of the energy-preserving constraint
 ```math
@@ -162,16 +162,16 @@ Compute the constraint violation which is the violation of the energy-preserving
 
 ## Arguments
 - `Data::AbstractArray`: the data
-- `X::Union{Matrix,SparseMatrixCSC}`: the matrix to compute the constraint violation
-- `which_quad::String`: the type of the quadratic operator (H or F)
+- `X::AbstractArray`: the matrix to compute the constraint violation
+- `redundant::Bool`: redundant or nonredundant operator
 
 ## Returns
 - `viol`: the constraint violation
 """
-function EPConstraintViolation(Data::AbstractArray, X::Union{Matrix, SparseMatrixCSC}, which_quad::String="H")
+function ep_constraint_violation(Data::AbstractArray, X::AbstractArray, redundant::Bool=false)
     _, m = size(Data)
     viol = zeros(m,1)
-    if which_quad == "H"
+    if redundant
         for i in 1:m
             viol[i] = Data[:,i]' * X * (Data[:,i] ⊗ Data[:,i])
         end
@@ -185,20 +185,20 @@ end
 
 
 """
-    isenergypreserving(X::Union{Matrix, SparseMatrixCSC}, which_quad="H"; tol=1e-8) → Bool
+$(SIGNATURES)
 
 Check if the matrix is energy-preserving.
 
 ## Arguments
 - `X::AbstractArray`: the matrix to check if it is energy-preserving
-- `which_quad::String`: the type of the quadratic operator (H or F)
+- `redundant::Bool`: redundant or nonredundant operator
 - `tol::Real`: the tolerance
 
 ## Returns
 - `Bool`: whether the matrix is energy-preserving
 """
-function isenergypreserving(X::AbstractArray, which_quad::String="H"; tol=1e-8)
+function isenergypreserving(X::AbstractArray, redundant::Bool=false; tol=1e-8)
     r = size(X, 1)
-    ϵX = EPConstraintResidual(X, r, which_quad)
+    ϵX = ep_constraint_residual(X, r, redundant)
     return ϵX < tol
 end
