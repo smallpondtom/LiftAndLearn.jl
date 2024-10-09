@@ -6,7 +6,7 @@ Get the data matrix for the regression problem
 ## Arguments
 - `Xhat::AbstractArray`: projected data matrix
 - `Xhat_t::AbstractArray`: projected data matrix (transposed)
-- `U::AbstractArray`: input data matrix
+- `Ut::AbstractArray`: input data matrix (transposed)
 - `options::AbstractOption`: options for the operator inference set by the user
 - `verbose::Bool=false`: verbose mode returning the dimension breakdown and operator symbols
 
@@ -15,11 +15,11 @@ Get the data matrix for the regression problem
 - `dims`: dimension breakdown of the data matrix
 - `operator_symbols`: operator symbols corresponding to `dims` for the regression problem
 """
-function get_data_matrix(Xhat::AbstractArray, Xhat_t::AbstractArray, U::AbstractArray, options::AbstractOption;
+function get_data_matrix(Xhat::AbstractArray, Xhat_t::AbstractArray, Ut::AbstractArray, options::AbstractOption;
                          verbose::Bool=true)
     dims = []
     operator_symbols = []
-    K, m = size(U)
+    K, m = size(Ut)
     state_struct = copy(options.system.state)
     flag = false
 
@@ -39,12 +39,12 @@ function get_data_matrix(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Abstract
     # Control matrix
     if 1 in options.system.control  # Control matrix
         if flag
-            D = hcat(D, U)
+            D = hcat(D, Ut)
         else
-            D = U
+            D = Ut
             flag = true
         end
-        push!(dims, size(U, 2))
+        push!(dims, size(Ut, 2))
         push!(operator_symbols, :B)
     end
 
@@ -70,21 +70,21 @@ function get_data_matrix(Xhat::AbstractArray, Xhat_t::AbstractArray, U::Abstract
     if !iszero(options.system.coupled_input)
         for i in options.system.coupled_input
             if i == 1
-                XU = Xhat_t .* U[:, 1]
+                XU = Xhat_t .* Ut[:, 1]
                 for j in 2:m
-                    XU = hcat(XU, Xhat_t .* U[:, j])
+                    XU = hcat(XU, Xhat_t .* Ut[:, j])
                 end
                 push!(operator_symbols, :N)
             else
                 if options.optim.nonredundant_operators
-                    XU = unique_kron_snapshot_matrix(Xhat, i)' .* U[:, 1]
+                    XU = unique_kron_snapshot_matrix(Xhat, i)' .* Ut[:, 1]
                     for j in 2:m
-                        XU = hcat(XU, unique_kron_snapshot_matrix(Xhat, i)' .* U[:, j])
+                        XU = hcat(XU, unique_kron_snapshot_matrix(Xhat, i)' .* Ut[:, j])
                     end
                 else
-                    XU = kron_snapshot_matrix(Xhat, i)' .* U[:, 1]
+                    XU = kron_snapshot_matrix(Xhat, i)' .* Ut[:, 1]
                     for j in 2:m
-                        XU = hcat(XU, kron_snapshot_matrix(Xhat, i)' .* U[:, j])
+                        XU = hcat(XU, kron_snapshot_matrix(Xhat, i)' .* Ut[:, j])
                     end
                 end
                 push!(operator_symbols, Symbol("N$(i)"))
@@ -123,4 +123,4 @@ end
 """
 $(SIGNATURES)
 """
-get_data_matrix(Xhat::AbstractArray, U::AbstractArray, options::AbstractOption) = get_data_matrix(Xhat, Xhat', U, options)
+get_data_matrix(Xhat::AbstractArray, Ut::AbstractArray, options::AbstractOption) = get_data_matrix(Xhat, Xhat', Ut, options)

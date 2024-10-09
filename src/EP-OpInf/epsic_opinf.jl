@@ -148,7 +148,7 @@ function epsic_opinf(D::Matrix, Rt::Union{Matrix,Transpose},
         )  # upper bound
         @constraint(
             model,
-            c1[i=1:n, j=1:i, k=1:j],
+            c2[i=1:n, j=1:i, k=1:j],
             Hhat[i, n*(k-1)+j] + Hhat[j, n*(k-1)+i] + Hhat[k, n*(i-1)+j] .>= -options.ϵ
         )  # lower bound
     else  # Non-redundant operator

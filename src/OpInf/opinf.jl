@@ -15,9 +15,9 @@ Solve the standard Operator Inference with/without regularization
 
 ## Arguments
 - `D::AbstractArray`: data matrix
-- `Rt::AbstractArray`: derivative data matrix (transposed)
-- `Y::AbstractArray`: output data matrix
-- `Xhat_t::AbstractArray`: projected data matrix (transposed)
+- `Rt::AbstractArray`: derivative data matrix (tall)
+- `Yt::AbstractArray`: output data matrix (tall)
+- `Xhat_t::AbstractArray`: projected data matrix (tall)
 - `dims::AbstractArray`: dimensions of the operators
 - `operator_symbols::AbstractArray`: symbols of the operators
 - `options::AbstractOption`: options for the operator inference set by the user
@@ -25,7 +25,7 @@ Solve the standard Operator Inference with/without regularization
 ## Returns
 - `operators::Operators`: All learned operators
 """
-function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray, Xhat_t::AbstractArray, 
+function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Yt::AbstractArray, Xhat_t::AbstractArray, 
                             dims::AbstractArray, operator_symbols::AbstractArray, options::AbstractOption)
     # Preallocate the Tikhonov weight Matrix
     Γ = spzeros(sum(dims))
@@ -48,7 +48,7 @@ function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArra
     operators = Operators()
 
     # Unpack the operators
-    unpack_operators!(operators, O, Y, Xhat_t, dims, operator_symbols, options)
+    unpack_operators!(operators, O, Yt, Xhat_t, dims, operator_symbols, options)
 
     return operators
 end
@@ -76,24 +76,26 @@ constructed such that the row is the state vector and the column is the time.
 function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
                U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
                Xdot::AbstractArray=[])::Operators
-    U = fat2tall(U)  # make sure that the U-matrix is tall
+    Ut = fat2tall(U)  # make sure that the U-matrix is tall
+    Yt = fat2tall(Y)  # make sure that the Y-matrix is tall
+
     if isempty(Xdot)
         # Approximate the derivative data with finite difference
         Xdot, idx = time_derivative_approx(X, options)
         Xhat = Vn' * X[:, idx]  # fix the index of states
-        Xhat_t = transpose(Xhat)
-        U = iszero(U) ? 0 : U[idx, :]  # fix the index of inputs
-        Y = iszero(Y) ? 0 : Y[:, idx]  # fix the index of outputs
-        R = Vn'Xdot
-        Rt = transpose(R)
+        Xhat_t = Xhat'
+        Ut = iszero(Ut) ? 0 : Ut[idx, :]  # fix the index of inputs
+        Yt = iszero(Yt) ? 0 : Yt[idx, :]  # fix the index of outputs
+        Rt = Xdot' * Vn
     else
         Xhat = Vn' * X
         Xhat_t = transpose(Xhat)
-        Rt = transpose(Vn' * Xdot)
+        Rt = Xdot' * Vn  
+        # Rt = transpose(Vn' * Xdot)
     end
 
-    D, dims, op_symbols = get_data_matrix(Xhat, Xhat_t, U, options; verbose=true)
-    op = leastsquares_solve(D, Rt, Y, Xhat_t, dims, op_symbols, options)
+    D, dims, op_symbols = get_data_matrix(Xhat, Xhat_t, Ut, options; verbose=true)
+    op = leastsquares_solve(D, Rt, Yt, Xhat_t, dims, op_symbols, options)
     return op
 end
 
@@ -119,14 +121,16 @@ constructed such that the row is the state vector and the column is the time.
 """
 function opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options::AbstractOption;
                U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), return_derivative::Bool=false)
-    U = fat2tall(U)
+    Ut = fat2tall(U)
+    Yt = fat2tall(Y)
+
     Xhat = Vn' * X
     Xhat_t = transpose(Xhat)
 
     # Reproject
-    Rt = reproject(Xhat, Vn, U, full_op, options)
-    D, dims, op_symbols = get_data_matrix(Xhat, Xhat_t, U, options; verbose=true)
-    op = leastsquares_solve(D, Rt, Y, Xhat_t, dims, op_symbols, options)
+    Rt = reproject(Xhat, Vn, Ut, full_op, options)
+    D, dims, op_symbols = get_data_matrix(Xhat, Xhat_t, Ut, options; verbose=true)
+    op = leastsquares_solve(D, Rt, Yt, Xhat_t, dims, op_symbols, options)
 
     if return_derivative
         return op, Rt

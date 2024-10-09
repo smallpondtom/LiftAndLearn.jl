@@ -164,7 +164,7 @@ proj_err = zeros(r, 1)
     Yinf = Cinf[1:1, 1:i] * Xinf
 
     # Compute errors
-    PE, ISE, IOE, OSE, OOE = LnL.compError(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
+    PE, ISE, IOE, OSE, OOE = LnL.compute_all_errors(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
 
     # Sum of error values
     proj_err[i] += PE / heat1d.param_dim

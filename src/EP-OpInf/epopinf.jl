@@ -49,26 +49,24 @@ $(SIGNATURES)
 Energy-preserving Operator Inference (EPOpInf) optimization problem.
 """
 function epopinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
-                 U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
-                 Xdot::AbstractArray=[], IG::Operators=Operators())
+                 U::AbstractArray=zeros(1,1), Xdot::AbstractArray=[], IG::Operators=Operators())
 
-    U = fat2tall(U)  # make sure that the U-matrix is tall
+    Ut = fat2tall(U)  # make sure that the U-matrix is tall
+
     if isempty(Xdot)
         # Approximate the derivative data with finite difference
         Xdot, idx = time_derivative_approx(X, options)
         Xhat = Vn' * X[:, idx]  # fix the index of states
         Xhat_t = transpose(Xhat)
-        U = iszero(U) ? 0 : U[idx, :]  # fix the index of inputs
-        Y = iszero(Y) ? 0 : Y[:, idx]  # fix the index of outputs
-        R = Vn'Xdot
-        Rt = transpose(R)
+        Ut = iszero(Ut) ? 0 : Ut[idx, :]  # fix the index of inputs
+        Rt = Xdot' * Vn
     else
         Xhat = Vn' * X
         Xhat_t = transpose(Xhat)
         Rt = transpose(Vn' * Xdot)
     end
 
-    D, dims, operators_symbols = get_data_matrix(Xhat, Xhat_t, U, options; verbose=true)
+    D, dims, operators_symbols = get_data_matrix(Xhat, Xhat_t, Ut, options; verbose=true)
     if options.method == :EPHEC
         return ephec_opinf(D, Rt, dims, operators_symbols, options, IG)
     elseif options.method == :EPSIC

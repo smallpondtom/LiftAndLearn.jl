@@ -245,8 +245,8 @@ test2_err = Dict(
         Xint = Xint[:, 1:DS:end]
         Xinf = Xinf[:, 1:DS:end]
 
-        train_err[:intrusive][k+=1, i] = LnL.compStateError(X, Xint, Vr)
-        train_err[:inferred][l+=1, i] = LnL.compStateError(X, Xinf, Vr)
+        train_err[:intrusive][k+=1, i] = LnL.rel_state_error(X, Xint, Vr)
+        train_err[:inferred][l+=1, i] = LnL.rel_state_error(X, Xinf, Vr)
     end
 
     k, l = 0, 0
@@ -258,8 +258,8 @@ test2_err = Dict(
         Xint = Xint[:, 1:DS:end]
         Xinf = Xinf[:, 1:DS:end]
 
-        test1_err[:intrusive][k+=1, i] = LnL.compStateError(X, Xint, Vr)
-        test1_err[:inferred][l+=1, i] = LnL.compStateError(X, Xinf, Vr)
+        test1_err[:intrusive][k+=1, i] = LnL.rel_state_error(X, Xint, Vr)
+        test1_err[:inferred][l+=1, i] = LnL.rel_state_error(X, Xinf, Vr)
     end
 
     k, l = 0, 0
@@ -271,8 +271,8 @@ test2_err = Dict(
         Xint = Xint[:, 1:DS:end]
         Xinf = Xinf[:, 1:DS:end]
 
-        test2_err[:intrusive][k+=1, i] = LnL.compStateError(X, Xint, Vr)
-        test2_err[:inferred][l+=1, i] = LnL.compStateError(X, Xinf, Vr)
+        test2_err[:intrusive][k+=1, i] = LnL.rel_state_error(X, Xint, Vr)
+        test2_err[:inferred][l+=1, i] = LnL.rel_state_error(X, Xinf, Vr)
     end
 end
 dims = sum(mode_req, dims=2)

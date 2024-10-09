@@ -367,14 +367,14 @@ Data["op_epsic"] = op_epsic
 #=============================#
 ## Obtain EPP-OpInf operators
 #=============================#
-@info "Compute the EPUC OpInf."
+@info "Compute the EPP OpInf."
 
 options = LnL.EPPOpInfOption(
     system=burger_system,
     vars=burger_vars,
     data=burger_data,
     optim=burger_optim,
-    α=1e6,
+    α=1e8,
 )
 
 op_epp = Array{LnL.Operators}(undef, burger.param_dim)
@@ -483,8 +483,8 @@ title!("Test", fontsize=18)
 ylims!(1e-4,2)
 # yticks!([10.0^i for i in -4:1:0])
 plot!(guidefontsize=16, tickfontsize=13, legendfontsize=13, titlefontsize=18, fontfamily="Computer Modern")
-annotate!(rmax-3.5, 5e-4, text("(1) Interpolation", 13, :left, :bottom, :white, "Computer Modern"))
-annotate!(rmax-3.0, 1.5e-1, text("(2) Extrapolation", 13, :left, :top, :white, "Computer Modern"))
+annotate!(rmax-3.5, 5e-4, text("(1) Interpolation", 13, :left, :bottom, :black, "Computer Modern"))
+annotate!(rmax-3.0, 1.5e-1, text("(2) Extrapolation", 13, :left, :top, :black, "Computer Modern"))
 
 #===============================#
 ## Energy-preserving constraint

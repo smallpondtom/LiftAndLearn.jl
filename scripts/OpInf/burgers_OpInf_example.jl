@@ -134,7 +134,7 @@ for i in 1:length(burger.diffusion_coeffs)
         Yinf = op_inf.C[1:1, 1:j] * Xinf
 
         # Compute errors
-        PE, ISE, IOE, OSE, OOE = LnL.compError(Xtest, Ytest, Xint, Yint, Xinf, Yinf, Vr)
+        PE, ISE, IOE, OSE, OOE = LnL.compute_all_errors(Xtest, Ytest, Xint, Yint, Xinf, Yinf, Vr)
 
         # Sum of error values
         proj_err[j-k, i] = PE
