@@ -2,7 +2,9 @@
 Viscous Burgers' equation exmaple for EP-OpInf
 """
 
+#================#
 ## Load packages
+#================#
 using LaTeXStrings
 using LinearAlgebra
 using Plots
