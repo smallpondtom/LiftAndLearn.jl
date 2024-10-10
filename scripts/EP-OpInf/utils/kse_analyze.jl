@@ -1,22 +1,3 @@
-# function kse_analyze_proj_err(model, X_all, Vr_all, IC, ro)
-#     num_ic_params = length(IC)
-#     PE_all = Array{Float64}(undef, length(ro), model.param_dim) 
-#     PE = Array{Float64}(undef, num_ic_params)  
-    
-#     for i in eachindex(model.diffusion_coeffs)
-#         prog = Progress(length(ro))
-#         for (j,r) in enumerate(ro)
-#             Vr = Vr_all[i][:, 1:r]
-#             Threads.@threads for (ct, ic) in collect(enumerate(IC))
-#                 PE[ct] = LnL.proj_error(X_all[i,ct], Vr)
-#             end
-#             PE_all[j, i] = mean(PE)
-#         next!(prog)
-#         end
-#     end
-#     return PE_all
-# end
-
 function kse_analyze_proj_err(model, datafiles, Vr_all, ro, num_ic_params)
     PE_all = Array{Float64}(undef, length(ro), model.param_dim) 
     PE = Array{Float64}(undef, num_ic_params)  
@@ -40,28 +21,6 @@ function kse_analyze_proj_err(model, datafiles, Vr_all, ro, num_ic_params)
     end
     return PE_all
 end
-
-# function kse_analyze_rse(op, model, X_all, Vr_all, IC, ro, DS, integrator)
-#     num_ic_params = length(IC)
-#     # Relative state error
-#     RSE_all = Array{Float64}(undef, length(ro), model.param_dim)
-#     RSE = Array{Float64}(undef, num_ic_params)
-
-#     for i in eachindex(model.diffusion_coeffs)
-#         prog = Progress(length(ro))
-#         for (j,r) in enumerate(ro)
-#             Vr = Vr_all[i][:, 1:r]
-#             Threads.@threads for (ct, ic) in collect(enumerate(IC))
-#                 Fextract = UniqueKronecker.extractF(op[i].A2u, r)
-#                 X = integrator(op[i].A[1:r, 1:r], Fextract, model.t, Vr' * ic)
-#                 RSE[ct] = LnL.rel_state_error(X_all[i,ct][:, 1:DS:end], X[:, 1:DS:end], Vr)
-#             end
-#             RSE_all[j, i] = mean(RSE)
-#             next!(prog)
-#         end
-#     end
-#     return RSE_all
-# end
 
 function kse_analyze_rse(op, model, datafiles, Vr_all, num_ic_params, ro, integrator)
     # Relative state error
@@ -139,19 +98,6 @@ function kse_analyze_autocorr(op, model, Vr_all, IC, ro, integrator, lags)
     return auto_correlation
 end
 
-
-# For one initial condition for full-order model
-# function kse_analyze_autocorr(model::AbstractModel, X_all::AbstractArray, IC_idx::Int64, lags::AbstractArray)
-#     # auto_correletion
-#     auto_correlation = Array{Array{Float64}}(undef, model.Pdim)
-
-#     Threads.@threads for i in eachindex(model.μs)
-#         auto_correlation[i] = tmean_autocorr(X_all[i,IC_idx], lags)
-#     end
-#     return auto_correlation
-# end
-
-
 function kse_analyze_autocorr(model::AbstractModel, X_all::AbstractArray, lags::AbstractArray)
     # auto_correletion
     auto_correlation = Array{Array{Float64}}(undef, model.param_dim)
@@ -162,7 +108,6 @@ function kse_analyze_autocorr(model::AbstractModel, X_all::AbstractArray, lags::
     return auto_correlation
 end
 
-
 function kse_tmean_autocorr(X::AbstractArray, lags::AbstractVector)
     N, K = size(X)
     M = length(lags)
@@ -172,4 +117,57 @@ function kse_tmean_autocorr(X::AbstractArray, lags::AbstractVector)
         Cx[i,:] = autocor(X[i,:], lags)
     end
     return vec(mean(Cx, dims=1))
+end
+
+function kse_lyapunov_exponent(op, model, Vr_all, IC, ro, integrator, LEOption; jacobian=nothing)
+    # auto_correletion
+    LE = Array{Array{Float64}}(undef, length(ro), model.param_dim)
+    for i in eachindex(model.diffusion_coeffs)
+        Threads.@threads for (j,r) in collect(enumerate(ro))
+            Vr = Vr_all[i][:, 1:r]
+            Fextract = UniqueKronecker.extractF(op[i].A2u, r)
+
+            if isnothing(jacobian)
+                λ = ChaosGizmo.lyapunov_exponent(
+                    integrator, Vr' * IC, LEOption; 
+                    linear_matrix=op[i].A[1:r, 1:r], quadratic_matrix=Fextract,
+                    system_input=false, const_stepsize=true
+                )
+            else
+                λ = ChaosGizmo.lyapunov_exponent(
+                    integrator, Vr' * IC, LEOption; 
+                    linear_matrix=op[i].A[1:r, 1:r], quadratic_matrix=Fextract,
+                    system_input=false, const_stepsize=true, jacobian=jacobian
+                )
+            end
+            LE[j, i] = λ
+        end
+    end
+    return LE
+end
+
+function kse_lyapunov_exponent(op, model, IC, integrator, LEOption; jacobian=nothing)
+    # auto_correletion
+    LE = Array{Array{Float64}}(undef, model.param_dim)
+    for i in eachindex(model.diffusion_coeffs)
+        if isnothing(jacobian)
+            λ = ChaosGizmo.lyapunov_exponent(
+                integrator, IC, LEOption; 
+                linear_matrix=op[i].A, quadratic_matrix=op[i].A2u,
+                system_input=false, const_stepsize=true
+            )
+        else
+            λ = ChaosGizmo.lyapunov_exponent(
+                integrator, IC, LEOption; 
+                linear_matrix=op[i].A, quadratic_matrix=op[i].A2u,
+                system_input=false, const_stepsize=true, jacobian=jacobian
+            )
+        end
+        LE[i] = λ
+    end
+    if length(LE) == 1
+        return LE[1]
+    else
+        return LE
+    end
 end
