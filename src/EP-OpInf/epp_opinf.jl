@@ -155,7 +155,7 @@ function epp_opinf(D::Matrix, Rt::Union{Matrix,Transpose},
     @info "Optimize model."
     JuMP.optimize!(model)
     @info """[EP-OpInf Results]
-    Constraint           = Energy-Preserving Unconstrained
+    Constraint           = Energy-Preserving Penalty
     EP Weight            = $(options.α)
     Linear Regulation    = $(options.λ_lin)
     Quadratic Regulation = $(options.λ_quad)

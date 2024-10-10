@@ -32,6 +32,11 @@ const LnL = LiftAndLearn
 #===================#
 include("utils/ep_analyze.jl")
 
+#================================#
+## Configure filepath for saving
+#================================#
+FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"EP-OpInf/") : joinpath(pwd(), "scripts/EP-OpInf/")
+
 #===========================#
 ## Setup the Burgers' model
 #===========================#
@@ -171,6 +176,7 @@ plot!(p1, xlabel=L"\omega"*", spatial coordinate", ylabel=L"x(\omega,t)", grid=t
 plot!(p1, guidefontsize=16, tickfontsize=13,  legendfontsize=13, fontfamily="Computer Modern")
 plot!(p1, colorbar_title=L"t", colorbar_titlefontsize=16)
 display(p1)
+savefig(p1, joinpath(FILEPATH, "plots/burgers/burgers_training_data.pdf"))
 
 p2 = plot()
 plot!(contourf!(p2, burger.tspan, burger.xspan, Xtr_all[1,1], lw=0), xlabel=L"t", ylim=[0, 1.0],
@@ -178,6 +184,7 @@ plot!(contourf!(p2, burger.tspan, burger.xspan, Xtr_all[1,1], lw=0), xlabel=L"t"
 yticks!(p2, 0:0.2:1.0)
 plot!(p2, guidefontsize=13, fontfamily="Computer Modern")
 display(p2)
+savefig(p2, joinpath(FILEPATH, "plots/burgers/burgers_training_data_contour.pdf"))
 
 #=====================#
 ## Check enery levels
@@ -207,6 +214,7 @@ xticks!(0:2:20)
 plot!(fg_legend=:false)
 plot!(guidefontsize=14, tickfontsize=12, titlefontsize=15,  legendfontsize=15, right_margin=2mm)
 display(p3)
+savefig(p3, joinpath(FILEPATH, "plots/burgers/burgers_energy_levels.pdf"))
 
 #=======================#
 ## Generate Test 1 data
@@ -418,6 +426,7 @@ xticks!(rmin:rmax)
 xlabel!(L"\mathrm{reduced~model~dimension~} r")
 ylabel!(L"\mathrm{average~~projection~~error}")
 plot!(guidefontsize=16, tickfontsize=13,  legendfontsize=13)
+savefig(joinpath(FILEPATH, "plots/burgers/burgers_proj_err.pdf"))
 
 #============================#
 ## Mean relative state error
@@ -444,6 +453,7 @@ ylabel!("average relative state error")
 title!("Training")
 # ylims!(1e-4,2)
 plot!(guidefontsize=16, tickfontsize=13, legendfontsize=13, titlefontsize=18, fontfamily="Computer Modern")
+savefig(joinpath(FILEPATH, "plots/burgers/burgers_train_state_err.pdf"))
 
 #============================#
 ## Test relative state errors
@@ -487,6 +497,7 @@ ylims!(1e-4,2)
 plot!(guidefontsize=16, tickfontsize=13, legendfontsize=13, titlefontsize=18, fontfamily="Computer Modern")
 annotate!(rmax-3.5, 5e-4, text("(1) Interpolation", 13, :left, :bottom, :black, "Computer Modern"))
 annotate!(rmax-3.0, 1.5e-1, text("(2) Extrapolation", 13, :left, :top, :black, "Computer Modern"))
+savefig(joinpath(FILEPATH, "plots/burgers/burgers_test_state_err.pdf"))
 
 #===============================#
 ## Energy-preserving constraint
@@ -509,3 +520,4 @@ xticks!(1:15)
 xlabel!("reduced model dimension " * L"r")
 ylabel!("energy-preserving constraint violation")
 plot!(xlabelfontsize=15, ylabelfontsize=13, tickfontsize=13,  legendfontsize=13, fontfamily="Computer Modern")
+savefig(joinpath(FILEPATH, "plots/burgers/burgers_train_CR.pdf"))
