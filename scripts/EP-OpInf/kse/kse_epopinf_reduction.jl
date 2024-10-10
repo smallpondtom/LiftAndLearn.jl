@@ -92,54 +92,55 @@ end
 #===============================#
 ## Compute EPSIC-OpInf operators
 #===============================#
-@info "Compute the EPSIC model"
+# @info "Compute the EPSIC model"
 
-options = LnL.EPSICOpInfOption(
-    system=KSE_system,
-    vars=KSE_vars,
-    data=KSE_data,
-    optim=KSE_optim,
-    ϵ = 1e-3,
-    linear_operator_bounds=(-1000.0, 1000.0),
-    quad_operator_bounds=(-100.0, 100.0),
-)
+# options = LnL.EPSICOpInfOption(
+#     system=KSE_system,
+#     vars=KSE_vars,
+#     data=KSE_data,
+#     optim=KSE_optim,
+#     ϵ = 1e-3,
+#     linear_operator_bounds=(-1000.0, 1000.0),
+#     quad_operator_bounds=(-100.0, 100.0),
+# )
 
-# Store values
-op_epsic = Array{LnL.Operators}(undef, KSE.param_dim)
+# # Store values
+# op_epsic = Array{LnL.Operators}(undef, KSE.param_dim)
 
-@showprogress for i in eachindex(KSE.diffusion_coeffs)
-    op_epsic[i] = LnL.epopinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
-end
+# @showprogress for i in eachindex(KSE.diffusion_coeffs)
+#     op_epsic[i] = LnL.epopinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
+# end
 
 #==============================#
 ## Compute EPP-OpInf operators
 #==============================#
-@info "Compute the EPP OpInf."
+# @info "Compute the EPP OpInf."
 
-options = LnL.EPPOpInfOption(
-    system=KSE_system,
-    vars=KSE_vars,
-    data=KSE_data,
-    optim=KSE_optim,
-    α=1e6,
-    linear_operator_bounds=(-1000.0, 1000.0),
-    quad_operator_bounds=(-100.0, 100.0),
-)
+# options = LnL.EPPOpInfOption(
+#     system=KSE_system,
+#     vars=KSE_vars,
+#     data=KSE_data,
+#     optim=KSE_optim,
+#     α=1e6,
+#     linear_operator_bounds=(-1000.0, 1000.0),
+#     quad_operator_bounds=(-100.0, 100.0),
+# )
 
-# Store values
-op_epp =  Array{LnL.Operators}(undef, KSE.param_dim)
+# # Store values
+# op_epp =  Array{LnL.Operators}(undef, KSE.param_dim)
 
-@showprogress for i in eachindex(KSE.diffusion_coeffs)
-    op_epp[i] = LnL.epopinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
-end
+# @showprogress for i in eachindex(KSE.diffusion_coeffs)
+#     op_epp[i] = LnL.epopinf(Xtr[i], Vr[i][:, 1:ro[end]], options; Xdot=Rtr[i])
+# end
 
 #=================#
 ## Save operators
 #=================#
 @info "Save the operators"
 tmp = joinpath(FILEPATH, "data/kse_epopinf_ops.jld2")
-save(tmp, "OPS",
-    Dict("op_LS" => op_LS, "op_int" => op_int, "op_ephec" => op_ephec,
-         "op_epsic" => op_epsic, "op_epp" => op_epp)
-)
+save(tmp, "OPS", Dict("op_LS" => op_LS, "op_int" => op_int, "op_ephec" => op_ephec))
+# save(tmp, "OPS",
+#     Dict("op_LS" => op_LS, "op_int" => op_int, "op_ephec" => op_ephec,
+#          "op_epsic" => op_epsic, "op_epp" => op_epp)
+# )
 @info "Done. Saved the operators to $(tmp)"

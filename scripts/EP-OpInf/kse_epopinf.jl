@@ -26,3 +26,8 @@ include("kse/kse_epopinf_test1.jl")
 ## Analysis for test 2
 #======================#
 include("kse/kse_epopinf_test2.jl")
+
+#===============#
+## Plot results
+#===============#
+include("kse/kse_epopinf_plotting.jl")
