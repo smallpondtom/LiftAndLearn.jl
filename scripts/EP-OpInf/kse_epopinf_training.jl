@@ -7,8 +7,10 @@ Kuramoto–Sivashinsky equation training for EP-OpInf
 #================#
 using FileIO
 using JLD2
+using LinearAlgebra
 using ProgressMeter
 using StatsBase
+using Statistics
 using UniqueKronecker
 
 #========================#
@@ -157,7 +159,7 @@ ac_epsic_err = zeros(length(REDUCTION_INFO["ro"]))
 ac_epp = zeros(length(lags), length(REDUCTION_INFO["ro"]))
 ac_epp_err = zeros(length(REDUCTION_INFO["ro"]))
 
-bar = length(REDUCTION_INFO["num_ic_params"])
+bar = REDUCTION_INFO["num_ic_params"]
 prog = Progress(bar)
 
 Threads.@threads for data_file in training_data_files
@@ -217,4 +219,6 @@ RES["train_AC_ERR"][:epp] = reshape(ac_epp_err, length(ac_epp_err), 1)
 #===================#
 ## Save the results
 #===================#
-save(joinpath(FILEPATH, "data/kse_epopinf_training_results.jld2"), RES)
+tmp = joinpath(FILEPATH, "data/kse_epopinf_training_results.jld2")
+@info "Save the results to $(tmp)"
+save(tmp, RES)

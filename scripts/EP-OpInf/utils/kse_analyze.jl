@@ -129,7 +129,7 @@ function kse_analyze_autocorr(op, model, Vr_all, IC, ro, integrator, lags)
         Threads.@threads for (j,r) in collect(enumerate(ro))
             Vr = Vr_all[i][:, 1:r]
 
-            Fextract = UniqueKronecker.extractF(op[i].F, r)
+            Fextract = UniqueKronecker.extractF(op[i].A2u, r)
             X = integrator(model.tspan, Vr' * IC, linear_matrix=op[i].A[1:r, 1:r], quadratic_matrix=Fextract, 
                             system_input=false, const_stepsize=true)
             Xrecon = Vr * X
