@@ -36,10 +36,10 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"EP-OpInf/") : joinpath(p
 #======================#
 ## Setup the KSE model
 #======================#
-Ω = (0.0, 5.0)
-Nx = 2^6; dt = 1e-3
+Ω = (0.0, 22.0)
+Nx = 2^9; dt = 1e-3
 KSE = KuramotoSivashinskyModel(
-    spatial_domain=Ω, time_domain=(0.0, 100.0), Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt,
+    spatial_domain=Ω, time_domain=(0.0, 300.0), Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt,
     diffusion_coeffs=1.0, BC=:periodic,
 )
 
@@ -58,7 +58,7 @@ prune_idx = KSE.time_dim ÷ 2
 t_prune = KSE.tspan[prune_idx-1:end]
 
 # Number of random test inputs
-num_test_ic = 2 # <-------- CHANGE THIS TO DESIRED NUMBER OF TEST INPUTS (!!! 50 FOR PAPER !!!)
+num_test_ic = 50 # <-------- CHANGE THIS TO DESIRED NUMBER OF TEST INPUTS (!!! 50 FOR PAPER !!!)
 
 #=====================#
 ## Initial conditions
