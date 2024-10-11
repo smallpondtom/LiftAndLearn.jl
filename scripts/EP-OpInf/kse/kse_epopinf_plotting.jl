@@ -13,6 +13,7 @@ using LaTeXStrings
 using LinearAlgebra
 using Plots
 using Plots.PlotMeasures
+using Random
 using UniqueKronecker
 
 #================================#
@@ -35,6 +36,7 @@ TRAIN_RES = load(joinpath(FILEPATH, "data/kse_epopinf_training_results.jld2"), "
 TEST1_RES = load(joinpath(FILEPATH, "data/kse_epopinf_test1_results.jld2"), "RES")
 TEST2_RES = load(joinpath(FILEPATH, "data/kse_epopinf_test2_results.jld2"), "RES")
 DS = 100
+rng = Xoshiro(123)
 
 #=================#
 ## Color settings
@@ -46,7 +48,7 @@ color_choices = Dict(
     :ephec => :blue3,
     :epsic => :purple,
     :epp => :brown,
-    :cvitanovic => :black,
+    :cvita => :black,
     :edson => :brown,
 )
 marker_choices = Dict(
@@ -56,7 +58,7 @@ marker_choices = Dict(
     :ephec => :star5,
     :epsic => :dtriangle,
     :epp => :diamond,
-    :cvitanovic => :diamond,
+    :cvita => :diamond,
     :edson => :pentagon,
 )
 markersize_choices = Dict(
@@ -66,7 +68,7 @@ markersize_choices = Dict(
     :ephec => 5,
     :epsic => 5,
     :epp => 5,
-    :cvitanovic => 5,
+    :cvita => 5,
     :edson => 5,
 )
 linestyle_choices = Dict(
@@ -76,7 +78,7 @@ linestyle_choices = Dict(
     :ephec => :dashdot,
     :epsic => :dashdot,
     :epp => :dashdot,
-    :cvitanovic => :dashdot,
+    :cvita => :dashdot,
     :edson => :dashdot,
 )
 linewidth_choices = Dict(
@@ -86,7 +88,7 @@ linewidth_choices = Dict(
     :ephec => 2,
     :epsic => 2,
     :epp => 2,
-    :cvitanovic => 2,
+    :cvita => 2,
     :edson => 2,
 )
 
@@ -153,7 +155,7 @@ savefig(joinpath(FILEPATH, "plots/kse/kse_CR.pdf"))
 ## Training flow field comparison
 #=================================#
 training_data_files = readdir(joinpath(FILEPATH, "data/kse_train"), join=true)
-chosen_file = rand(training_data_files)
+chosen_file = rand(rng, training_data_files)
 
 ic = load(chosen_file, "IC")
 X_fom = load(chosen_file, "X")
@@ -253,10 +255,40 @@ p_ephec_err = plot(
     xlabel=L"t" * "\n" * L"\textbf{Error}",
     yformatter=_->"",
 )
-# p_epsic = plot(contourf(KSE.t[1:DS:end], KSE.x, Vr * X_epsic[:, 1:DS:end], lw=0), colorbar_ticks=(-3:3), clim=(-3,3), yticks=(0:5:20), ylims=(0,20))
-# p_epsic_err = plot(contourf(KSE.t[1:DS:end], KSE.x, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), yticks=(0:5:20), ylims=(0,20), colorbar_ticks=(0:0.5:5), clim=(0,5))
-# p_epp = plot(contourf(KSE.t[1:DS:end], KSE.x, Vr * X_epp[:, 1:DS:end], lw=0), colorbar_ticks=(-3:3), clim=(-3,3), yticks=(0:5:20), ylims=(0,20))
-# p_epp_err = plot(contourf(KSE.t[1:DS:end], KSE.x, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), yticks=(0:5:20), ylims=(0,20), colorbar_ticks=(0:0.5:5), clim=(0,5))
+# p_epsic = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, Vr * X_epsic[:, 1:DS:end], lw=0, color=:inferno), 
+#     # contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epsic[:, 1:DS:end], lw=0), 
+#     colorbar_ticks=(-3:3), yticks=(0:5:20), ylims=(0,22), 
+#     #right_margin=-3mm, left_margin=3mm,  bottom_margin=7mm, top_margin=-2mm,
+#     bottom_margin=15mm, left_margin=15mm,
+#     ylabel=L"\textbf{EPSIC}\rm{-}\textbf{OpInf}" * "\n" * L"\omega", xlabel=L"t" * "\n" * L"\textbf{Predicted}~" * L"x(\omega,t)",
+# )
+# p_epsic_err = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, abs.(X_fom[:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), 
+#     # contourf(KSE.t[1:DS:end], KSE.x, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), 
+#     yticks=(0:5:20), ylims=(0,22), colorbar_ticks=(0:0.5:5), clim=(0,5),
+#     # left_margin=-3mm, right_margin=-3mm, 
+#     bottom_margin=15mm,
+#     xlabel=L"t" * "\n" * L"\textbf{Error}",
+#     yformatter=_->"",
+# )
+# p_epp = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, Vr * X_epp[:, 1:DS:end], lw=0, color=:inferno), 
+#     # contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epp[:, 1:DS:end], lw=0), 
+#     colorbar_ticks=(-3:3), yticks=(0:5:20), ylims=(0,22), 
+#     #right_margin=-3mm, left_margin=3mm,  bottom_margin=7mm, top_margin=-2mm,
+#     bottom_margin=15mm, left_margin=15mm,
+#     ylabel=L"\textbf{EPP}\rm{-}\textbf{OpInf}" * "\n" * L"\omega", xlabel=L"t" * "\n" * L"\textbf{Predicted}~" * L"x(\omega,t)",
+# )
+# p_epp_err = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, abs.(X_fom[:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), 
+#     # contourf(KSE.t[1:DS:end], KSE.x, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), 
+#     yticks=(0:5:20), ylims=(0,22), colorbar_ticks=(0:0.5:5), clim=(0,5),
+#     # left_margin=-3mm, right_margin=-3mm, 
+#     bottom_margin=15mm,
+#     xlabel=L"t" * "\n" * L"\textbf{Error}",
+#     yformatter=_->"",
+# )
 
 p = plot(
     p_fom, pblank, 
@@ -278,7 +310,7 @@ savefig(p, "figures/kse_train_ff.png")
 ## Test 1 flow field comparison
 #===============================#
 test1_data_files = readdir(joinpath(FILEPATH, "data/kse_test1"), join=true)
-chosen_file = rand(test1_data_files)
+chosen_file = rand(rng, test1_data_files)
 
 ic = load(chosen_file, "IC")
 X_fom = load(chosen_file, "X")
@@ -378,10 +410,40 @@ p_ephec_err = plot(
     xlabel=L"t" * "\n" * L"\textbf{Error}",
     yformatter=_->"",
 )
-# p_epsic = plot(contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epsic[:, 1:DS:end], lw=0), colorbar_ticks=(-3:3), clim=(-3,3), yticks=(0:5:20), ylims=(0,20))
-# p_epsic_err = plot(contourf(KSE.t[1:DS:end], KSE.xspan, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), yticks=(0:5:20), ylims=(0,20), colorbar_ticks=(0:0.5:5), clim=(0,5))
-# p_epp = plot(contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epp[:, 1:DS:end], lw=0), colorbar_ticks=(-3:3), clim=(-3,3), yticks=(0:5:20), ylims=(0,20))
-# p_epp_err = plot(contourf(KSE.t[1:DS:end], KSE.xspan, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), yticks=(0:5:20), ylims=(0,20), colorbar_ticks=(0:0.5:5), clim=(0,5))
+# p_epsic = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, Vr * X_epsic[:, 1:DS:end], lw=0, color=:inferno), 
+#     # contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epsic[:, 1:DS:end], lw=0), 
+#     colorbar_ticks=(-3:3), yticks=(0:5:20), ylims=(0,22), 
+#     #right_margin=-3mm, left_margin=3mm,  bottom_margin=7mm, top_margin=-2mm,
+#     bottom_margin=15mm, left_margin=15mm,
+#     ylabel=L"\textbf{EPSIC}\rm{-}\textbf{OpInf}" * "\n" * L"\omega", xlabel=L"t" * "\n" * L"\textbf{Predicted}~" * L"x(\omega,t)",
+# )
+# p_epsic_err = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, abs.(X_fom[:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), 
+#     # contourf(KSE.t[1:DS:end], KSE.x, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), 
+#     yticks=(0:5:20), ylims=(0,22), colorbar_ticks=(0:0.5:5), clim=(0,5),
+#     # left_margin=-3mm, right_margin=-3mm, 
+#     bottom_margin=15mm,
+#     xlabel=L"t" * "\n" * L"\textbf{Error}",
+#     yformatter=_->"",
+# )
+# p_epp = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, Vr * X_epp[:, 1:DS:end], lw=0, color=:inferno), 
+#     # contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epp[:, 1:DS:end], lw=0), 
+#     colorbar_ticks=(-3:3), yticks=(0:5:20), ylims=(0,22), 
+#     #right_margin=-3mm, left_margin=3mm,  bottom_margin=7mm, top_margin=-2mm,
+#     bottom_margin=15mm, left_margin=15mm,
+#     ylabel=L"\textbf{EPP}\rm{-}\textbf{OpInf}" * "\n" * L"\omega", xlabel=L"t" * "\n" * L"\textbf{Predicted}~" * L"x(\omega,t)",
+# )
+# p_epp_err = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, abs.(X_fom[:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), 
+#     # contourf(KSE.t[1:DS:end], KSE.x, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), 
+#     yticks=(0:5:20), ylims=(0,22), colorbar_ticks=(0:0.5:5), clim=(0,5),
+#     # left_margin=-3mm, right_margin=-3mm, 
+#     bottom_margin=15mm,
+#     xlabel=L"t" * "\n" * L"\textbf{Error}",
+#     yformatter=_->"",
+# )
 
 p = plot(
     p_fom, pblank, 
@@ -403,7 +465,7 @@ savefig(p, "figures/kse_test1_ff.png")
 ## Test 2 flow field comparison
 #===============================#
 test2_data_files = readdir(joinpath(FILEPATH, "data/kse_test2"), join=true)
-chosen_file = rand(test2_data_files)
+chosen_file = rand(rng, test2_data_files)
 
 ic = load(chosen_file, "IC")
 X_fom = load(chosen_file, "X")
@@ -503,10 +565,40 @@ p_ephec_err = plot(
     xlabel=L"t" * "\n" * L"\textbf{Error}",
     yformatter=_->"",
 )
-# p_epsic = plot(contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epsic[:, 1:DS:end], lw=0), colorbar_ticks=(-3:3), clim=(-3,3), yticks=(0:5:20), ylims=(0,20))
-# p_epsic_err = plot(contourf(KSE.t[1:DS:end], KSE.xspan, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), yticks=(0:5:20), ylims=(0,20), colorbar_ticks=(0:0.5:5), clim=(0,5))
-# p_epp = plot(contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epp[:, 1:DS:end], lw=0), colorbar_ticks=(-3:3), clim=(-3,3), yticks=(0:5:20), ylims=(0,20))
-# p_epp_err = plot(contourf(KSE.t[1:DS:end], KSE.xspan, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), yticks=(0:5:20), ylims=(0,20), colorbar_ticks=(0:0.5:5), clim=(0,5))
+# p_epsic = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, Vr * X_epsic[:, 1:DS:end], lw=0, color=:inferno), 
+#     # contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epsic[:, 1:DS:end], lw=0), 
+#     colorbar_ticks=(-3:3), yticks=(0:5:20), ylims=(0,22), 
+#     #right_margin=-3mm, left_margin=3mm,  bottom_margin=7mm, top_margin=-2mm,
+#     bottom_margin=15mm, left_margin=15mm,
+#     ylabel=L"\textbf{EPSIC}\rm{-}\textbf{OpInf}" * "\n" * L"\omega", xlabel=L"t" * "\n" * L"\textbf{Predicted}~" * L"x(\omega,t)",
+# )
+# p_epsic_err = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, abs.(X_fom[:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), 
+#     # contourf(KSE.t[1:DS:end], KSE.x, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epsic[:, 1:DS:end]), lw=0, color=:roma), 
+#     yticks=(0:5:20), ylims=(0,22), colorbar_ticks=(0:0.5:5), clim=(0,5),
+#     # left_margin=-3mm, right_margin=-3mm, 
+#     bottom_margin=15mm,
+#     xlabel=L"t" * "\n" * L"\textbf{Error}",
+#     yformatter=_->"",
+# )
+# p_epp = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, Vr * X_epp[:, 1:DS:end], lw=0, color=:inferno), 
+#     # contourf(KSE.t[1:DS:end], KSE.xspan, Vr * X_epp[:, 1:DS:end], lw=0), 
+#     colorbar_ticks=(-3:3), yticks=(0:5:20), ylims=(0,22), 
+#     #right_margin=-3mm, left_margin=3mm,  bottom_margin=7mm, top_margin=-2mm,
+#     bottom_margin=15mm, left_margin=15mm,
+#     ylabel=L"\textbf{EPP}\rm{-}\textbf{OpInf}" * "\n" * L"\omega", xlabel=L"t" * "\n" * L"\textbf{Predicted}~" * L"x(\omega,t)",
+# )
+# p_epp_err = plot(
+#     contourf(KSE.tspan[1:DS:end], KSE.xspan, abs.(X_fom[:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), 
+#     # contourf(KSE.t[1:DS:end], KSE.x, abs.(DATA["Xtr_all"][i][:, 1:DS:end] .- Vr * X_epp[:, 1:DS:end]), lw=0, color=:roma), 
+#     yticks=(0:5:20), ylims=(0,22), colorbar_ticks=(0:0.5:5), clim=(0,5),
+#     # left_margin=-3mm, right_margin=-3mm, 
+#     bottom_margin=15mm,
+#     xlabel=L"t" * "\n" * L"\textbf{Error}",
+#     yformatter=_->"",
+# )
 
 p = plot(
     p_fom, pblank, 
@@ -622,12 +714,11 @@ lout = @layout [grid(1,3)]
 p = plot(layout=lout, size=(1840, 450))
 
 # Training
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:int],   c=color_choices[:int],   marker=(marker_choices[:int], markersize_choices[:int], color_choices[:int]),       markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:LS],    c=color_choices[:LS],    marker=(marker_choices[:LS], markersize_choices[:LS], color_choices[:LS]),          markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:ephec], c=color_choices[:ephec], marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:epsic], c=color_choices[:epsic], marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["AC_ERR"][:epp],   c=color_choices[:epp],   marker=(marker_choices[:epp], markersize_choices[:epp], color_choices[:epp]),       markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[1], 
     majorgrid=true, 
     legend=false,
@@ -643,12 +734,11 @@ plot!(p[1],
 )
 
 # Test 1
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf", yformatter=_->"")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf", yformatter=_->"")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:int],   c=color_choices[:int],   marker=(marker_choices[:int], markersize_choices[:int], color_choices[:int]),       markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:LS],    c=color_choices[:LS],    marker=(marker_choices[:LS], markersize_choices[:LS], color_choices[:LS]),          markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:ephec], c=color_choices[:ephec], marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:epsic], c=color_choices[:epsic], marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["AC_ERR"][:epp],   c=color_choices[:epp],   marker=(marker_choices[:epp], markersize_choices[:epp], color_choices[:epp]),       markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[2], 
     majorgrid=true, 
     legend=false,
@@ -662,12 +752,11 @@ plot!(p[2],
 )
 
 # Test 2
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf", yformatter=_->"")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf", yformatter=_->"")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:int],   c=color_choices[:int],   marker=(marker_choices[:int], markersize_choices[:int], color_choices[:int]),       markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:LS],    c=color_choices[:LS],    marker=(marker_choices[:LS], markersize_choices[:LS], color_choices[:LS]),          markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:ephec], c=color_choices[:ephec], marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:epsic], c=color_choices[:epsic], marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["AC_ERR"][:epp],   c=color_choices[:epp],   marker=(marker_choices[:epp], markersize_choices[:epp], color_choices[:epp]),       markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[3],
     majorgrid=true, 
     legend=:bottomleft,
@@ -695,14 +784,13 @@ edson = [0.043, 0.003, 0.002, -0.004, -0.008, -0.185, -0.253, -0.296, -0.309, -1
 cvitanovic = [0.048, 0, 0, -0.003, -0.189, -0.256, -0.290, -0.310, -1.963, -1.967]
 
 # Training
-plot!(p[1], REDUCTION_INFO["ro"], cvitanovic, c=:black, lw=2, marker=(:diamond, 12, :black), label="Cvitanovic")
-plot!(p[1], REDUCTION_INFO["ro"], edson, c=:brown, lw=2, marker=(:pentagon, 11, :brown), label="Edson")
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[1], REDUCTION_INFO["ro"], cvitanovic,              c=color_choices[:cvita],  marker=(marker_choices[:cvita], markersize_choices[:cvita], color_choices[:cvita]), markerstrokecolor=color_choices[:cvita], lw=linewidth_choices[:cvita], ls=linestyle_choices[:cvita], markerstrokewidth=2.5, label="Cvitanovic")
+plot!(p[1], REDUCTION_INFO["ro"], edson,                   c=color_choices[:edson],  marker=(marker_choices[:edson], markersize_choices[:edson], color_choices[:edson]), markerstrokecolor=color_choices[:edson], lw=linewidth_choices[:edson], ls=linestyle_choices[:edson],                        label="Edson")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:int],   c=color_choices[:int],    marker=(marker_choices[:int],   markersize_choices[:int],   color_choices[:int]),   markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:LS],    c=color_choices[:LS],     marker=(marker_choices[:LS],    markersize_choices[:LS],    color_choices[:LS]),    markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:ephec], c=color_choices[:ephec],  marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:epsic], c=color_choices[:epsic],  marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["LE"][:epp],   c=color_choices[:epp],    marker=(marker_choices[:epp],   markersize_choices[:epp],   color_choices[:epp]),   markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[1], 
     majorgrid=true, 
     legend=false,
@@ -718,14 +806,13 @@ plot!(p[1],
 )
 
 # Test 1
-plot!(p[2], REDUCTION_INFO["ro"], cvitanovic, c=:black, lw=2, marker=(:diamond, 12, :black), label="Cvitanovic")
-plot!(p[2], REDUCTION_INFO["ro"], edson, c=:brown, lw=2, marker=(:pentagon, 11, :brown), label="Edson")
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf", yformatter=_->"")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf", yformatter=_->"")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[2], REDUCTION_INFO["ro"], cvitanovic,              c=color_choices[:cvita],  marker=(marker_choices[:cvita], markersize_choices[:cvita], color_choices[:cvita]), markerstrokecolor=color_choices[:cvita], lw=linewidth_choices[:cvita], ls=linestyle_choices[:cvita], markerstrokewidth=2.5, label="Cvitanovic")
+plot!(p[2], REDUCTION_INFO["ro"], edson,                   c=color_choices[:edson],  marker=(marker_choices[:edson], markersize_choices[:edson], color_choices[:edson]), markerstrokecolor=color_choices[:edson], lw=linewidth_choices[:edson], ls=linestyle_choices[:edson],                        label="Edson")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:int],   c=color_choices[:int],    marker=(marker_choices[:int],   markersize_choices[:int],   color_choices[:int]),   markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:LS],    c=color_choices[:LS],     marker=(marker_choices[:LS],    markersize_choices[:LS],    color_choices[:LS]),    markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:ephec], c=color_choices[:ephec],  marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:epsic], c=color_choices[:epsic],  marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["LE"][:epp],   c=color_choices[:epp],    marker=(marker_choices[:epp],   markersize_choices[:epp],   color_choices[:epp]),   markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[2], 
     majorgrid=true, 
     legend=false,
@@ -739,14 +826,13 @@ plot!(p[2],
 )
 
 # Test 2
-plot!(p[3], REDUCTION_INFO["ro"], cvitanovic, c=:black, lw=2, marker=(:diamond, 12, :black), label="Cvitanovic")
-plot!(p[3], REDUCTION_INFO["ro"], edson, c=:brown, lw=2, marker=(:pentagon, 11, :brown), label="Edson")
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf", yformatter=_->"")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf", yformatter=_->"")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[3], REDUCTION_INFO["ro"], cvitanovic,              c=color_choices[:cvita],  marker=(marker_choices[:cvita], markersize_choices[:cvita], color_choices[:cvita]), markerstrokecolor=color_choices[:cvita], lw=linewidth_choices[:cvita], ls=linestyle_choices[:cvita], markerstrokewidth=2.5, label="Cvitanovic")
+plot!(p[3], REDUCTION_INFO["ro"], edson,                   c=color_choices[:edson],  marker=(marker_choices[:edson], markersize_choices[:edson], color_choices[:edson]), markerstrokecolor=color_choices[:edson], lw=linewidth_choices[:edson], ls=linestyle_choices[:edson],                        label="Edson")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:int],   c=color_choices[:int],    marker=(marker_choices[:int],   markersize_choices[:int],   color_choices[:int]),   markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:LS],    c=color_choices[:LS],     marker=(marker_choices[:LS],    markersize_choices[:LS],    color_choices[:LS]),    markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:ephec], c=color_choices[:ephec],  marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:epsic], c=color_choices[:epsic],  marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["LE"][:epp],   c=color_choices[:epp],    marker=(marker_choices[:epp],   markersize_choices[:epp],   color_choices[:epp]),   markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[3],
     majorgrid=true, 
     legend=:bottomleft,
@@ -763,9 +849,9 @@ annotate!(p[2], 17, 0.1, Plots.text("reduced model dimension " * L"r", 21, "Comp
 # plot!(p, background_color=:transparent, background_color_inside="#44546A", dpi=600)
 savefig(p, "plots/kse/kse_le_all.pdf")
 
-#========================================================#
-## Lyapunov exponent comparison for training and testing
-#========================================================#
+#=============================================================#
+## Kaplan-Yorke dimension comparison for training and testing
+#=============================================================#
 lout = @layout [grid(1,3)]
 p = plot(layout=lout, size=(1840, 450))
 
@@ -776,15 +862,16 @@ cvitanovic = [0.048, 0, 0, -0.003, -0.189, -0.256, -0.290, -0.310, -1.963, -1.96
 edson_ky = kaplan_yorke_dim(edson)
 cvitanovic_ky = kaplan_yorke_dim(cvitanovic)
 
+rol = REDUCTION_INFO["ro"]
+
 # Training
-plot!(p[1], REDUCTION_INFO["ro"], cvitanovic_ky * ones(length(REDUCTION_INFO["ro"])), c=:black, lw=2, label="Cvitanovic")
-plot!(p[1], REDUCTION_INFO["ro"], edson_ky * ones(length(REDUCTION_INFO["ro"])), c=:brown, lw=2, label="Edson")
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[1], REDUCTION_INFO["ro"], cvitanovic_ky*ones(rol), c=color_choices[:cvita],  marker=(marker_choices[:cvita], markersize_choices[:cvita], color_choices[:cvita]), markerstrokecolor=color_choices[:cvita], lw=linewidth_choices[:cvita], ls=linestyle_choices[:cvita], markerstrokewidth=2.5, label="Cvitanovic")
+plot!(p[1], REDUCTION_INFO["ro"], edson_ky*ones(rol),      c=color_choices[:edson],  marker=(marker_choices[:edson], markersize_choices[:edson], color_choices[:edson]), markerstrokecolor=color_choices[:edson], lw=linewidth_choices[:edson], ls=linestyle_choices[:edson],                        label="Edson")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:int],   c=color_choices[:int],    marker=(marker_choices[:int],   markersize_choices[:int],   color_choices[:int]),   markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:LS],    c=color_choices[:LS],     marker=(marker_choices[:LS],    markersize_choices[:LS],    color_choices[:LS]),    markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:ephec], c=color_choices[:ephec],  marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:epsic], c=color_choices[:epsic],  marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+# plot!(p[1], REDUCTION_INFO["ro"], TRAIN_RES["KY"][:epp],   c=color_choices[:epp],    marker=(marker_choices[:epp],   markersize_choices[:epp],   color_choices[:epp]),   markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[1], 
     majorgrid=true, 
     legend=false,
@@ -800,14 +887,13 @@ plot!(p[1],
 )
 
 # Test 1
-plot!(p[2], REDUCTION_INFO["ro"], cvitanovic_ky * ones(length(REDUCTION_INFO["ro"])), c=:black, lw=2, label="Cvitanovic")
-plot!(p[2], REDUCTION_INFO["ro"], edson_ky * ones(length(REDUCTION_INFO["ro"])), c=:brown, lw=2, label="Edson")
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf", yformatter=_->"")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf", yformatter=_->"")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[2], REDUCTION_INFO["ro"], cvitanovic_ky*ones(rol), c=color_choices[:cvita],  marker=(marker_choices[:cvita], markersize_choices[:cvita], color_choices[:cvita]), markerstrokecolor=color_choices[:cvita], lw=linewidth_choices[:cvita], ls=linestyle_choices[:cvita], markerstrokewidth=2.5, label="Cvitanovic")
+plot!(p[2], REDUCTION_INFO["ro"], edson*ones(rol),         c=color_choices[:edson],  marker=(marker_choices[:edson], markersize_choices[:edson], color_choices[:edson]), markerstrokecolor=color_choices[:edson], lw=linewidth_choices[:edson], ls=linestyle_choices[:edson],                        label="Edson")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:int],   c=color_choices[:int],    marker=(marker_choices[:int],   markersize_choices[:int],   color_choices[:int]),   markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:LS],    c=color_choices[:LS],     marker=(marker_choices[:LS],    markersize_choices[:LS],    color_choices[:LS]),    markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:ephec], c=color_choices[:ephec],  marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:epsic], c=color_choices[:epsic],  marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+# plot!(p[2], REDUCTION_INFO["ro"], TEST1_RES["KY"][:epp],   c=color_choices[:epp],    marker=(marker_choices[:epp],   markersize_choices[:epp],   color_choices[:epp]),   markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[2], 
     majorgrid=true, 
     legend=false,
@@ -821,14 +907,13 @@ plot!(p[2],
 )
 
 # Test 2
-plot!(p[3], REDUCTION_INFO["ro"], cvitanovic_ky * ones(length(REDUCTION_INFO["ro"])), c=:black, lw=2, label="Cvitanovic")
-plot!(p[3], REDUCTION_INFO["ro"], edson_ky * ones(length(REDUCTION_INFO["ro"])), c=:brown, lw=2, label="Edson")
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:int], c=:orange, marker=(:cross, 10, :orange), markerstrokewidth=2.5, label="Intrusive")
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:LS], c=:firebrick3, marker=(:circle, 5, :firebrick3), markerstrokecolor=:firebrick3, lw=2, label="OpInf")
-plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EP-OpInf", yformatter=_->"")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:ephec], c=:blue3, markerstrokecolor=:blue3, marker=(:rect, 3), ls=:dash, lw=2, label="EPHEC-OpInf", yformatter=_->"")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:epsic], c=:purple, markerstrokecolor=:purple, marker=(:dtriangle, 5), ls=:dot, lw=2, label="EPSIC-OpInf")
-# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:epp], c=:brown, markerstrokecolor=:brown, marker=(:star, 5), ls=:dashdot, lw=2, label="EPP-OpInf")
+plot!(p[3], REDUCTION_INFO["ro"], cvitanovic_ky*ones(rol), c=color_choices[:cvita],  marker=(marker_choices[:cvita], markersize_choices[:cvita], color_choices[:cvita]), markerstrokecolor=color_choices[:cvita], lw=linewidth_choices[:cvita], ls=linestyle_choices[:cvita], markerstrokewidth=2.5, label="Cvitanovic")
+plot!(p[3], REDUCTION_INFO["ro"], edson*ones(rol),         c=color_choices[:edson],  marker=(marker_choices[:edson], markersize_choices[:edson], color_choices[:edson]), markerstrokecolor=color_choices[:edson], lw=linewidth_choices[:edson], ls=linestyle_choices[:edson],                        label="Edson")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:int],   c=color_choices[:int],    marker=(marker_choices[:int],   markersize_choices[:int],   color_choices[:int]),   markerstrokecolor=color_choices[:int],   lw=linewidth_choices[:int],   ls=linestyle_choices[:int],   markerstrokewidth=2.5, label="Intrusive")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:LS],    c=color_choices[:LS],     marker=(marker_choices[:LS],    markersize_choices[:LS],    color_choices[:LS]),    markerstrokecolor=color_choices[:LS],    lw=linewidth_choices[:LS],    ls=linestyle_choices[:LS],                           label="OpInf")
+plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:ephec], c=color_choices[:ephec],  marker=(marker_choices[:ephec], markersize_choices[:ephec], color_choices[:ephec]), markerstrokecolor=color_choices[:ephec], lw=linewidth_choices[:ephec], ls=linestyle_choices[:ephec],                        label="EP-OpInf")
+# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:epsic], c=color_choices[:epsic],  marker=(marker_choices[:epsic], markersize_choices[:epsic], color_choices[:epsic]), markerstrokecolor=color_choices[:epsic], lw=linewidth=choices[:epsic], ls=linestyle_choices[:epsic],                        label="EPSIC-OpInf")
+# plot!(p[3], REDUCTION_INFO["ro"], TEST2_RES["KY"][:epp],   c=color_choices[:epp],    marker=(marker_choices[:epp],   markersize_choices[:epp],   color_choices[:epp]),   markerstrokecolor=color_choices[:epp],   lw=linewidth_choices[:epp],   ls=linestyle_choices[:epp],                          label="EPP-OpInf")
 plot!(p[3],
     majorgrid=true, 
     legend=:bottomleft,

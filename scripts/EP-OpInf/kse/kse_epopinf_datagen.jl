@@ -40,7 +40,7 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"EP-OpInf/") : joinpath(p
 Nx = 2^9; dt = 1e-3
 KSE = KuramotoSivashinskyModel(
     spatial_domain=Ω, time_domain=(0.0, 300.0), Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt,
-    diffusion_coeffs=1.0, BC=:periodic,
+    diffusion_coeffs=1.0, BC=:periodic, conservation_type=:EP
 )
 
 #===========#
