@@ -9,6 +9,7 @@ using ChaosGizmo
 using FileIO
 using JLD2
 using LinearAlgebra
+using NaNStatistics: nanmedian, nanmean
 using ProgressMeter
 using StatsBase
 using Statistics
@@ -138,8 +139,8 @@ end
 ac_LS_err ./= bar  
 ac_int_err ./= bar
 ac_ephec_err ./= bar
-ac_epsic_err ./= bar
-ac_epp_err ./= bar
+# ac_epsic_err ./= bar
+# ac_epp_err ./= bar
 RES["AC_ERR"][:LS] = reshape(ac_LS_err, length(ac_LS_err), 1)
 RES["AC_ERR"][:int] = reshape(ac_int_err, length(ac_int_err), 1)
 RES["AC_ERR"][:ephec] = reshape(ac_ephec_err, length(ac_ephec_err), 1)
@@ -153,9 +154,9 @@ RES["AC_ERR"][:ephec] = reshape(ac_ephec_err, length(ac_ephec_err), 1)
 @info "Compute the Lyapunov exponents and the Kaplan-Yorke dimensions"
 
 # Lyapunov exponent Settings
-max_num_of_LE = 3
+max_num_of_LE = 10
 LEOption = ChaosGizmo.LyapunovExponentOptions(
-    m=max_num_of_LE, τ=2e+3, T=1, Δt=0.01, N=1e+4, ϵ=1e-6, verbose=false, jacobian=true,
+    m=max_num_of_LE, τ=2e+3, T=0.001, Δt=0.001, N=1e+5, ϵ=1e-6, verbose=false, jacobian=true,
 )
 
 RES["LE"] = Dict(
@@ -175,32 +176,33 @@ RES["KY"] = Dict(
     # :fom   => 0.0
 )
 
+bar = length(test1_data_files)
+
 # Compute Lypuanov exponents
-# le_fom = zeros(10)
-le_LS = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]))
-le_int = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]))
-le_ephec = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]))
-# le_epsic = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]))
-# le_epp = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]))
+# le_fom = zeros(max_num_of_LE, bar)
+le_LS = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]), bar)
+le_int = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]), bar)
+le_ephec = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]), bar)
+# le_epsic = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]), bar)
+# le_epp = zeros(max_num_of_LE, length(REDUCTION_INFO["ro"]), bar)
 
 # Compute Kaplan-Yorke dimensions
 # ky_fom = 0.0
-ky_LS = zeros(length(REDUCTION_INFO["ro"]))
-ky_int = zeros(length(REDUCTION_INFO["ro"]))
-ky_ephec = zeros(length(REDUCTION_INFO["ro"]))
-# ky_epsic = zeros(length(REDUCTION_INFO["ro"]))
-# ky_epp = zeros(length(REDUCTION_INFO["ro"]))
+ky_LS = zeros(length(REDUCTION_INFO["ro"]), bar)
+ky_int = zeros(length(REDUCTION_INFO["ro"]), bar)
+ky_ephec = zeros(length(REDUCTION_INFO["ro"]), bar)
+# ky_epsic = zeros(length(REDUCTION_INFO["ro"]), bar)
+# ky_epp = zeros(length(REDUCTION_INFO["ro"]), bar)
 
-bar = length(test1_data_files)
 prog = Progress(bar)
 
-Threads.@threads for data_file in test1_data_files
+Threads.@threads for (idx, data_file) in collect(enumerate(test1_data_files))
     jldopen(data_file, "r") do file
         IC = file["IC"]
 
         # Lyapunov exponents
         # le_fom_tmp = kse_lypuanov_exponent(REDUCTION_INFO["op_fom_tr"], KSE, IC, KSE.integrate_model, LEOption)
-        # le_fom .+= le_fom_tmp
+        # le_fom[:,idx] = le_fom_tmp
 
         le_LS_tmp = kse_lyapunov_exponent(OPS["op_LS"], KSE, REDUCTION_INFO["Vr"], IC, REDUCTION_INFO["ro"], KSE.integrate_model, LEOption; jacobian=KSE.jacobian)
         le_int_tmp = kse_lyapunov_exponent(OPS["op_int"], KSE, REDUCTION_INFO["Vr"], IC, REDUCTION_INFO["ro"], KSE.integrate_model, LEOption; jacobian=KSE.jacobian)
@@ -219,36 +221,34 @@ Threads.@threads for data_file in test1_data_files
         # ky_epp_tmp = [ChaosGizmo.kaplan_yorke_dim(le_epp_tmp[r,1]) for r in eachindex(REDUCTION_INFO["ro"])]
 
         for r in eachindex(REDUCTION_INFO["ro"])
-            le_LS[:,r] .+= le_LS_tmp[r,1]
-            le_int[:,r] .+= le_int_tmp[r,1]
-            le_ephec[:,r] .+= le_ephec_tmp[r,1]
-            # le_epsic[:,r] .+= le_epsic_tmp[r,1]
-            # le_epp[:,r] .+= le_epp_tmp[r,1]
-
-            ky_LS[r] += ky_LS_tmp[r]
-            ky_int[r] += ky_int_tmp[r]
-            ky_ephec[r] += ky_ephec_tmp[r]
-            # ky_epsic[r] += ky_epsic_tmp[r]
-            # ky_epp[r] += ky_epp_tmp[r]
+            le_LS[:,r,idx] = le_LS_tmp[r]
+            le_int[:,r,idx] = le_int_tmp[r]
+            le_ephec[:,r,idx] = le_ephec_tmp[r]
+            # le_epsic[:,r,idx] = le_epsic_tmp[r]
+            # le_epp[:,r,idx] = le_epp_tmp[r]
         end
+
+        ky_LS[:,idx] = ky_LS_tmp
+        ky_int[:,idx] = ky_int_tmp
+        ky_ephec[:,idx] = ky_ephec_tmp
+        # ky_epsic[:,idx] = ky_epsic_tmp
+        # ky_epp[:,idx] = ky_epp_tmp
     end
     next!(prog)
 end
 # save the mean normalized autocorrelation
-# RES["train_LE"][:fom] = le_fom ./ bar
-for r in eachindex(REDUCTION_INFO["ro"])
-    RES["LE"][:LS][:,r] = le_LS[:,r] ./ bar
-    RES["LE"][:int][:,r] = le_int[:,r] ./ bar
-    RES["LE"][:ephec][:,r] = le_ephec[:,r] ./ bar
-    # RES["LE"][:epsic][:,r] = le_epsic[:,r] ./ bar
-    # RES["LE"][:epp][:,r] = le_epp[:,r] ./ bar
+# RES["train_LE"][:fom] .= nanmean(le_fom; dims=2)
+RES["LE"][:LS] .= nanmean(le_LS; dims=3)
+RES["LE"][:int] .= nanmean(le_int; dims=3)
+RES["LE"][:ephec] .= nanmean(le_ephec; dims=3)
+# RES["LE"][:epsic] .= nanmean(le_epsic; dims=3)
+# RES["LE"][:epp] .= nanmean(le_epp; dims=3)
 
-    RES["KY"][:LS][r] = ky_LS[r] / bar
-    RES["KY"][:int][r] = ky_int[r] / bar
-    RES["KY"][:ephec][r] = ky_ephec[r] / bar
-    # RES["KY"][:epsic][r] = ky_epsic[r] / bar
-    # RES["KY"][:epp][r] = ky_epp[r] / bar
-end
+RES["KY"][:LS] .= nanmean(ky_LS; dims=2)
+RES["KY"][:int] .= nanmean(ky_int; dims=2)
+RES["KY"][:ephec] .= nanmean(ky_ephec; dims=2)
+# RES["KY"][:epsic] .= nanmean(ky_epsic; dims=2)
+# RES["KY"][:epp] .= nanmean(ky_epp; dims=2)
 @info "Done."
 
 #===================#
