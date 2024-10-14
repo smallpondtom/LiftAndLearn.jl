@@ -45,8 +45,4 @@ include("LnL/learn.jl")
 # Include the optimization methods
 include("EP-OpInf/epopinf.jl")
 
-# Streaming OpInf
-# include("Streaming/streaming.jl")
-# include("Streaming/streamify.jl")
-
 end # module LiftAndLearn
