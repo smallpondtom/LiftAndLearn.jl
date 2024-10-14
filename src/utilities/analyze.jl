@@ -51,7 +51,7 @@ Compute relative output error
 # Return
 - `OE`: output error
 """
-function compute_rel_output(Yf, Y)
+function rel_output_error(Yf, Y)
     n = size(Yf, 1)
     Yf_norm = norm(Yf, 2)
     OE = norm(Yf - Y[1:n, :], 2) / Yf_norm
@@ -173,11 +173,11 @@ function ep_constraint_violation(Data::AbstractArray, X::AbstractArray, redundan
     viol = zeros(m,1)
     if redundant
         for i in 1:m
-            viol[i] = Data[:,i]' * X * (Data[:,i] ⊗ Data[:,i])
+            viol[i] = Data[:,i]' * X * kron(Data[:,i], Data[:,i])
         end
     else
         for i in 1:m
-            viol[i] = Data[:,i]' * X * vech(Data[:,i] * Data[:,i]')
+            viol[i] = Data[:,i]' * X * UniqueKronecker.vech(Data[:,i] * Data[:,i]')
         end
     end
     return viol

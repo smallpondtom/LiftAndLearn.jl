@@ -15,6 +15,7 @@ defaultname(file) = uppercasefirst(replace(splitext(basename(file))[1], '_' => '
 
 @testset "LiftAndLearn" begin
     testfile("utilities/matrix_dimensions.jl")
+    testfile("utilities/analysis.jl")
     testfile("intrusive/pod.jl")
     testfile("LnL/lifting.jl")
     testfile("LnL/opinf.jl")

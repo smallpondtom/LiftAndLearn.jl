@@ -40,7 +40,7 @@ end
     @test OOE >= 0
 end
 
-@testest "EP constraint residual" begin
+@testset "EP constraint residual" begin
     n = 3
     X = rand(n, n^2)
     redundant = true
@@ -57,20 +57,26 @@ end
     @test abs(mmt) > 0
 end
 
-@testest "EP constraint residual" begin
+@testset "EP constraint residual" begin
     n = 3
     X = rand(n, n^2)
     data = rand(n, 5)
     redundant = true
     viol = LnL.ep_constraint_violation(data, X, redundant)
-    @test abs(viol) > 0
+    @test norm(sum(viol, dims=2) / 5) > 1e-5
 
     X = rand(n, n*(n+1)÷2)
     redundant = false
     viol = LnL.ep_constraint_violation(data, X, redundant)
-    @test abs(viol) > 0
+    @test norm(sum(viol, dims=2) / 5) > 0
 
     X = rand(n, n^2)
     flag = LnL.isenergypreserving(X)
     @test flag == false
+end
+
+@testset "Choose reduced orders" begin
+    Σ = sort([0.1, 10, 0.024, 3.4e-5, 9.5e-7, 1.23e-9, 3e4], rev=true)
+    σ, _ = LnL.choose_ro(Σ; en_low=-3)
+    @test length(σ) == 3
 end
