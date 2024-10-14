@@ -79,13 +79,3 @@ But all of those operations are taken care of automatically. For full details pl
 ```@docs
 opinf
 ```
-
-
-### Optimization Implementation
-
-There is a function that solves the least squares problem using `Ipopt` as well.
-
-```@docs
-NC_Optimize
-NC_Optimize_output
-```

@@ -13,9 +13,3 @@ All APIs of LiftAndLearn listed in a unstructured manner.
 Modules = [LiftAndLearn]
 Order = [:module, :function, :macro]
 ```
-
-# Submodules
-
-```@docs
-LiftAndLearn.ChaosGizmo
-```

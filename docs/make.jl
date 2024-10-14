@@ -16,19 +16,6 @@ PAGES = [
             "Lift And Learn" => "manual/nonintrusive/LnL.md",
             "Energy Preserving" => "manual/nonintrusive/EPOpInf.md",
         ],
-        "ChaosGizmo" => [
-            "Introduction" => "manual/ChaosGizmo/chaosgizmo.md",
-            "Lyapunov Exponents" => "manual/ChaosGizmo/lyap_exp.md",
-        ],
-    ],
-    "Models" => [
-        "Heat1D" => "models/Heat1D.md",
-        "Burgers" => "models/Burgers.md",
-        "FHN" => "models/FHN.md",
-        "KS" => "models/KS.md",
-        "Chafee-Infante" => "models/ChafeeInfante.md",
-        "Fisher-KPP" => "models/FisherKPP.md",
-        "Heat2D" => "models/Heat2D.md",
     ],
     "API Reference" => "api.md",
     "Paper Reference" => "paper.md",
@@ -39,6 +26,7 @@ bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"))
 makedocs(
     sitename = "LiftAndLearn.jl",
     clean = true, doctest = false, linkcheck = false,
+    authors = "Tomoki Koike <tkoike45@gmail.com>",
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
         edit_link = "https://github.com/smallpondtom/LiftAndLearn.jl",

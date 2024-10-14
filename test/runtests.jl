@@ -1,5 +1,10 @@
-using LiftAndLearn
 using Test
+using LinearAlgebra
+using LiftAndLearn
+const LnL = LiftAndLearn
+
+include("tools/rk4.jl")
+include("tools/models.jl")
 
 function testfile(file, testname=defaultname(file))
     println("running test file $(file)")
@@ -9,20 +14,10 @@ end
 defaultname(file) = uppercasefirst(replace(splitext(basename(file))[1], '_' => ' '))
 
 @testset "LiftAndLearn" begin
-
-    testfile("utilities/matrices.jl")
-    testfile("utilities/integrators.jl")
-
+    testfile("utilities/matrix_dimensions.jl")
     testfile("intrusive/pod.jl")
     testfile("LnL/lifting.jl")
-
     testfile("LnL/opinf.jl")
     testfile("LnL/lnl.jl")
-    testfile("LnL/optimize.jl")
-
-    testfile("models/burgers.jl")
-    testfile("models/kse.jl")
-
-    # Submodules
-    testfile("ChaosGizmo/LyapunovExponent.jl")
+    testfile("LnL/epopinf.jl")
 end

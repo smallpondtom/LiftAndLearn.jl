@@ -10,7 +10,7 @@ This package works with model reduction for polynomial systems with affine contr
 ```
 
 !!! note "Current Implementations"
-    With the current version we have only implemented up to quadratic states and bilinear controls. We plan to implement cubic states (i.e., ``\mathbf{x}\otimes\mathbf{x}\otimes\mathbf{x}``) and linear-quadratic controls in the future, as these types of systems are observed in many applications. 
+    With the current version we have only implemented up to quartic states and bilinear controls. We plan to implement linear-quadratic controls and other-higher order systems in the future, as these types of systems are observed in many applications. 
 
 For such structures, use `SystemStructure` struct to define the system.
 
@@ -107,13 +107,6 @@ LSOpInfOption
 
 !!! note
     The option `with_tol` turns on/off the settings to truncate ill-posed singular values with order of `pinv_tol`.
-
-### Non-constrained Operator Inference
-This optimization is no different from the standard Operator Inference. The difference from the one above is that it is solved using a optimization package and not using simple linear algebra.
-
-```@docs
-NCOpInfOption
-```
 
 ### Energy-Preserving Operator Inference Options
 The three options below are for the energy-preserving Operator Inference approaches: hard equality constraint, soft inequality constraint, and penalty. For details of each parameter please check out the documentation of [EP-OpInf Manual](nonintrusive/EPOpInf.md)

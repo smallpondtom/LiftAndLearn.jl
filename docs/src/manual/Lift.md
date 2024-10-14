@@ -41,7 +41,7 @@ lifting
 ## Construct Lifted POD Basis from Data
 
 ```@docs
-liftedBasis
+lifted_basis
 ```
 
 An example implementation would be:
@@ -51,5 +51,5 @@ using LiftAndLearn
 using Random
 LnL = LiftAndLearn
 W = round.(rand(30,100), digits=4)
-LnL.liftedBasis(W, 3, 10, [2,3,4])
+LnL.lifted_basis(W, 3, 10, [2,3,4])
 ```
