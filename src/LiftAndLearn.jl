@@ -24,7 +24,7 @@ abstract type AbstractOption end
 include("utilities/utilities.jl")
 
 # Options
-include("OpInf/opinf_options.jl")
+include("OpInf/OpInf_options.jl")
 
 # Operators 
 include("operators/operators.jl")
