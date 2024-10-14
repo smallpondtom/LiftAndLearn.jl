@@ -1,4 +1,4 @@
-export lifting, liftedBasis
+export lifting, lifted_basis
 
 """
 $(TYPEDEF)

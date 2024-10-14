@@ -17,12 +17,6 @@ PAGES = [
             "Energy Preserving" => "manual/nonintrusive/EPOpInf.md",
         ],
     ],
-    "Models" => [
-        "Heat1D" => "models/Heat1D.md",
-        "Burgers" => "models/Burgers.md",
-        "FHN" => "models/FHN.md",
-        "KS" => "models/KS.md",
-    ],
     "API Reference" => "api.md",
     "Paper Reference" => "paper.md",
 ]

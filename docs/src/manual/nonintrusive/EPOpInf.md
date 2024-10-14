@@ -38,7 +38,5 @@ To impose this energy-preserving structure on the operator, we propose EP-OpInf.
     Note that the hard equality constraint is the enforces the constraint in the strictest manner and the penalty method is the weakest. The inequality constraint lies between the two. However, depending on the parameter settings the constraint violations may vary between the inequality and penalty methods.
 
 ```@docs
-EPHEC_Optimize
-EPSIC_Optimize
-EPP_Optimize
+epopinf
 ```

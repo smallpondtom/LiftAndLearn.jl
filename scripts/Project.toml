@@ -11,7 +11,7 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 HSL_jll = "017b0a0e-03f4-516a-9b91-836bbd1904dd"
-IncrementalPOD = "3bf79c5c-c0f5-40a5-9093-09858d4b0449"
+IncrementalSVD = "3bf79c5c-c0f5-40a5-9093-09858d4b0449"
 Ipopt = "b6b21f68-93f8-5de0-b562-5493be1d77c9"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
@@ -29,3 +29,6 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 UniqueKronecker = "dd29a912-d12a-442e-ae57-6933397c0393"
+
+[sources]
+ChaosGizmo = {url = "https://github.com/smallpondtom/ChaosGizmo.jl"}
