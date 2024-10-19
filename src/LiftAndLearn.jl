@@ -3,6 +3,7 @@
 """
 module LiftAndLearn
 
+using Combinatorics: binomial
 using LinearAlgebra
 using BlockDiagonals
 using Kronecker

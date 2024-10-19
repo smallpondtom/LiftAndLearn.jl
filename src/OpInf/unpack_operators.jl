@@ -70,5 +70,3 @@ function unpack_operators!(operators::Operators, O::AbstractArray, dims::Abstrac
         TD += i
     end
 end
-
-

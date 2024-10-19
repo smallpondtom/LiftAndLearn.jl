@@ -4,10 +4,10 @@
 Convert a tall matrix to a fat matrix by taking the transpose if the number
 of rows is less than the number of columns.
 
-## Arguments
+# Arguments
 - `A::AbstractArray`: input matrix
 
-## Returns
+# Returns
 - `A::AbstractArray`: output matrix
 """
 function tall2fat(A::AbstractArray)
@@ -26,10 +26,10 @@ end
 Convert a fat matrix to a tall matrix by taking the transpose if the number 
 of rows is less than the number of columns.
 
-## Arguments
+# Arguments
 - `A::AbstractArray`: input matrix
 
-## Returns
+# Returns
 - `A::AbstractArray`: output matrix
 """
 function fat2tall(A::AbstractArray)
@@ -41,7 +41,18 @@ function fat2tall(A::AbstractArray)
     end
 end
 
+"""
+    checksize(A::AbstractArray)
 
+Check the size of the input matrix and return the number of rows and columns.
+
+# Arguments
+- `A::AbstractArray`: input matrix
+
+# Returns
+- `m::Int`: number of rows
+- `n::Int`: number of columns
+"""
 function checksize(A::AbstractArray)
     m, n = nothing, nothing
     try

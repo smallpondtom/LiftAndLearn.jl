@@ -1,3 +1,7 @@
+# old or archived files
+__old__/
+__archive__/
+
 ## JULIA
 debug.log
 *.jld2
