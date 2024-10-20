@@ -8,6 +8,7 @@ using LinearAlgebra
 using BlockDiagonals
 using Kronecker
 using Parameters
+using ProgressMeter: Progress, next!
 using SparseArrays
 using JuMP
 using Ipopt, SCS
