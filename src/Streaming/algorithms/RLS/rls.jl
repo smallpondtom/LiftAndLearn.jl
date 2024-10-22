@@ -3,35 +3,6 @@ $(TYPEDEF)
 
 Recursive Least-Squares (RLS) cache struct to solve for DO = R.
 """
-# mutable struct RLSCache{T<:Number}
-#     O::AbstractArray{T}
-#     P::AbstractArray{T}
-#     K::AbstractArray{T}
-#     ξpre::AbstractArray{T}
-#     ξpost::AbstractArray{T}
-#     C::AbstractArray{T}
-#     J::Real
-#     γ::Real
-#     λ::Real
-# end
-# @with_kw mutable struct RLSCache{T<:Real,N<:Int,M<:Int,n<:Int}
-#     O::Array{T,2} = Matrix{T}(undef,N,n)      # Operator matrix (N x n)
-#     P::AbstractArray{T,2}                     # Inverse covariance matrix (N x N)
-#     K::Array{T,2} = Matrix{T}(undef,N,M)      # Kalman gain matrix (N x M)
-#     ξpre::Array{T,2} = Matrix{T}(undef,M,n)   # A priori error matrix (M x n)
-#     ξpost::Array{T,2} = Matrix{T}(undef,M,n)  # A posteriori error matrix (M x n)
-#     C::Array{T,2} = Matrix{T}(undef,M,M)      # Conversion factor (M x M)
-#     J::T = zero(T)                            # Cost (scalar)
-#     γ::T                                      # Regularization term
-#     λ::T                                      # Forgetting factor
-
-#     # Preallocated temporary variables
-#     u::Array{T,1} = Matrix{T}(undef,N,1)           # For rank-1 update (N x 1)
-#     temp_DP::Array{T,2} = Matrix{T}(undef,M,N)     # Temporary matrix D * P (M x N)
-#     temp_PD::Array{T,2} = Matrix{T}(undef,N,M)     # Temporary matrix P * D' (N x M)
-#     temp_update::Array{T,2} = Matrix{T}(undef,N,N) # Temporary matrix (N x N)
-#     temp_Ke::Array{T,2} = Matrix{T}(undef,N,n)     # For updating O (N x n)
-# end
 @with_kw mutable struct RLSCache{T<:Real}
     N::Int
     M::Int
@@ -151,119 +122,14 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
     obj.O .+= obj.temp_Ke
 
     # Compute a posteriori error: ξpost = R - D * O
-    mul!(obj.ξpost, D, obj.O, -1.0, 1.0)  # ξpost = R - D * O
+    mul!(obj.ξpost, D, obj.O, -1.0, 0.0)  # ξpost = R - D * O
     obj.ξpost .+= R
 
-    # Update the cost J: J = λ * J + sum(ξpre .* ξpost)
-    obj.J = obj.λ * obj.J + sum(obj.ξpre .* obj.ξpost)
+    # Update the cost J: J = λ * J + ξpre' .* ξpost
+    obj.J = obj.λ * obj.J + obj.ξpre' .* obj.ξpost
 
     return nothing
 end
-
-
-
-# """
-# $(SIGNATURES)
-
-# Regularized Least-Squares (RLS) algorithm for the Operator Inference problem:
-
-# ```math
-# \\Vert \\mathbf{R} - \\mathbf{D}\\mathbf{O} \\Vert_F^2
-# ```
-
-# where `\\mathbf{R}` is the output matrix, `\\mathbf{D}` is the data matrix, and
-# `\\mathbf{O}` is the operator matrix.
-# """
-# function rls!(obj::RLSCache{T}, D::AbstractMatrix{T}, R::AbstractMatrix{T}, Q::Union{Real,AbstractMatrix{T}}) where T<:Number
-#     M, N = size(D)
-#     n = size(R, 2)
-
-#     # Compute a priori error: obj.ξpre = R - D * obj.O (before updating obj.O)
-#     mul!(obj.ξpre, D, obj.O, -1.0, 1.0)  # obj.ξpre = R - D * obj.O
-#     obj.ξpre .+= R
-
-#     # Update inverse covariance matrix P_k
-#     if M == 1  # Rank-1 update
-#         # Compute u = P * D'
-#         u = similar(obj.P, N)
-#         mul!(u, obj.P, @view(D[1, :])', 1.0, 0.0)  # u = P * D'
-
-#         # Compute denominator: denom = Q + D * u
-#         denom = Q + dot(@view(D[1, :]), u) / obj.λ # scalar
-
-#         # Compute conversion factor: C = 1 / denom
-#         obj.C[1] = 1 / denom  # obj.C is scalar in rank-1 case
-
-#         # Update P: P = P - (P * Dᵗ * D * P) / denom
-#         # This is equivalent to: P = P - (u * uᵗ) / denom
-#         BLAS.syr!('U', -1/denom/obj.λ, u, obj.P)
-#         obj.P ./= obj.λ
-
-#         # Ensure symmetry of obj.P
-#         for i in 1:N, j in i+1:N
-#             obj.P[j, i] = obj.P[i, j]
-#         end
-
-#         # Compute Kalman gain: K = obj.P * Dᵗ / Q
-#         if isa(Q, Number)
-#             Q_inv = 1 / Q
-#             mul!(obj.K, obj.P, D', Q_inv, 0.0)
-#         else
-#             Q_inv = Q \ I
-#             temp_D = @view(D[1, :])'
-#             mul!(obj.K, obj.P, temp_D)
-#             mul!(obj.K, obj.K, Q_inv)
-#         end
-#     else  # Block (rank-M) update
-#         # Compute S = Q + D * P * Dᵗ
-#         temp_DP = similar(D, M, N)
-#         mul!(temp_DP, D, obj.P)  # temp_DP = D * P
-#         S = similar(temp_DP, M, M)
-#         mul!(S, temp_DP, D', 1.0, 0.0)  # S = temp_DP * D'
-#         S ./= obj.λ
-
-#         if isa(Q, Number)
-#             @. S += Q
-#         else
-#             S .+= Q
-#         end
-
-#         # Compute conversion factor: obj.C = inv(S)
-#         obj.C = S \ I  # obj.C is M x M matrix
-
-#         # Update P: P = P - P * Dᵗ * inv(S) * D * P
-#         temp_PD = similar(obj.P, N, M)
-#         mul!(temp_PD, obj.P, D')  # temp_PD = P * D'
-#         temp_update = similar(obj.P, N, N)
-#         mul!(temp_update, temp_PD, obj.C)
-#         mul!(temp_update, temp_update, temp_PD', 1.0, 0.0)
-#         obj.P .-= temp_update / obj.λ
-#         obj.P ./= obj.λ
-
-#         # Ensure symmetry of obj.P
-#         for i in 1:N, j in i+1:N
-#             obj.P[j, i] = obj.P[i, j]
-#         end
-
-#         # Compute Kalman gain: K = obj.P * Dᵗ * obj.C
-#         mul!(obj.K, obj.P, D')
-#         mul!(obj.K, obj.K, obj.C)
-#     end
-
-#     # Update obj.O: obj.O += obj.K * obj.ξpre
-#     temp_Ke = similar(obj.O)
-#     mul!(temp_Ke, obj.K, obj.ξpre)
-#     obj.O .+= temp_Ke
-
-#     # Compute a posteriori error: obj.ξpost = R - D * obj.O (after updating obj.O)
-#     mul!(obj.ξpost, D, obj.O, -1.0, 1.0)  # obj.ξpost = R - D * obj.O
-#     obj.ξpost .+= R
-
-#     # Update the cost obj.J: obj.J += ξpre' * ξpost
-#     obj.J = obj.λ * obj.J + sum(obj.ξpre .* obj.ξpost)  # For matrix e and ξ
-
-#     return nothing  # No need to return values
-# end
 
 
 """

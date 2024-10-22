@@ -133,10 +133,10 @@ op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 # Streamify the data based on the selected streamsizes
 # INFO: Remember to make data matrices a tall matrix except X matrix
 streamsize = 1
-Xhat_stream = LnL.streamify(Vr' * X, streamsize)
+X_stream = LnL.streamify(Vr' * X, streamsize)
 U_stream = LnL.streamify(U, streamsize)
-Y_stream = LnL.streamify(Y', streamsize)
-R_stream = LnL.streamify((Vr' * Xdot)', streamsize)
+Y_stream = LnL.streamify(Y, streamsize)
+R_stream = LnL.streamify(Vr' * Xdot, streamsize)
 num_of_streams = length(Xhat_stream)
 
 ## Initialize the stream
@@ -149,10 +149,10 @@ num_of_streams = length(Xhat_stream)
 state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=1, l=1, algorithm=:RLS, γs=γs, γo=γo)
 
 ## Stream all at once
-LnL.stream_all!(state_stream, Xhat_stream, R_stream; U=U_stream)
+LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)
 
 ##
-LnL.stream_output_all!(output_stream, Xhat_stream, Y_stream)
+LnL.stream_output_all!(output_stream, X_stream, Y_stream)
 
 ## Unpack solution operators
 op_stream = LnL.terminate_stream(state_stream)
