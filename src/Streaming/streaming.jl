@@ -71,8 +71,8 @@ function StreamingOpInf(;
 
     # Initialize variables based on algorithm
     if algorithm == :RLS
-        Ps    = iszero(γs) ? Matrix{T}(undef,0,0) : Matrix(1.0I(d) / γs)
-        Po    = iszero(γo) ? Matrix{T}(undef,0,0) : Matrix(1.0I(n) / γo)
+        Ps    = iszero(γs) ? Matrix{T}(undef,d,d) : Matrix(1.0I(d) / γs)
+        Po    = iszero(γo) ? Matrix{T}(undef,d,d) : Matrix(1.0I(n) / γo)
 
         # State regression
         state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, γ=γs, λ=λ)
@@ -92,73 +92,39 @@ function StreamingOpInf(;
         )
         return state_rls, output_rls
     elseif algorithm == :QRRLS
-        Os    = zeros(T,d,n)
-        Ps    = Matrix{T}(undef,0,0)
-        Ks    = Matrix{T}(undef,0,0)
-        Oo    = zeros(T,n,l)
-        Po    = Matrix{T}(undef,0,0)
-        Ko    = Matrix{T}(undef,0,0)
-        Φsqs  = sqrt(γs) * 1.0I(d)
-        qs    = zeros(T,d,n)
-        Φsqo  = sqrt(γo) * 1.0I(n)
-        qo    = zeros(T,n,l)
-        ξpre  = Matrix{T}(undef,0,0)
-        ξpost = Matrix{T}(undef,0,0)
-        C     = zero(T)
-        J     = zero(T)
+        Ps    = Matrix(1.0I(d) / γs)
+        Po    = Matrix(1.0I(n) / γo)
+        Φsqs  = Matrix(sqrt(γs) * 1.0I(d))
+        Φsqo  = Matrix(sqrt(γo) * 1.0I(n))
 
         # State regression
-        state_cache = QRRLSCache{T}(
-            Os, Ps, Ks, Φsqs, qs, ξpre, ξpost, C, J, γs, λ,
-            zeros(T,d+n+1,d+n+1), zeros(T,1,n), zeros(T,d,1)
-        )
+        state_cache = QRRLSCache{T}(N=d, n=n, P=Ps, Φsq=Φsqs, γ=γs, λ=λ)
         state_qrrls = QRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
         if iszero(l)
             return state_qrrls
         end
 
         # Output regression
-        output_cache = QRRLSCache{T}(
-            Oo, Po, Ko, Φsqo, qo, ξpre, ξpost, C, J, γo, λ,
-            zeros(T,d+n+1,d+n+1), zeros(T,1,n), zeros(T,d,1)
-        )
+        output_cache = QRRLSCache{T}(N=n, n=l, P=Po, Φsq=Φsqo, γ=γo, λ=λ)
         output_qrrls = QRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_qrrls, output_qrrls
     elseif algorithm == :iQRRLS
-        Os    = zeros(T,d,n)
-        Psqs  = 1.0I(d) / sqrt(γs)
-        Ks    = Matrix{T}(undef,0,0)
-        Oo    = zeros(T,n,l)
-        Psqo  = 1.0I(n) / sqrt(γo)
-        Ko    = Matrix{T}(undef,0,0)
-        Φs    = Matrix{T}(undef,0,0)
-        qs    = Matrix{T}(undef,0,0)
-        Φo    = Matrix{T}(undef,0,0)
-        qo    = Matrix{T}(undef,0,0)
-        ξpre  = Matrix{T}(undef,0,0)
-        ξpost = Matrix{T}(undef,0,0)
-        C     = zero(T)
-        J     = zero(T)
+        Psqs  = Matrix(1.0I(d) / sqrt(γs))
+        Psqo  = Matrix(1.0I(n) / sqrt(γo))
 
         # State regression
-        state_cache = iQRRLSCache{T}(
-            Os, Psqs, Ks, ξpre, ξpost, C, J, γs, λ,
-            zeros(T,d+1,d+1), zeros(T,d), zeros(T,1,n), zeros(T,d,n)
-        )
+        state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, γ=γs, λ=λ)
         state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
         if iszero(l)
             return state_iqrrls
         end
 
         # Output regression
-        output_cache = iQRRLSCache{T}(
-            Oo, Psqo, Ko, ξpre, ξpost, C, J, γo, λ,
-            zeros(T,d+1,d+1), zeros(T,d), zeros(T,1,n), zeros(T,d,n)
-        )
+        output_cache = iQRRLSCache{T}(N=n, n=l, Psq=Psqo, γ=γo, λ=λ)
         output_iqrrls = iQRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_iqrrls, output_iqrrls
     else
-        error("Available algorithms are RLS, QRRLS, and iQRRLS.")
+        error("Available algorithms are :RLS, :QRRLS, and :iQRRLS.")
     end
 end
 

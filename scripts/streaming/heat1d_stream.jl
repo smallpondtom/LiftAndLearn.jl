@@ -137,16 +137,16 @@ X_stream = LnL.streamify(Vr' * X, streamsize)
 U_stream = LnL.streamify(U, streamsize)
 Y_stream = LnL.streamify(Y, streamsize)
 R_stream = LnL.streamify(Vr' * Xdot, streamsize)
-num_of_streams = length(Xhat_stream)
+num_of_streams = length(X_stream)
 
 ## Initialize the stream
 # TR-Streaming-OpInf
-γs = 1e-10
-γo = 1e-9
+# γs = 1e-10
+# γo = 1e-9
 # iQR/QR-Streaming-OpInf
-# γs = 1e-13
-# γo = 1e-10
-state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=1, l=1, algorithm=:RLS, γs=γs, γo=γo)
+γs = 1e-13
+γo = 1e-10
+state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=1, l=1, algorithm=:QRRLS, γs=γs, γo=γo)
 
 ## Stream all at once
 LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)

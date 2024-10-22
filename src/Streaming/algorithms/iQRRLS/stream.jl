@@ -42,7 +42,7 @@ function stream!(obj::iQRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::
     end
 
     @assert tdim == 1 "iQRRLS is only for rank-1 update."
-    iqrrls!(obj, D, R)
+    iqrrls!(obj.cache, D, R)
 
     return D
 end
@@ -53,7 +53,7 @@ $(SIGNATURES)
 
 Single stream update for the output data.
 """
-function stream_output!(obj::iQRRLSCache, X::AbstractArray{T}, Y::AbstractArray{T}) where T<:Number
+function stream_output!(obj::iQRRLSOpInf, X::AbstractArray{T}, Y::AbstractArray{T}) where T<:Number
     tdim = size(X, 2)  # number of data points (time dimension)
     foo, bar = checksize(Y)
     if foo == obj.dims[:l] && bar == tdim
@@ -68,7 +68,7 @@ function stream_output!(obj::iQRRLSCache, X::AbstractArray{T}, Y::AbstractArray{
     Xt = X'
 
     @assert tdim == 1 "iQRRLS is only for rank-1 update."
-    iqrrls!(obj, Xt, Y)
+    iqrrls!(obj.cache, Xt, Y)
 
     return nothing
 end
