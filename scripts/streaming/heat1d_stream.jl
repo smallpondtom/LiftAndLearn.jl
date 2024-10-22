@@ -2,80 +2,78 @@
     Streaming-OpInf example of the 1D heat equation.
 """
 
-#############
+#===========#
 ## Packages
-#############
+#===========#
 using CairoMakie
 using LinearAlgebra
 using ProgressMeter
+using PolynomialModelReductionDataset: Heat1DModel
 
-
-###############
+#=============#
 ## My modules
-###############
+#=============#
 using LiftAndLearn
 const LnL = LiftAndLearn
 
-
-###################
+#=================#
 ## Global Settings
-###################
-CONST_STREAM = true
+#=================#
 SAVEFIG = true
 
-
-###############################
+#==============================#
 ## Include functions and files
-###############################
+#==============================#
 include("utilities/plot_theme.jl")
 include("utilities/analysis.jl")
 include("utilities/plotting.jl")
 
-
-##########################
+#=========================#
 ## 1D Heat equation setup
-##########################
+#=========================#
+Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-3
-heat1d = LnL.Heat1DModel(  # define the model
-    spatial_domain=(0.0, 1.0), time_domain=(0.0, 2.0), diffusion_coeffs=0.1,
-    Δx=1/Nx, Δt=1e-3, BC=:dirichlet
+heat1d = Heat1DModel(
+    spatial_domain=Ω, time_domain=(0.0, 1.0), 
+    Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt, 
+    diffusion_coeffs=0.1,
 )
 foo = zeros(heat1d.spatial_dim)
 foo[(Nx÷2+1):end] .= 1
 heat1d.IC = foo .* (0.5 * sin.(2π * heat1d.xspan))  # change IC
 U = ones(heat1d.time_dim)  # boundary condition → control input
 
-# OpInf options
+# Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        is_lin=true,
-        has_control=true,
-        has_output=true,
+        state=1,
+        control=1,
+        output=1,
     ),
     vars=LnL.VariableStructure(
-        N=1,  # number of state variables
+        N=1,
     ),
     data=LnL.DataStructure(
-        Δt=dt, # time step
-        deriv_type="BE"  # backward Euler
+        Δt=dt,
+        deriv_type="BE"
     ),
     optim=LnL.OptimizationSetting(
-        verbose=true,  # show the optimization process
+        verbose=true,
     ),
 )
 
-
-#################
+#=================#
 ## Generate Data
-#################
+#=================#
 # Construct full model
 μ = heat1d.diffusion_coeffs
 A, B = heat1d.finite_diff_model(heat1d, μ)
 C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
 op_heat = LnL.Operators(A=A, B=B, C=C)
 
-# Compute the state snapshot data with backward Euler
-X = LnL.backwardEuler(A, B, U, heat1d.tspan, heat1d.IC)
+# Compute the states with backward Euler
+X = heat1d.integrate_model(heat1d.tspan, heat1d.IC, U; linear_matrix=A, control_matrix=B,
+                            system_input=true, integrator_type=:BackwardEuler)
 
 # Compute the SVD for the POD basis
 r = 15  # order of the reduced form
@@ -89,10 +87,9 @@ Xfull = copy(X)
 Yfull = copy(Y)
 Ufull = copy(U)
 
-
-######################
+#====================#
 ## Plot Data to Check
-######################
+#====================#
 with_theme(theme_latexfonts()) do
     fig0 = Figure(fontsize=20, size=(1300,500), backgroundcolor="#FFFFFF")
     ax1 = Axis3(fig0[1, 1], xlabel="x", ylabel="t", zlabel="u(x,t)")
@@ -103,16 +100,14 @@ with_theme(theme_latexfonts()) do
     display(fig0)
 end
 
-
-#############
+#============#
 ## Intrusive
-#############
-op_int = LnL.pod(op_heat, Vr, options)
+#============#
+op_int = LnL.pod(op_heat, Vr, options.system)
 
-
-######################
+#=====================#
 ## Operator Inference
-######################
+#=====================#
 # Obtain derivative data
 Xdot = (X[:, 2:end] - X[:, 1:end-1]) / heat1d.Δt
 idx = 2:heat1d.time_dim
@@ -121,56 +116,47 @@ U = U[idx, :]  # fix the index of inputs
 Y = Y[:, idx]  # fix the index of outputs
 op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
-
-##############################
+#=============================#
 ## Tikhonov Regularized OpInf
-##############################
+#=============================#
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(
-    lin = 1e-13,
-    ctrl = 1e-13,
-    output = 1e-10
+    A = 1e-13,
+    B = 1e-13,
+    C = 1e-10
 )
 op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
 
-
-###################
+#=================#
 ## Streaming-OpInf
-###################
-# Construct batches of the training data
-if CONST_STREAM  # using a single constant batchsize
-    global streamsize = 1
-else  # initial batch updated with smaller batches
-    init_streamsize = 1
-    update_size = 1
-    global streamsize = vcat([init_streamsize], [update_size for _ in 1:((size(X,2)-init_streamsize)÷update_size)])
-end
-
+#=================#
 # Streamify the data based on the selected streamsizes
 # INFO: Remember to make data matrices a tall matrix except X matrix
+streamsize = 1
 Xhat_stream = LnL.streamify(Vr' * X, streamsize)
 U_stream = LnL.streamify(U, streamsize)
 Y_stream = LnL.streamify(Y', streamsize)
 R_stream = LnL.streamify((Vr' * Xdot)', streamsize)
 num_of_streams = length(Xhat_stream)
 
-# Initialize the stream
+## Initialize the stream
 # TR-Streaming-OpInf
 γs = 1e-10
-γo = 7.6e-9
+γo = 1e-9
 # iQR/QR-Streaming-OpInf
 # γs = 1e-13
 # γo = 1e-10
-algo = :RLS
-stream = LnL.StreamingOpInf(options, r, size(U,2), size(Y,1); γs_k=γs, γo_k=γo, algorithm=algo)
+state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=1, l=1, algorithm=:RLS, γs=γs, γo=γo)
 
-# Stream all at once
-stream.stream!(stream, Xhat_stream, R_stream; U_k=U_stream)
-stream.stream_output!(stream, Xhat_stream, Y_stream)
+## Stream all at once
+LnL.stream_all!(state_stream, Xhat_stream, R_stream; U=U_stream)
 
-# Unpack solution operators
-op_stream = stream.unpack_operators(stream)
+##
+LnL.stream_output_all!(output_stream, Xhat_stream, Y_stream)
 
+## Unpack solution operators
+op_stream = LnL.terminate_stream(state_stream)
+op_stream.C = output_stream.cache.O'
 
 ###############################
 ## (Analysis 1) Relative Error 
@@ -262,7 +248,7 @@ end
 #     println(size(S))
 #     println(size(V))
 
-#     x0 = Matrix{JuMP.NonlinearExpr}(undef, d, r)
+#     x0 = Matrix{}(undef, d, r)
 #     for i in 1:r
 #         x0[:,i] .= sum(S[j] / (S[j]^2 + α) * (U[:,j]' * R[:,i]) * V[:,j] for j in 1:m)
 #     end

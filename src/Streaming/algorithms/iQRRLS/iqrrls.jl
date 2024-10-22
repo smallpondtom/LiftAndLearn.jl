@@ -23,10 +23,10 @@ Inverse QR Decomposition Recursive Least-Squares (iQRRLS) cache struct to solve 
 
 mutable struct iQRRLSCache{T<:Real}
     O::Array{T,2}           # Operator matrix (N x n)
-    Psq::Array{T,2}         # Square-root inverse covariance matrix (lower triangular, N x N)
+    Psq::AbstractArray{T,2} # Square-root inverse covariance matrix (lower triangular, N x N)
     K::Array{T,2}           # Kalman gain matrix (N x n)
-    ξpre::Array{T,1}        # A priori error vector (1 x n)
-    ξpost::Array{T,1}       # A posteriori error vector (1 x n)
+    ξpre::Array{T,2}        # A priori error vector (1 x n)
+    ξpost::Array{T,2}       # A posteriori error vector (1 x n)
     C::T                    # Conversion factor (scalar)
     J::T                    # Cost (scalar)
     γ::T                    # Regularization term
@@ -35,7 +35,7 @@ mutable struct iQRRLSCache{T<:Real}
     # Preallocated temporary variables
     A::Array{T,2}           # Temporary matrix for QR factorization ((N+1) x (N+1))
     u::Array{T,1}           # Temporary vector for computations (N x 1)
-    temp_dO::Array{T,1}     # Temporary vector for d * O (1 x n)
+    temp_dO::Array{T,2}     # Temporary vector for d * O (1 x n)
     temp_Ke::Array{T,2}     # Temporary matrix for K * ξpre (N x n)
 end
 

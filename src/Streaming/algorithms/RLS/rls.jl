@@ -14,25 +14,45 @@ Recursive Least-Squares (RLS) cache struct to solve for DO = R.
 #     γ::Real
 #     λ::Real
 # end
-mutable struct RLSCache{T<:Real}
-    O::Array{T,2}         # Operator matrix (N x n)
-    P::Array{T,2}         # Inverse covariance matrix (N x N)
-    K::Array{T,2}         # Kalman gain matrix (N x M)
-    ξpre::Array{T,2}      # A priori error matrix (M x n)
-    ξpost::Array{T,2}     # A posteriori error matrix (M x n)
-    C::Array{T,2}         # Conversion factor (M x M)
-    J::T                  # Cost (scalar)
-    γ::T                  # Regularization term
-    λ::T                  # Forgetting factor
+# @with_kw mutable struct RLSCache{T<:Real,N<:Int,M<:Int,n<:Int}
+#     O::Array{T,2} = Matrix{T}(undef,N,n)      # Operator matrix (N x n)
+#     P::AbstractArray{T,2}                     # Inverse covariance matrix (N x N)
+#     K::Array{T,2} = Matrix{T}(undef,N,M)      # Kalman gain matrix (N x M)
+#     ξpre::Array{T,2} = Matrix{T}(undef,M,n)   # A priori error matrix (M x n)
+#     ξpost::Array{T,2} = Matrix{T}(undef,M,n)  # A posteriori error matrix (M x n)
+#     C::Array{T,2} = Matrix{T}(undef,M,M)      # Conversion factor (M x M)
+#     J::T = zero(T)                            # Cost (scalar)
+#     γ::T                                      # Regularization term
+#     λ::T                                      # Forgetting factor
+
+#     # Preallocated temporary variables
+#     u::Array{T,1} = Matrix{T}(undef,N,1)           # For rank-1 update (N x 1)
+#     temp_DP::Array{T,2} = Matrix{T}(undef,M,N)     # Temporary matrix D * P (M x N)
+#     temp_PD::Array{T,2} = Matrix{T}(undef,N,M)     # Temporary matrix P * D' (N x M)
+#     temp_update::Array{T,2} = Matrix{T}(undef,N,N) # Temporary matrix (N x N)
+#     temp_Ke::Array{T,2} = Matrix{T}(undef,N,n)     # For updating O (N x n)
+# end
+@with_kw mutable struct RLSCache{T<:Real}
+    N::Int
+    M::Int
+    n::Int
+    O::Array{T,2} = Matrix{T}(undef,N,n)             # Operator matrix (N x n)
+    P::AbstractArray{T,2}                            # Inverse covariance matrix (N x N)
+    K::Array{T,2} = Matrix{T}(undef,N,M)             # Kalman gain matrix (N x M)
+    ξpre::Array{T,2} = Matrix{T}(undef,M,n)          # A priori error matrix (M x n)
+    ξpost::Array{T,2} = Matrix{T}(undef,M,n)         # A posteriori error matrix (M x n)
+    C::Array{T,2} = Matrix{T}(undef,M,M)             # Conversion factor (M x M)
+    J::T = zero(T)                                   # Cost (scalar)
+    γ::T                                             # Regularization term
+    λ::T                                             # Forgetting factor
 
     # Preallocated temporary variables
-    u::Array{T,1}         # For rank-1 update (N x 1)
-    temp_DP::Array{T,2}   # Temporary matrix D * P (M x N)
-    temp_PD::Array{T,2}   # Temporary matrix P * D' (N x M)
-    temp_update::Array{T,2} # Temporary matrix (N x N)
-    temp_Ke::Array{T,2}   # For updating O (N x n)
+    u::Array{T,1} = Vector{T}(undef,N)              # For rank-1 update (N x 1)
+    temp_DP::Array{T,2} = Matrix{T}(undef,M,N)      # Temporary matrix D * P (M x N)
+    temp_PD::Array{T,2} = Matrix{T}(undef,N,M)      # Temporary matrix P * D' (N x M)
+    temp_update::Array{T,2} = Matrix{T}(undef,N,N)  # Temporary matrix (N x N)
+    temp_Ke::Array{T,2} = Matrix{T}(undef,N,n)      # For updating O (N x n)
 end
-
 
 """
 Recursive Least Squares (RLS) algorithm for the Operator Inference problem.
@@ -50,25 +70,25 @@ performing computations in-place and minimizing memory allocations.
 The function updates the following fields in `obj`:
 - `O`, `P`, `K`, `ξpre`, `ξpost`, `C`, `J`.
 """
-function rls!(obj::RLSCache{T}, D::AbstractMatrix{T}, R::AbstractMatrix{T}, 
+function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T}, 
               Q::Union{Real, AbstractMatrix{T}}) where T<:Real
     M, N = size(D)   # M: number of data points, N: number of features
     n = size(R, 2)   # n: residual dimension (state dimemsion)
 
     # Compute a priori error: ξpre = R - D * O
-    mul!(obj.ξpre, D, obj.O, -1.0, 1.0)  # ξpre = R - D * O
-    # No need to add R since mul! already computes ξpre = -D*O + 1*ξpre
-    # So we add R to ξpre
+    mul!(obj.ξpre, D, obj.O, -1.0, 0.0)  # ξpre = R - D * O
+    # Then we add R to ξpre
     obj.ξpre .+= R
 
     # Update inverse covariance matrix P_k
     if M == 1  # Rank-1 update
         # Compute u = P * D'
         # D[1, :] is 1 x N, D[1, :]' is N x 1
-        mul!(obj.u, obj.P, D[1, :]', 1.0, 0.0)  # obj.u: N x 1
+        # or D[1, :]' could be just D[:]
+        mul!(obj.u, obj.P, D[:], 1.0, 0.0)  # obj.u: N x 1
 
         # Compute denominator: denom = Q + D * u / λ
-        denom = Q + (D[1, :] * obj.u)[1] / obj.λ  # scalar
+        denom = Q + dot(D, obj.u) / obj.λ  # scalar
 
         # Compute conversion factor: C = 1 / denom
         obj.C[1,1] = 1 / denom  # obj.C is 1 x 1 in rank-1 case
@@ -85,10 +105,10 @@ function rls!(obj::RLSCache{T}, D::AbstractMatrix{T}, R::AbstractMatrix{T},
         # Compute Kalman gain: K = P * Dᵗ / Q / λ
         if isa(Q, Number)
             Q_inv = 1 / Q
-            mul!(obj.K, obj.P, D[1, :]', Q_inv / obj.λ, 0.0)  # K: N x 1
+            mul!(obj.K, obj.P, D[:], Q_inv / obj.λ, 0.0)  # K: N x 1
         else
             Q_inv = Q \ I
-            mul!(obj.K, obj.P, D[1, :]', 1.0 / obj.λ, 0.0)
+            mul!(obj.K, obj.P, D[:], 1.0 / obj.λ, 0.0)
             mul!(obj.K, Q_inv, obj.K)
         end
     else  # Block (rank-M) update

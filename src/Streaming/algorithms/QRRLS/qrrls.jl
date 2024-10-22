@@ -23,22 +23,22 @@ QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = 
 #     temp_dP::Array{T,2}  # Temporary matrix for d' * P
 # end
 mutable struct QRRLSCache{T<:Real}
-    O::Array{T,2}        # Operator matrix (N x n)
-    P::Array{T,2}        # Inverse covariance matrix (N x N)
-    K::Array{T,2}        # Kalman gain matrix (N x n)
-    Φsq::Array{T,2}      # Square-root covariance matrix (upper triangular, N x N)
-    q::Array{T,2}        # Auxiliary matrix (N x n)
-    ξpre::Array{T,1}     # A priori error vector (1 x n)
-    ξpost::Array{T,1}    # A posteriori error vector (1 x n)
-    C::T                 # Conversion factor (scalar)
-    J::T                 # Cost (scalar)
-    γ::T                 # Regularization term
-    λ::T                 # Forgetting factor
+    O::Array{T,2}           # Operator matrix (N x n)
+    P::Array{T,2}           # Inverse covariance matrix (N x N)
+    K::Array{T,2}           # Kalman gain matrix (N x n)
+    Φsq::AbstractArray{T,2} # Square-root covariance matrix (upper triangular, N x N)
+    q::Array{T,2}           # Auxiliary matrix (N x n)
+    ξpre::Array{T,2}        # A priori error vector (1 x n)
+    ξpost::Array{T,2}       # A posteriori error vector (1 x n)
+    C::T                    # Conversion factor (scalar)
+    J::T                    # Cost (scalar)
+    γ::T                    # Regularization term
+    λ::T                    # Forgetting factor
 
     # Preallocated temporary variables
-    A::Array{T,2}        # Temporary matrix for QR factorization ((N + n + 1) x (N + n + 1))
-    temp_dO::Array{T,1}  # Temporary vector for d * O (1 x n)
-    temp_Kd::Array{T,2}  # Temporary matrix for P * d' (N x 1)
+    A::Array{T,2}           # Temporary matrix for QR factorization ((N + n + 1) x (N + n + 1))
+    temp_dO::Array{T,2}     # Temporary vector for d * O (1 x n)
+    temp_Kd::Array{T,2}     # Temporary matrix for P * d' (N x 1)
 end
 
 function qrrls!(obj::QRRLSCache{T}, d::AbstractMatrix{T}, r::AbstractMatrix{T}) where T<:Real

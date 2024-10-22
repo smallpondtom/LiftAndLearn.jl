@@ -7,14 +7,8 @@ include("algorithms/RLS/rls.jl")
 include("algorithms/iQRRLS/iqrrls.jl")
 include("algorithms/QRRLS/qrrls.jl")
 
-
-# Import the streaming methods
-include("algorithms/RLS/stream.jl")
-include("algorithms/iQRRLS/stream.jl")
-include("algorithms/QRRLS/stream.jl")
-
 # Each Algorithm solver structs
-mutable struct RLSOpInf{T<:Number} <: StreamingOpInf
+mutable struct RLSOpInf{T<:Real} <: StreamingOpInf
     cache::RLSCache{T}
     # Dimensions
     dims::Dict{Symbol,Int}
@@ -26,7 +20,7 @@ mutable struct RLSOpInf{T<:Number} <: StreamingOpInf
     initial_step::Bool             # Flag for initial step when γs is zero
 end
 
-mutable struct iQRRLSOpInf{T<:Number} <: StreamingOpInf
+mutable struct iQRRLSOpInf{T<:Real} <: StreamingOpInf
     cache::iQRRLSCache{T}
     # Dimensions
     dims::Dict{Symbol,Int}
@@ -36,7 +30,7 @@ mutable struct iQRRLSOpInf{T<:Number} <: StreamingOpInf
     options::LSOpInfOption  # Standard (Least-Squares) Operator Inference options
 end
 
-mutable struct QRRLSOpInf{T<:Number} <: StreamingOpInf
+mutable struct QRRLSOpInf{T<:Real} <: StreamingOpInf
     cache::QRRLSCache{T}
     # Dimensions
     dims::Dict{Symbol,Int}
@@ -45,6 +39,11 @@ mutable struct QRRLSOpInf{T<:Number} <: StreamingOpInf
     # Options
     options::LSOpInfOption  # Standard (Least-Squares) Operator Inference options
 end
+
+# Import the streaming methods
+include("algorithms/RLS/stream.jl")
+include("algorithms/iQRRLS/stream.jl")
+include("algorithms/QRRLS/stream.jl")
 
 
 """
@@ -56,64 +55,28 @@ function StreamingOpInf(;
     options::LSOpInfOption,             # Standard (Least-Squares) Operator Inference options
     n::Int, m::Int, l::Int,             # state, input, and output dimensions
     algorithm::Symbol=:RLS,             # algorithm type
-    γs=0.0, γo=0.0, λ=1.0,              # regularization terms and forgetting factor
+    γs::T=0.0, γo::T=0.0, λ::T=1.0,     # regularization terms and forgetting factor
+    rank::Int=1,                        # rank of the update (default rank-1 update)
     variable_regularize::Bool=false     # variable regularization flag
-    )
+    ) where {T<:Real}
 
     # Initialize the dimensions 
-    # TODO: Currently only supports up to
-    # - quartic operators
-    # - bilinear (state-input coupling) operators
-    # nml = Dict(
-    #     :A => n,  # state dimension
-    #     :B => m,  # input dimension
-    #     :C => l,  # output dimension 
-    #     :A2  => (2 ∈ options.system.state) && !options.optim.nonredundant_operators ? Int(n^2) : 0,                     # quadratic terms
-    #     :A2u => (2 ∈ options.system.state) && options.optim.nonredundant_operators  ? Int(n*(n+1)/2) : 0,               # 'u'nique quadratic terms
-    #     :A3  => (3 ∈ options.system.state) && !options.optim.nonredundant_operators ? Int(n^3) : 0,                     # cubic terms
-    #     :A3u => (3 ∈ options.system.state) && options.optim.nonredundant_operators  ? Int(n*(n+1)*(n+2)/6) : 0,         # 'u'nique cubic terms
-    #     :A4  => (4 ∈ options.system.state) && !options.optim.nonredundant_operators ? Int(n^4) : 0,                     # quartic terms
-    #     :A4u => (4 ∈ options.system.state) && options.optim.nonredundant_operators  ? Int(n*(n+1)*(n+2)*(n+3)/24) : 0,  # 'u'nique quartic terms
-    #     :N  => 1 ∈ options.system.coupled_input ? Int(n*m) : 0,  # bilinear term
-    #     :K  => options.system.constant ? 1 : 0,                  # constant term
-    # ) 
     dims = Dict(:n => n, :m => m, :l => l)
     d = 0  # total dimension of the data matrix
-    for i in options.system.state
-        d += binomial(n+i-1, i)
-    end
-    for i in options.system.control
-        d += binomial(m+i-1, i)
-    end
-    for i in options.system.coupled_input
-        d += binomial(n+i-1, i) * m
-    end
-    if options.system.constant
-        d += 1
-    end
+    d += sum(i != 0 ? binomial(n+i-1, i) : 0 for i in options.system.state)
+    d += sum(i != 0 ? binomial(m+i-1, i) : 0 for i in options.system.control)
+    d += sum(i != 0 ? binomial(n+i-1, i) * m : 0 for i in options.system.coupled_input)
+    d += iszero(options.system.constant) ? 0 : 1
     dims[:d] = d
 
     # Initialize variables based on algorithm
     if algorithm == :RLS
-        Os    = zeros(d,n)
-        Ps    = iszero(γs) ? Matrix{<:Number}(undef,0,0) : 1.0I(d) / γs
-        Ks    = Matrix{<:Number}(undef, 0, 0)
-        Oo    = zeros(n,l)
-        Po    = iszero(γo) ? Matrix{<:Number}(undef,0,0) : 1.0I(n) / γo
-        Ko    = Matrix{<:Number}(undef,0,0)
-        ξpre  = Matrix{<:Number}(undef,0,0)
-        ξpost = Matrix{<:Number}(undef,0,0)
-        C     = Matrix{<:Number}(undef,0,0)
-        J     = Matrix{<:Number}(undef,0,0)
+        Ps    = iszero(γs) ? Matrix{T}(undef,0,0) : Matrix(1.0I(d) / γs)
+        Po    = iszero(γo) ? Matrix{T}(undef,0,0) : Matrix(1.0I(n) / γo)
 
         # State regression
-        state_cache = RLSCache(
-            Os, Ps, Ks, ξpre, ξpost, C, J, γs, λ,
-            zeros(d,1), Matrix{<:Number}(undef,0,0),
-            Matrix{<:Number}(undef,0,0),
-            zeros(d,d), zeros(d,n),
-        )
-        state_rls = RLSOpInf(
+        state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, γ=γs, λ=λ)
+        state_rls = RLSOpInf{T}(
             state_cache, dims, Dict{Symbol,Any}(), options, 
             variable_regularize, iszero(γs)
         )
@@ -122,82 +85,77 @@ function StreamingOpInf(;
         end
 
         # Output regression
-        output_cache = RLSCache(
-            Oo, Po, Ko, ξpre, ξpost, C, J, γo, λ,
-            zeros(d,1), Matrix{<:Number}(undef,0,0),
-            Matrix{<:Number}(undef,0,0),
-            zeros(d,d), zeros(d,n),
-        )
-        output_rls = RLSOpInf(
+        output_cache = RLSCache{T}(N=n, M=rank, n=l, P=Po, γ=γo, λ=λ)
+        output_rls = RLSOpInf{T}(
             output_cache, dims, Dict{Symbol,Any}(), options, 
-            variable_regularize, iszero(γy)
+            variable_regularize, iszero(γo)
         )
         return state_rls, output_rls
     elseif algorithm == :QRRLS
-        Os    = zeros(d,n)
-        Ps    = Matrix{<:Number}(undef,0,0)
-        Ks    = Matrix{<:Number}(undef,0,0)
-        Oo    = zeros(n,l)
-        Po    = Matrix{<:Number}(undef,0,0)
-        Ko    = Matrix{<:Number}(undef,0,0)
+        Os    = zeros(T,d,n)
+        Ps    = Matrix{T}(undef,0,0)
+        Ks    = Matrix{T}(undef,0,0)
+        Oo    = zeros(T,n,l)
+        Po    = Matrix{T}(undef,0,0)
+        Ko    = Matrix{T}(undef,0,0)
         Φsqs  = sqrt(γs) * 1.0I(d)
-        qs    = zeros(d,n)
+        qs    = zeros(T,d,n)
         Φsqo  = sqrt(γo) * 1.0I(n)
-        qo    = zeros(n,l)
-        ξpre  = Matrix{<:Number}(undef,0,0)
-        ξpost = Matrix{<:Number}(undef,0,0)
-        C     = 0
-        J     = 0
+        qo    = zeros(T,n,l)
+        ξpre  = Matrix{T}(undef,0,0)
+        ξpost = Matrix{T}(undef,0,0)
+        C     = zero(T)
+        J     = zero(T)
 
         # State regression
-        state_cache = QRRLSCache(
+        state_cache = QRRLSCache{T}(
             Os, Ps, Ks, Φsqs, qs, ξpre, ξpost, C, J, γs, λ,
-            zeros(d+n+1,d+n+1), zeros(1,n), zeros(d,1)
+            zeros(T,d+n+1,d+n+1), zeros(T,1,n), zeros(T,d,1)
         )
-        state_qrrls = QRRLSOpInf(state_cache, dims, Dict{Symbol,Any}(), options)
+        state_qrrls = QRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
         if iszero(l)
             return state_qrrls
         end
 
         # Output regression
-        output_cache = QRRLSCache(
+        output_cache = QRRLSCache{T}(
             Oo, Po, Ko, Φsqo, qo, ξpre, ξpost, C, J, γo, λ,
-            zeros(d+n+1,d+n+1), zeros(1,n), zeros(d,1)
+            zeros(T,d+n+1,d+n+1), zeros(T,1,n), zeros(T,d,1)
         )
-        output_qrrls = QRRLSOpInf(output_cache, dims, Dict{Symbol,Any}(), options)
+        output_qrrls = QRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_qrrls, output_qrrls
     elseif algorithm == :iQRRLS
-        Os    = zeros(d,n)
+        Os    = zeros(T,d,n)
         Psqs  = 1.0I(d) / sqrt(γs)
-        Ks    = Matrix{<:Number}(undef,0,0)
-        Oo    = zeros(n,l)
+        Ks    = Matrix{T}(undef,0,0)
+        Oo    = zeros(T,n,l)
         Psqo  = 1.0I(n) / sqrt(γo)
-        Ko    = Matrix{<:Number}(undef,0,0)
-        Φs    = Matrix{<:Number}(undef,0,0)
-        qs    = Matrix{<:Number}(undef,0,0)
-        Φo    = Matrix{<:Number}(undef,0,0)
-        qo    = Matrix{<:Number}(undef,0,0)
-        ξpre  = Matrix{<:Number}(undef,0,0)
-        ξpost = Matrix{<:Number}(undef,0,0)
-        C     = 0
-        J     = 0
+        Ko    = Matrix{T}(undef,0,0)
+        Φs    = Matrix{T}(undef,0,0)
+        qs    = Matrix{T}(undef,0,0)
+        Φo    = Matrix{T}(undef,0,0)
+        qo    = Matrix{T}(undef,0,0)
+        ξpre  = Matrix{T}(undef,0,0)
+        ξpost = Matrix{T}(undef,0,0)
+        C     = zero(T)
+        J     = zero(T)
 
         # State regression
-        state_cache = iQRRLSCache(
+        state_cache = iQRRLSCache{T}(
             Os, Psqs, Ks, ξpre, ξpost, C, J, γs, λ,
-            zeros(d+1,d+1), zeros(d), zeros(1,n), zeros(d,n)
+            zeros(T,d+1,d+1), zeros(T,d), zeros(T,1,n), zeros(T,d,n)
         )
-        state_iqrrls = iQRRLSOpInf(state_cache, dims, Dict{Symbol,Any}(), options)
+        state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
         if iszero(l)
             return state_iqrrls
         end
 
         # Output regression
-        output_cache = iQRRLSCache(
+        output_cache = iQRRLSCache{T}(
             Oo, Psqo, Ko, ξpre, ξpost, C, J, γo, λ,
-            zeros(d+1,d+1), zeros(d), zeros(1,n), zeros(d,n)
+            zeros(T,d+1,d+1), zeros(T,d), zeros(T,1,n), zeros(T,d,n)
         )
-        output_iqrrls = iQRRLSOpInf(output_cache, dims, Dict{Symbol,Any}(), options)
+        output_iqrrls = iQRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_iqrrls, output_iqrrls
     else
         error("Available algorithms are RLS, QRRLS, and iQRRLS.")
@@ -213,12 +171,14 @@ the Recursive Least-Squares (RLS) algorithm with regularization.
 """
 function stream_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, R::AbstractArray{<:AbstractArray{T}}; 
                      U::AbstractArray{<:AbstractArray{T}}=Vector{T}[], γs::AbstractArray{<:Real}=zeros(length(X)),
-                     Q::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0,verbose::Bool=false) where T<:Number
+                     Q::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0,verbose::Bool=false) where T<:Real
     N = length(X)
     D = nothing # initialize the data matrix
     flag = typeof(Q) <: AbstractArray{T}
     no_input = isempty(U)
-    p = Progress(N; desc="Streaming data...")
+    if verbose
+        p = Progress(N; desc="Streaming data...")
+    end
     for i in 1:N
         if iszero(Q)
             if i == N
@@ -233,7 +193,9 @@ function stream_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, R::
                 D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], γs=γs[i], Q=flag ? Q : Q[i])
             end
         end
-        next!(p)
+        if verbose
+            next!(p)
+        end
     end
     return D
 end
@@ -246,18 +208,23 @@ Update the streaming operator inference continuously with all the data streams u
 the inverse and QR Decomposition Recursive Least-Squares (iQRRLS/QRRLS) algorithm.
 """
 function stream_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, X::AbstractArray{<:AbstractArray{T}}, 
-                     R::AbstractArray{<:AbstractArray{T}}; U::AbstractArray{<:AbstractArray{T}}=Vector{T}[]) where T<:Number
+                     R::AbstractArray{<:AbstractArray{T}}; U::AbstractArray{<:AbstractArray{T}}=Vector{T}[],
+                     verbose::Bool=false) where T<:Real
     N = length(X)
     D = nothing # initialize the data matrix
     no_input = isempty(U)
-    p = Progress(N; desc="Streaming data...")
+    if verbose
+        p = Progress(N; desc="Streaming data...")
+    end
     for i in 1:N
         if i == N
             D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], final_step=true)
         else
             D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i])
         end
-        next!(p)
+        if verbose
+            next!(p)
+        end
     end
     return D
 end
@@ -270,17 +237,22 @@ Streaming all the data for the output system using the Recursive Least-Squares (
 """
 function stream_output_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, 
                             Y::AbstractArray{<:AbstractArray{T}}; γo::AbstractArray{<:Real}=zeros(length(X)),
-                            Z::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0) where T<:Number
+                            Z::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0,
+                            verbose::Bool=false) where T<:Real
     N = length(X)
     flag = typeof(Z) <: AbstractArray{T}
-    p = Progress(N; desc="Streaming data...")
+    if verbose
+        p = Progress(N; desc="Streaming data...")
+    end
     for i in 1:N
         if iszero(Z)
             stream_output!(stream, X[i], Y[i]; γo=γo[i])
         else
             stream_output!(stream, X[i], Y[i]; γo=γo[i], Z=flag ? Z : Z[i])
         end
-        next!(p)
+        if verbose
+            next!(p)
+        end
     end
     return nothing
 end
@@ -293,12 +265,16 @@ Streaming all the data for the output system using the inverse and
 QR Decomposition Recursive Least-Squares (iQRRLS/QRRLS) algorithm.
 """
 function stream_output_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, X::AbstractArray{<:AbstractArray{T}}, 
-                            Y::AbstractArray{<:AbstractArray{T}}) where T<:Number
+                            Y::AbstractArray{<:AbstractArray{T}}, verbose::Bool=false) where T<:Real
     N = length(X)
-    p = Progress(N; desc="Streaming data...")
+    if verbose
+        p = Progress(N; desc="Streaming data...")
+    end
     for i in 1:N
         stream_output!(stream, X[i], Y[i])
-        next!(p)
+        if verbose
+            next!(p)
+        end
     end
     return nothing
 end
@@ -309,11 +285,11 @@ $(SIGNATURES)
 
 Terminate the streaming operator inference and return the operators.
 """
-function terminate_stream(obj::StreamingOpInf) where T<:Number
+function terminate_stream(obj::StreamingOpInf) 
     # Extract the operators
     operators = Operators()
     unpack_operators!(
-        operators, obj.cache.O, 
+        operators, obj.cache.O',  # remember to transpose the operator matrix
         obj.termination_settings[:dims], obj.termination_settings[:syms])
     return operators
 end

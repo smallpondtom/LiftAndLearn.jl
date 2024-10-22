@@ -5,7 +5,7 @@ Update the streaming operator inference with new data by solving a recursive lea
 the standard Recursive Least-Squares (RLS) algorithm with regularization.
 
 # Note 
-- For the RLS algorithm, the regularization term is updated if `variable_regularize` is enabled
+- For the RLS algorithm, the regularization term is updated if `variable_regularization` is enabled
 - The RLS algorithm also allows for rank-k update if the data-stream `X` is rank higher than 1
 - The RLS algorithm also permits noise in terms of a noise covariance matrix `Q`
 """
@@ -13,7 +13,7 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
                  Q::Union{T,AbstractArray{<:Real}}=size(X,2)==1 ? 1.0 : 1.0I(size(X,2)),
                  γs::Real=0.0, final_step::Bool=false) where T<:Number
 
-    tdim = size(X_k, 2)  # number of data points (time dimension)
+    tdim = size(X, 2)  # number of data points (time dimension)
 
     # Construct the data matrix while checking the dimension of the input matrix
     foo, bar = checksize(U) 
@@ -22,19 +22,19 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
             @warn "Transposing while assuming the row dim is the input dim and the column dim is the number of data points."
         end
         if final_step
-            D, operator_dims, operator_symbols = getDataMat(X, U', obj.options; verbose=true)
+            D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
             obj.termination_settings[:dims] = operator_dims
             obj.termination_settings[:syms] = operator_symbols
         else
-            D = getDataMat(X, U', obj.options; verbose=false)
+            D = get_data_matrix(X, U', obj.options; verbose=false)
         end
     else
         if final_step
-            D, operator_dims, operator_symbols = getDataMat(X, U, obj.options; verbose=true)
+            D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
             obj.termination_settings[:dims] = operator_dims
             obj.termination_settings[:syms] = operator_symbols
         else
-            D = getDataMat(X, U, obj.options; verbose=false)
+            D = get_data_matrix(X, U, obj.options; verbose=false)
         end
     end
 
@@ -48,7 +48,7 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
     end
 
     # Execute the update
-    if obj.variable_regularize  # if variable regularization is enabled
+    if obj.variable_regularization  # if variable regularization is enabled
         vrrls!(obj.cache, D, R, Q, γs, obj.γ)
     else
         if obj.initial_step && iszero(obj.γ)
@@ -85,7 +85,7 @@ function stream_output!(obj::RLSOpInf, X::AbstractArray{T}, Y::AbstractArray{T};
     end
     Xt = X'
 
-    if obj.variable_regularize  # if variable regularization is enabled
+    if obj.variable_regularization  # if variable regularization is enabled
         vrrls!(obj.cache, Xt, Y, Z, γo, obj.cache.γ)
     else 
         if obj.initial_step && iszero(obj.cache.γ)

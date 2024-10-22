@@ -123,4 +123,4 @@ end
 """
 $(SIGNATURES)
 """
-get_data_matrix(Xhat::AbstractArray, Ut::AbstractArray, options::AbstractOption) = get_data_matrix(Xhat, Xhat', Ut, options)
+get_data_matrix(Xhat::AbstractArray, Ut::AbstractArray, options::AbstractOption; verbose::Bool) = get_data_matrix(Xhat, Xhat', Ut, options; verbose)

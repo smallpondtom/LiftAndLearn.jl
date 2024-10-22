@@ -7,7 +7,7 @@ the QR Decomposition Recursive Least-Squares (iQRRLS) algorithm.
 function stream!(obj::QRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::AbstractArray{T}=T[], 
                  final_step::Bool=false) where T<:Number
 
-    tdim = size(X_k, 2)  # number of data points (time dimension)
+    tdim = size(X, 2)  # number of data points (time dimension)
 
     # Construct the data matrix while checking the dimension of the input matrix
     foo, bar = checksize(U) 
@@ -16,19 +16,19 @@ function stream!(obj::QRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::A
             @warn "Transposing while assuming the row dim is the input dim and the column dim is the number of data points."
         end
         if final_step
-            D, operator_dims, operator_symbols = getDataMat(X, U', obj.options; verbose=true)
+            D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
             obj.termination_settings[:dims] = operator_dims
             obj.termination_settings[:syms] = operator_symbols
         else
-            D = getDataMat(X, U', obj.options; verbose=false)
+            D = get_data_matrix(X, U', obj.options; verbose=false)
         end
     else
         if final_step
-            D, operator_dims, operator_symbols = getDataMat(X, U, obj.options; verbose=true)
+            D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
             obj.termination_settings[:dims] = operator_dims
             obj.termination_settings[:syms] = operator_symbols
         else
-            D = getDataMat(X, U, obj.options; verbose=false)
+            D = get_data_matrix(X, U, obj.options; verbose=false)
         end
     end
 
