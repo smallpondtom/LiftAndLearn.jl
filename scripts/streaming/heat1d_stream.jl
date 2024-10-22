@@ -139,7 +139,7 @@ Y_stream = LnL.streamify(Y, streamsize)
 R_stream = LnL.streamify(Vr' * Xdot, streamsize)
 num_of_streams = length(X_stream)
 
-## Initialize the stream
+# Initialize the stream
 # TR-Streaming-OpInf
 # γs = 1e-10
 # γo = 1e-9
@@ -148,15 +148,12 @@ num_of_streams = length(X_stream)
 γo = 1e-10
 state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=1, l=1, algorithm=:QRRLS, γs=γs, γo=γo)
 
-## Stream all at once
+# Stream all at once
 LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)
-
-##
 LnL.stream_output_all!(output_stream, X_stream, Y_stream)
 
-## Unpack solution operators
-op_stream = LnL.terminate_stream(state_stream)
-op_stream.C = output_stream.cache.O'
+# Unpack solution operators
+op_stream = LnL.terminate_stream(state_stream, output_stream)
 
 ###############################
 ## (Analysis 1) Relative Error 

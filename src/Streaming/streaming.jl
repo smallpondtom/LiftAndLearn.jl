@@ -259,3 +259,18 @@ function terminate_stream(obj::StreamingOpInf)
         obj.termination_settings[:dims], obj.termination_settings[:syms])
     return operators
 end
+
+"""
+$(SIGNATURES)
+
+Terminate the streaming operator inference and return the operators (dispatch)
+"""
+function terminate_stream(state_obj::StreamingOpInf, output_obj::StreamingOpInf) 
+    # Extract the operators
+    operators = Operators()
+    unpack_operators!(
+        operators, state_obj.cache.O',  # remember to transpose the operator matrix
+        state_obj.termination_settings[:dims], state_obj.termination_settings[:syms])
+    operators.C = output_obj.cache.O'
+    return operators
+end
