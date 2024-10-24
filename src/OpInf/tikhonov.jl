@@ -37,7 +37,7 @@ end
 
 
 """
-    tikhonovMatrix!(Γ::AbstractArray, dims::Dict, options::AbstractOption)
+    tikhonovk_matrix!(Γ::AbstractArray, dims::Dict, options::AbstractOption)
 
 Construct the Tikhonov matrix
 
@@ -48,7 +48,7 @@ Construct the Tikhonov matrix
 ## Returns
 - `Γ`: Tikhonov matrix (pass by reference)
 """
-function tikhonovMatrix!(Γ::AbstractArray, dims::AbstractArray, operator_symbols::AbstractArray, 
+function tikhonov_matrix!(Γ::AbstractArray, dims::AbstractArray, operator_symbols::AbstractArray, 
                          λ::TikhonovParameter)
     si = 1
     for (d, symbol) in zip(dims, operator_symbols)

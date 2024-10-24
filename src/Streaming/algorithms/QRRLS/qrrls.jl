@@ -6,22 +6,22 @@ QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = 
 @with_kw mutable struct QRRLSCache{T<:Real}
     N::Int                                        # Number of features (total dimension of operators)
     n::Int                                        # Number of outputs (residual dimension)
-    O::Array{T,2} = Matrix{T}(undef,N,n)          # Operator matrix (N x n)
+    O::Array{T,2} = zeros(T,N,n)          # Operator matrix (N x n)
     P::Array{T,2}                                 # Inverse covariance matrix (N x N)
-    K::Array{T,2} = Matrix{T}(undef,N,1)          # Kalman gain matrix (N x 1)
+    K::Array{T,2} = zeros(T,N,1)          # Kalman gain matrix (N x 1)
     Φsq::AbstractArray{T,2}                       # Square-root covariance matrix (upper triangular, N x N)
-    q::Array{T,2} = Matrix{T}(undef,N,n)          # Auxiliary matrix (N x n)
-    ξpre::Array{T,2} = Matrix{T}(undef,1,n)       # A priori error vector (1 x n)
-    ξpost::Array{T,2} = Matrix{T}(undef,1,n)      # A posteriori error vector (1 x n)
+    q::Array{T,2} = zeros(T,N,n)          # Auxiliary matrix (N x n)
+    ξpre::Array{T,2} = zeros(T,1,n)       # A priori error vector (1 x n)
+    ξpost::Array{T,2} = zeros(T,1,n)      # A posteriori error vector (1 x n)
     C::T = zero(T)                                # Conversion factor (scalar)
     J::T = zero(T)                                # Cost (scalar)
     γ::T                                          # Regularization term
     λ::T                                          # Forgetting factor
 
     # Preallocated temporary variables
-    A::Array{T,2} = Matrix{T}(undef,N+n+1,N+n+1)  # Temporary matrix for QR factorization ((N + n + 1) x (N + n + 1))
-    temp_dO::Array{T,2} = Matrix{T}(undef,1,n)    # Temporary vector for d * O (1 x n)
-    temp_Kd::Array{T,2} = Matrix{T}(undef,N,1)    # Temporary matrix for P * d' (N x 1)
+    A::Array{T,2} = zeros(T,N+n+1,N+n+1)  # Temporary matrix for QR factorization ((N + n + 1) x (N + n + 1))
+    temp_dO::Array{T,2} = zeros(T,1,n)    # Temporary vector for d * O (1 x n)
+    temp_Kd::Array{T,2} = zeros(T,N,1)    # Temporary matrix for P * d' (N x 1)
 end
 
 

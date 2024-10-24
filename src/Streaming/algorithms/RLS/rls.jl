@@ -7,22 +7,22 @@ Recursive Least-Squares (RLS) cache struct to solve for DO = R.
     N::Int                                          # Number of features (total dimension of operators)
     M::Int                                          # Number of data points
     n::Int                                          # Number of outputs (residual dimension)
-    O::Array{T,2} = Matrix{T}(undef,N,n)            # Operator matrix (N x n)
+    O::Array{T,2} = zeros(T,N,n)            # Operator matrix (N x n)
     P::AbstractArray{T,2}                           # Inverse covariance matrix (N x N)
-    K::Array{T,2} = Matrix{T}(undef,N,M)            # Kalman gain matrix (N x M)
-    ξpre::Array{T,2} = Matrix{T}(undef,M,n)         # A priori error matrix (M x n)
-    ξpost::Array{T,2} = Matrix{T}(undef,M,n)        # A posteriori error matrix (M x n)
-    C::Array{T,2} = Matrix{T}(undef,M,M)            # Conversion factor (M x M)
-    J::T = zero(T)                                  # Cost (scalar)
+    K::Array{T,2} = zeros(T,N,M)            # Kalman gain matrix (N x M)
+    ξpre::Array{T,2} = zeros(T,M,n)         # A priori error matrix (M x n)
+    ξpost::Array{T,2} = zeros(T,M,n)        # A posteriori error matrix (M x n)
+    C::Array{T,2} = zeros(T,M,M)            # Conversion factor (M x M)
+    J::Array{T,2} = zeros(T,M,M)                                  # Cost (scalar)
     γ::T                                            # Regularization term
     λ::T                                            # Forgetting factor
 
     # Preallocated temporary variables
-    u::Array{T,1} = Vector{T}(undef,N)              # For rank-1 update (N x 1)
-    temp_DP::Array{T,2} = Matrix{T}(undef,M,N)      # Temporary matrix D * P (M x N)
-    temp_PD::Array{T,2} = Matrix{T}(undef,N,M)      # Temporary matrix P * D' (N x M)
-    temp_update::Array{T,2} = Matrix{T}(undef,N,N)  # Temporary matrix (N x N)
-    temp_Ke::Array{T,2} = Matrix{T}(undef,N,n)      # For updating O (N x n)
+    u::Array{T,1} = zeros(T,N)              # For rank-1 update (N x 1)
+    temp_DP::Array{T,2} = zeros(T,M,N)      # Temporary matrix D * P (M x N)
+    temp_PD::Array{T,2} = zeros(T,N,M)      # Temporary matrix P * D' (N x M)
+    temp_update::Array{T,2} = zeros(T,N,N)  # Temporary matrix (N x N)
+    temp_Ke::Array{T,2} = zeros(T,N,n)      # For updating O (N x n)
 end
 
 """
@@ -126,7 +126,7 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
     obj.ξpost .+= R
 
     # Update the cost J: J = λ * J + ξpre' .* ξpost
-    obj.J = obj.λ * obj.J + obj.ξpre' .* obj.ξpost
+    obj.J = obj.λ * obj.J + obj.ξpre * obj.ξpost'
 
     return nothing
 end

@@ -66,10 +66,10 @@ function get_operators!(tmp, op, r, i, required_operators)
             push!(tmp, op.A[1:i, 1:i])
         elseif symb == :B
             push!(tmp, op.B[1:i, :])
-        elseif symb == :F 
+        elseif symb == :A2u
             idx = quad_indices(r, i)
             push!(tmp, op.F[1:i, idx])
-        elseif symb == :E 
+        elseif symb == :A3u
             idx = cube_indices(r, i)
             push!(tmp, op.E[1:i, idx])
         end
@@ -82,7 +82,7 @@ function compute_rse(op, Xfull, Ufull, Vr, tspan, IC, solver)
     else
         X = solver(op..., Ufull, tspan, Vr' * IC)
     end
-    return LnL.compStateError(Xfull, X, Vr), X
+    return LnL.rel_state_error(Xfull, X, Vr), X
 end
 
 
@@ -103,7 +103,7 @@ function analysis_1(ops, model, V, Xfull, Ufull, Yfull, required_operators, solv
                 foo, X = compute_rse(tmp, Xfull, Ufull, Vr, model.tspan, model.IC, solver)
             end
             Y = op.C[1:end, 1:i] * X
-            bar = LnL.compOutputError(Yfull, Y)
+            bar = LnL.rel_output_error(Yfull, Y)
             push!(rel_state_err[key], foo)
             push!(rel_output_err[key], bar)
             @info "($key) r = $i, State Error = $foo, Output Error = $bar"

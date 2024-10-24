@@ -22,10 +22,10 @@ function get_operators!(tmp, op, r, i, required_operators)
             push!(tmp, op.A[1:i, 1:i])
         elseif symb == :B
             push!(tmp, op.B[1:i, :])
-        elseif symb == :F 
+        elseif symb == :A2u
             idx = quad_indices(r, i)
             push!(tmp, op.F[1:i, idx])
-        elseif symb == :E 
+        elseif symb == :A3u
             idx = cube_indices(r, i)
             push!(tmp, op.E[1:i, idx])
         end
@@ -39,17 +39,17 @@ function compute_rse(op, Xfull, Ufull, Vr, tspan, IC, solver)
     else
         X = solver(op..., Ufull, tspan, Vr' * IC)
     end
-    return LnL.compStateError(Xfull, X, Vr), X
+    return LnL.rel_state_err(Xfull, X, Vr), X
 end
 
 
 function analysis_1(ops, model, V, Xfull, Ufull, Yfull, required_operators, solver; r_select=nothing)
     r = size(V,2)
-    rel_state_err = Dict{String, Vector{Float64}}()
-    rel_output_err = Dict{String, Vector{Float64}}()
+    rse = Dict{String, Vector{Float64}}()
+    roe = Dict{String, Vector{Float64}}()
     for (key, op) in ops
-        rel_state_err[key] = Vector{Float64}[]
-        rel_output_err[key] = Vector{Float64}[]
+        rse[key] = Vector{Float64}[]
+        roe[key] = Vector{Float64}[]
         for i = (isnothing(r_select) ? (1:r) : r_select)
             Vr = V[:, 1:i]
             tmp = []
@@ -60,11 +60,11 @@ function analysis_1(ops, model, V, Xfull, Ufull, Yfull, required_operators, solv
                 foo, X = compute_rse(tmp, Xfull, Ufull, Vr, model.tspan, model.IC, solver)
             end
             Y = op.C[1:end, 1:i] * X
-            bar = LnL.compOutputError(Yfull, Y)
-            push!(rel_state_err[key], foo)
-            push!(rel_output_err[key], bar)
+            bar = LnL.rel_output_err(Yfull, Y)
+            push!(rse[key], foo)
+            push!(roe[key], bar)
             @info "($key) r = $i, State Error = $foo, Output Error = $bar"
         end
     end
-    return rel_state_err, rel_output_err
+    return rse, roe
 end

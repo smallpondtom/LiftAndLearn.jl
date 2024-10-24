@@ -31,7 +31,7 @@ function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Yt::AbstractArr
     Γ = spzeros(sum(dims))
 
     # Construct the Tikhonov matrix
-    tikhonovMatrix!(Γ, dims, operator_symbols, options.λ)
+    tikhonov_matrix!(Γ, dims, operator_symbols, options.λ)
     Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
     # compute least squares (pseudo inverse)

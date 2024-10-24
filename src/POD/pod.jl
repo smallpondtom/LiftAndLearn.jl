@@ -71,47 +71,6 @@ function pod(op::Operators, Vr::AbstractArray, sys_struct::SystemStructure;
         end
     end
 
-    # # Quadratic term
-    # if !iszero(op.A2)
-    #     A2hat = Vr' * op.A2 * (Vr ⊗ Vr)
-    #     op_new.A2 = A2hat
-    #     op_new.A2u = eliminate(A2hat, 2)
-    #     op_new.A2t = H2Q(A2hat)
-    # else
-    #     Ln = elimat(n, 2)
-    #     Dr = dupmat(r, 2)
-    #     A2uhat = Vr' * op.A2u * Ln * (Vr ⊗ Vr) * Dr
-    #     op_new.A2u = A2uhat
-    #     op_new.A2 = duplicate(A2uhat, 2)
-    #     op_new.A2t = H2Q(op_new.A2)
-    # end
-
-    # # Cubic term
-    # if !iszero(op.A3)
-    #     A3hat = Vr' * op.A3 * (Vr ⊗ Vr ⊗ Vr)
-    #     op_new.A3 = A3hat
-    #     op_new.A3u = eliminate(A3hat, 3)
-    # else
-    #     Ln = elimat(n, 3)
-    #     Dr = dupmat(r, 3)
-    #     A3uhat = Vr' * op.A3u * Ln * (Vr ⊗ Vr ⊗ Vr) * Dr
-    #     op_new.A3u = A3uhat
-    #     op_new.A3 = duplicate(A3uhat, 3)
-    # end
-
-    # # Quartic term
-    # if !iszero(op.A4)
-    #     A4hat = Vr' * op.A4 * (Vr ⊗ Vr ⊗ Vr ⊗ Vr)
-    #     op_new.A4 = A4hat
-    #     op_new.A4u = eliminate(A4hat, 4)
-    # else
-    #     Ln = elimat(n, 4)
-    #     Dr = dupmat(r, 4)
-    #     A4uhat = Vr' * op.A4u * Ln * (Vr ⊗ Vr ⊗ Vr ⊗ Vr) * Dr
-    #     op_new.A4u = A4uhat
-    #     op_new.A4 = duplicate(A4uhat, 4)
-    # end
-
     # Bilinear term
     if 1 in sys_struct.coupled_input
         sz = size(op.N)
@@ -127,77 +86,6 @@ function pod(op::Operators, Vr::AbstractArray, sys_struct::SystemStructure;
             op_new.N = Vr' * op.N * Vr
         end
     end
-
-    # if options.system.is_quad  # Add the Fhat term here
-    #     if op.F != 0
-    #         Ln = elimat(n)
-    #         Dr = dupmat(r)
-    #         VV = Vr ⊗ Vr
-    #         Fhat = Vr' * op.F * Ln * VV * Dr
-    #         op_new.F = Matrix(Fhat)
-
-    #         if op.H == 0
-    #             Hhat = F2Hs(Fhat)
-    #             op_new.H = Matrix(Hhat)
-    #         end
-    #     end
-
-    #     if op.H != 0  # Add the Hhat term here
-    #         Hhat = Vr' * op.H * (Vr ⊗ Vr)
-    #         op_new.H = Matrix(Hhat)
-
-    #         if op.F == 0
-    #             Fhat = H2F(Hhat)
-    #             op_new.F = Matrix(Fhat)
-    #         end
-    #     end
-    # end
-
-    # # Add the Nhat term here
-    # if options.system.is_bilin
-    #     sz = size(op.N)
-    #     # if typeof(op.N) == Vector{Matrix}
-    #     if length(sz) == 3
-    #         p = sz[3]
-    #         # Nhat = Vector{Matrix{Float64}}(undef, length(op.N))
-    #         Nhat = Array{Float64}(undef, (r,r,p))
-    #         # i = 0
-    #         # for Ni in op.N  # Assuming that op.N is a vector of matrices
-    #         for i in 1:p
-    #             tmp = Vr' * op.N[:,:,i] * Vr
-    #             # Nhat[i+=1] = Matrix(tmp[:, :])
-    #             Nhat[:,:,i] = Matrix(tmp[:, :])
-    #         end
-    #         op_new.N = Nhat
-    #     else
-    #         Nhat = Vr' * op.N * Vr
-    #         op_new.N = Matrix(Nhat[:, :])
-    #     end
-    # end
-
-    # Cubic term
-    # if options.system.is_cubic
-    #     if op.E != 0
-    #         Ln3 = elimat3(n)
-    #         Dr3 = dupmat3(r)
-    #         Ehat = Vr' * op.E * Ln3 * (Vr ⊗ Vr ⊗ Vr) * Dr3
-    #         op_new.E = Matrix(Ehat)
-
-    #         if op.G == 0
-    #             Ghat = E2Gs(Ehat)
-    #             op_new.G = Matrix(Ghat)
-    #         end
-    #     end
-    #     if op.G != 0
-    #         Ghat = Vr' * op.G * (Vr ⊗ Vr ⊗ Vr)
-    #         op_new.G = Matrix(Ghat)
-
-    #         if op.E != 0
-    #             Ehat = G2E(Ghat)
-    #             op_new.E = Matrix(Ehat)
-    #         end
-    #     end
-    # end
 
     return op_new
 end

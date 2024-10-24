@@ -260,6 +260,7 @@ function terminate_stream(obj::StreamingOpInf)
     return operators
 end
 
+
 """
 $(SIGNATURES)
 

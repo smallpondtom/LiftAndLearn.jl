@@ -6,21 +6,21 @@ Inverse QR Decomposition Recursive Least-Squares (iQRRLS) cache struct to solve 
 @with_kw mutable struct iQRRLSCache{T<:Real}
     N::Int                                       # Number of features (total dimension of operators)
     n::Int                                       # Number of outputs (residual dimension)
-    O::Array{T,2} = Matrix{T}(undef,N,n)         # Operator matrix (N x n)
+    O::Array{T,2} = zeros(T,N,n)         # Operator matrix (N x n)
     Psq::AbstractArray{T,2}                      # Square-root inverse covariance matrix (lower triangular, N x N)
-    K::Array{T,2} = Matrix{T}(undef,N,1)         # Kalman gain matrix (N x 1)
-    ξpre::Array{T,2} = Matrix{T}(undef,1,n)      # A priori error vector (1 x n)
-    ξpost::Array{T,2} = Matrix{T}(undef,1,n)     # A posteriori error vector (1 x n)
+    K::Array{T,2} = zeros(T,N,1)         # Kalman gain matrix (N x 1)
+    ξpre::Array{T,2} = zeros(T,1,n)      # A priori error vector (1 x n)
+    ξpost::Array{T,2} = zeros(T,1,n)     # A posteriori error vector (1 x n)
     C::T = zero(T)                               # Conversion factor (scalar)
     J::T = zero(T)                               # Cost (scalar)
     γ::T                                         # Regularization term
     λ::T                                         # Forgetting factor
 
     # Preallocated temporary variables
-    A::Array{T,2} = Matrix{T}(undef,N+1,N+1)     # Temporary matrix for QR factorization ((N+1) x (N+1))
-    u::Array{T,2} = Matrix{T}(undef,N,1)         # Temporary vector for computations (N x 1)
-    temp_dO::Array{T,2} = Matrix{T}(undef,1,n)   # Temporary vector for d * O (1 x n)
-    temp_Ke::Array{T,2} = Matrix{T}(undef,N,n)   # Temporary matrix for K * ξpre (N x n)
+    A::Array{T,2} = zeros(T,N+1,N+1)     # Temporary matrix for QR factorization ((N+1) x (N+1))
+    u::Array{T,2} = zeros(T,N,1)         # Temporary vector for computations (N x 1)
+    temp_dO::Array{T,2} = zeros(T,1,n)   # Temporary vector for d * O (1 x n)
+    temp_Ke::Array{T,2} = zeros(T,N,n)   # Temporary matrix for K * ξpre (N x n)
 end
 
 
