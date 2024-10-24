@@ -5,6 +5,7 @@
 #===========#
 ## Packages
 #===========#
+using BenchmarkTools
 using CairoMakie
 using LinearAlgebra
 using ProgressMeter
@@ -22,30 +23,28 @@ const LnL = LiftAndLearn
 #=================#
 SAVEFIG = true
 
-#=============================#
-## Include functions and files
-#=============================#
-include("utilities/plot_theme.jl")
-include("utilities/analysis.jl")
-include("utilities/plotting.jl")
+#================================#
+## Configure filepath for saving
+#================================#
+FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"RLS/") : joinpath(pwd(), "scripts/RLS/")
 
 #========================#
 ## 2D Heat equation setup
 #========================#
-Ω = ((0.0, 1.0), (0.0, 1.0))
-Nx = 2^6
-Ny = 2^6
+Ω = ((0.0, 1.0), (0.0, 1.25))
+Nx = 32
+Ny = 40
 heat2d = Heat2DModel(
-    spatial_domain=Ω, time_domain=(0,2), 
+    spatial_domain=Ω, time_domain=(0,1.0), 
     Δx=(Ω[1][2] + 1/Nx)/Nx, Δy=(Ω[2][2] + 1/Ny)/Ny, Δt=1e-3,
     diffusion_coeffs=0.1, BC=(:dirichlet, :dirichlet)
 )
-xgrid0 = heat2d.xspan' .* ones(heat2d.spatial_dim[1])
-ygrid0 = ones(heat2d.spatial_dim[2])' .* heat2d.yspan
+xgrid0 = heat2d.yspan' .* ones(heat2d.spatial_dim[1])
+ygrid0 = ones(heat2d.spatial_dim[2])' .* heat2d.xspan
 ux0 = sin.(2π * xgrid0) .* cos.(2π * ygrid0)
 heat2d.IC = vec(ux0)  # initial condition
 
-# OpInf options
+# Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=1,
@@ -78,11 +77,10 @@ U = [1.0, 1.0, -1.0, -1.0]
 U = repeat(U, 1, heat2d.time_dim)
 
 # Compute the state snapshot data with backward Euler
-X = heat2d.integrate_model(A, B, U, heat2d.tspan, heat2d.IC)
-
-# Compute the SVD for the POD basis
-r = 12  # order of the reduced form
-Vr = svd(X).U[:, 1:r]
+X = heat2d.integrate_model(
+    heat2d.tspan, heat2d.IC, U; linear_matrix=A, control_matrix=B, 
+    system_input=true, integrator_type=:BackwardEuler
+)
 
 # Compute the output of the system
 Y = C * X
@@ -152,6 +150,14 @@ end
 X2d = nothing
 GC.gc()
 
+#==================================#
+## Compute the SVD for the POD basis
+#==================================#
+r = 12  # order of the reduced form
+V, Σ, _ = svd(X)
+Vr = V[:, 1:r]
+Σr = Σ[1:r]
+
 #===========#
 ## Intrusive
 #===========#
@@ -190,45 +196,44 @@ Y_stream = LnL.streamify(Y, streamsize)
 R_stream = LnL.streamify(Vr' * Xdot, streamsize)
 num_of_streams = length(X_stream)
 
-# Initialize the stream
-# γs = 0.0
-# γo = 0.0
-γs = 1e-9
-γo = 1e-8
-algo = :iQRRLS
+## RLS
+γs = 5e-10
+γo = 1e-10
+algo = :RLS
 state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=size(U,1), l=size(Y,1); γs=γs, γo=γo, algorithm=algo)
-
-# Stream all at once
 LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)
 LnL.stream_output_all!(output_stream, X_stream, Y_stream)
+op_stream_rls = LnL.terminate_stream(state_stream, output_stream)
 
-# Unpack solution operators
-op_stream = LnL.terminate_stream(state_stream, output_stream)
+## QRRLS
+γs = 1e-15
+γo = 1e-15
+algo = :QRRLS
+state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=size(U,1), l=size(Y,1); γs=γs, γo=γo, algorithm=algo)
+LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)
+LnL.stream_output_all!(output_stream, X_stream, Y_stream)
+op_stream_qrrls = LnL.terminate_stream(state_stream, output_stream)
 
+## iQRRLS
+γs = 1e-15
+γo = 1e-15
+algo = :iQRRLS
+state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=size(U,1), l=size(Y,1); γs=γs, γo=γo, algorithm=algo)
+LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)
+LnL.stream_output_all!(output_stream, X_stream, Y_stream)
+op_stream_iqrrls = LnL.terminate_stream(state_stream, output_stream)
 
-###############################
+#=============================#
 ## (Analysis 1) Relative Error 
-###############################
-# # Collect all operators into a dictionary
-# op_dict = Dict(
-#     "POD" => op_int,
-#     "OpInf" => op_inf,
-#     "TR-OpInf" => op_inf_reg,
-#     "iQR-Streaming-OpInf" => op_stream
-#     # "Streaming-OpInf" => op_stream
-# )
-# rse, roe = analysis_1(op_dict, heat2d, Vr, Xfull, Ufull, Yfull, [:A, :B], heat2d.integrate_model)
-
-# ## Plot
-# fig1 = plot_rse(rse, roe, r, ace_light; provided_keys=["POD", "OpInf", "TR-OpInf", "iQR-Streaming-OpInf"])
-# display(fig1)
-
+#=============================#
 # Collect all operators into a dictionary
 op_dict = Dict(
     "POD" => op_int,
     "OpInf" => op_inf,
     "TR-OpInf" => op_inf_reg,
-    "Streaming-OpInf" => op_stream
+    "RLS-Streaming-OpInf" => op_stream_rls,
+    "QRRLS-Streaming-OpInf" => op_stream_qrrls,
+    "iQRRLS-Streaming-OpInf" => op_stream_iqrrls,
 )
 
 r = size(Vr,2)
@@ -242,8 +247,8 @@ for (key, op) in op_dict
 
         # Integrate the system for reconstruction
         Xtmp = heat2d.integrate_model(
-            heat2d.tspan, Vri' * heat2d.IC, Ufull; 
-            operators=[A[1:i,1:i],B[1:i,:]], system_input=true, integrator_type=:BackwardEuler
+            heat2d.tspan, Vri' * heat2d.IC, Ufull; linear_matrix=op.A[1:i,1:i], control_matrix=op.B[1:i,:], 
+            system_input=true, integrator_type=:BackwardEuler
         )
 
         foo = LnL.rel_state_error(Xfull, Xtmp, Vri)
@@ -251,19 +256,20 @@ for (key, op) in op_dict
         bar = LnL.rel_output_error(Yfull, Y)
         push!(rse[key], foo)
         push!(roe[key], bar)
-        @info "($key) r = $i, State Error = $foo, Output Error = $bar"
+        @info "($key) r = $i, State Error = $(round(foo,sigdigits=4)), Output Error = $(round(bar,sigdigits=4))"
     end
 end
 
 ## Plot
-provided_keys = ["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"]
+provided_keys = ["POD", "OpInf", "TR-OpInf", "RLS-Streaming-OpInf",
+                 "QRRLS-Streaming-OpInf", "iQRRLS-Streaming-OpInf"]
 with_theme(theme_latexfonts()) do
     fig1 = Figure(fontsize=20, size=(1200,600))
     # Relative State Error
     ax1 = Axis(fig1[1, 1], 
         xlabel=L"reduced dimension, $r$",
         ylabel="Relative State Error", 
-        title="Relative State Error", 
+        # title="Relative State Error", 
         yscale=log10,
         xlabelsize=30,
         ylabelsize=30,
@@ -279,7 +285,7 @@ with_theme(theme_latexfonts()) do
     ax2 = Axis(fig1[1, 2], 
         xlabel=L"reduced dimensions, $r$", 
         ylabel="Relative Output Error", 
-        title="Relative Output Error", 
+        # title="Relative Output Error", 
         yscale=log10,
         xlabelsize=30,
         ylabelsize=30,
@@ -297,46 +303,108 @@ with_theme(theme_latexfonts()) do
         halign=:center, 
         tellwidth=false, 
         tellheight=true,
-        labelsize=28
+        labelsize=28,
+        nbanks=2
     )
     display(fig1)
+    save(joinpath(FILEPATH, "plots/heat2d/heat2d_error.png"), fig1)
 end
 
-
-##################################################
-## (Analysis 2) Per stream quantities of interest
-##################################################
-r_select = 1:r
-analysis_results = analysis_2(
-    Xhat_stream, U_stream, Y_stream, R_stream, num_of_streams, 
-    op_inf_reg, Xfull, Vr, Ufull, Yfull, heat2d, r_select, options, 
-    [:A, :B], LnL.backwardEuler; VR=false, α=γs, β=γo, algo=algo
+#==============================#
+## (Analysis 2) execution time 
+#==============================#
+runtimes = Dict{String, Vector{Float64}}(
+    "POD" => Float64[],
+    "OpInf" => Float64[],
+    "TR-OpInf" => Float64[],
+    "RLS-Streaming-OpInf" => Float64[],
+    "QRRLS-Streaming-OpInf" => Float64[],
+    "iQRRLS-Streaming-OpInf" => Float64[]
 )
+options.system.output = 0
+for ri in 1:r
+    # pod
+    t_pod = @benchmark LnL.pod(op_heat, Vr[:,1:$ri], options.system)
+    tmp = mean(t_pod).time / 1e9
+    push!(runtimes["POD"], tmp)
+
+    # opinf
+    options.with_reg = false
+    t_opinf = @benchmark LnL.opinf(X, Vr[:,1:$ri], options; U=U, Xdot=Xdot)
+    tmp = mean(t_opinf).time / 1e9
+    push!(runtimes["OpInf"], tmp)
+
+    # tr-opinf
+    options.with_reg = true
+    t_opinf_reg = @benchmark LnL.opinf(X, Vr[:,1:$ri], options; U=U, Xdot=Xdot) 
+    tmp = mean(t_opinf_reg).time / 1e9
+    push!(runtimes["TR-OpInf"], tmp)
+
+    # Streamify the data based on the reduced dimension
+    X_stream = LnL.streamify(Vr[:,1:ri]' * X, streamsize)
+    R_stream = LnL.streamify(Vr[:,1:ri]' * Xdot, streamsize)
+
+    # rls-streaming-opinf
+    γs = 5e-10
+    γo = 1e-10
+    algo = :RLS
+    state_stream, output_stream = LnL.StreamingOpInf(options=options, n=ri, m=size(U,1), l=size(Y,1); γs=γs, γo=γo, algorithm=algo)
+    t_stream_rls = @benchmark LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)
+    tmp = mean(t_stream_rls).time / 1e9
+    push!(runtimes["RLS-Streaming-OpInf"], tmp)
+
+    # qrrls-streaming-opinf
+    γs = 1e-15
+    γo = 1e-15
+    algo = :QRRLS
+    state_stream, output_stream = LnL.StreamingOpInf(options=options, n=ri, m=size(U,1), l=size(Y,1); γs=γs, γo=γo, algorithm=algo)
+    t_stream_qrrls = @benchmark LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)
+    tmp = mean(t_stream_qrrls).time / 1e9
+    push!(runtimes["QRRLS-Streaming-OpInf"], tmp)
+
+    # iqrrls-streaming-opinf
+    γs = 1e-15
+    γo = 1e-15
+    algo = :iQRRLS
+    state_stream, output_stream = LnL.StreamingOpInf(options=options, n=ri, m=size(U,1), l=size(Y,1); γs=γs, γo=γo, algorithm=algo)
+    t_stream_iqrrls = @benchmark LnL.stream_all!(state_stream, X_stream, R_stream; U=U_stream)
+    tmp = mean(t_stream_iqrrls).time / 1e9
+    push!(runtimes["iQRRLS-Streaming-OpInf"], tmp)
+end
 
 ## Plot
-fig2 = plot_rse_per_stream(analysis_results["rse_stream"], analysis_results["roe_stream"], 
-                           analysis_results["streaming_error"], analysis_results["streaming_error_output"], 
-                           [5,10,15], num_of_streams; ylimits=([1e-7,1.3e1], [1e-9,1e1]))
-display(fig2)
-##
-fig3 = plot_errorfactor_condition(analysis_results["cond_state_EF"], analysis_results["cond_output_EF"], 
-                                  r_select, num_of_streams, ace_light)
-display(fig3)
-##
-fig4 = plot_streaming_error(analysis_results["streaming_error"], analysis_results["streaming_error_output"], 
-                            analysis_results["true_streaming_error"], analysis_results["true_streaming_error_output"],
-                            r_select, num_of_streams, ace_light)
-display(fig4)
-
-
-##############################################
-## (Analysis 3) Initial error over streamsize
-##############################################
-streamsizes = 1:num_of_streams
-init_rse, init_roe = analysis_3(streamsizes, Vr, X, U, Y, Vr' * Xdot, op_inf_reg, 1:15, options; 
-                                tol=nothing, α=γs, β=γo, algo=algo)
-
-## Plot
-fig5 = plot_initial_error(streamsizes, init_rse, init_roe, ace_light, 1:15)
-display(fig5)
-
+provided_keys = ["POD", "OpInf", "TR-OpInf", "RLS-Streaming-OpInf",
+                 "QRRLS-Streaming-OpInf", "iQRRLS-Streaming-OpInf"]
+with_theme(theme_latexfonts()) do
+    fig2 = Figure(fontsize=20, size=(1250,600))
+    # Relative State Error
+    ax1 = Axis(fig2[1, 1], 
+        xlabel=L"reduced dimension, $r$",
+        ylabel="average runtimes", 
+        # title="", 
+        yscale=log10,
+        xlabelsize=30,
+        ylabelsize=30,
+        xticklabelsize=25,
+        yticklabelsize=25,
+        xticks=1:r
+    )
+    lines = []
+    labels = []
+    for key in provided_keys
+        l = scatterlines!(ax1, 1:r, runtimes[key])
+        push!(lines, l)
+        push!(labels, key)
+    end
+    Legend(fig2[2, 1], 
+        lines, labels,
+        orientation=:horizontal, 
+        halign=:center, 
+        tellwidth=false, 
+        tellheight=true,
+        labelsize=28,
+        nbanks=2
+    )
+    display(fig2)
+    save(joinpath(FILEPATH, "plots/heat2d/heat2d_runtime.png"), fig2)
+end

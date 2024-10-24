@@ -17,7 +17,7 @@ const LnL = LiftAndLearn
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"PDE/") : joinpath(pwd(), "scripts/PDE/")
+FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/") : joinpath(pwd(), "scripts/Streaming-OpInf/")
 
 #==============================#
 ## Include functions and files
@@ -117,7 +117,7 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig0[1, 3], hm1) 
     Colorbar(fig0[2, 3], hm2)
     display(fig0)
-    # save(joinpath(FILEPATH, "plots/heat2d/heat2d_initial_final.png"), fig0)
+    save(joinpath(FILEPATH, "plots/heat2d/heat2d_initial_final.png"), fig0)
 end
 
 #==================================#
@@ -140,12 +140,13 @@ iΣr = sort(iΣ, rev=true)[1:r]
 #======================#
 ## Plot Singular Values
 #======================#
-fig0 = Figure()
-ax = Axis(fig0[1,1], title="Singular Values", xlabel="Index", ylabel="Value", yscale=log10)
+fig1 = Figure()
+ax = Axis(fig1[1,1], title="Singular Values", xlabel="Index", ylabel="Value", yscale=log10)
 scatterlines!(ax, 1:r, Σr, color=:black, linewidth=3, label="SVD")
 scatterlines!(ax, 1:r, iΣr, color=:red, linewidth=2, linestyle=:dash, label="iSVD")
 axislegend(ax, labelsize=20, position=:rt)
-display(fig0)
+display(fig1)
+save(joinpath(FILEPATH, "plots/heat2d/singular_values.png"), fig1)
 
 #==============#
 ## POD-Galerkin
@@ -357,6 +358,7 @@ with_theme(theme_latexfonts()) do
     )
     Label(fig1[0, :], "2D Heat Equation", fontsize=35)
     display(fig1)
+    save(joinpath(FILEPATH, "plots/heat2d/relative_error.png"), fig1)
 end
 
 #==========================================#
@@ -428,4 +430,71 @@ with_theme(theme_latexfonts()) do
     end
     Label(fig2[0, :], "Relative State/Output Error and Streaming Error per stream for different reduced dimensions", fontsize=32)
     display(fig2)
+    save(joinpath(FILEPATH, "plots/heat2d/streaming_error.png"), fig2)
+end
+
+#================================================#
+## Plot a posteriori error and conversion factor
+#================================================#
+with_theme(theme_latexfonts()) do 
+    fig3 = Figure(size=(900,800))
+    axis_colors = Makie.categorical_colors(:tab10, 2)
+    xtick_vals = 0:(num_of_streams ÷ 5):num_of_streams
+    ax1 = Axis(fig3[1, 1],
+        title="A Posteriori Error and Conversion Factor per stream",
+        xlabel=L"$k$-th stream", 
+        ylabel=L"(\xi_{\mathrm{post}})_k",
+        # title=L"Relative State Error & Streaming Error, $r = %$ri$", 
+        xticks=xtick_vals, yticklabelcolor=axis_colors[1],
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        ylabelcolor=axis_colors[1], titlesize=30
+    )
+    ax2 = Axis(fig3[1, 1],
+        ylabel=L"\gamma_k",
+        yticklabelcolor=axis_colors[2], yaxisposition=:right, ygridstyle=:dash,
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        ylabelcolor=axis_colors[2]
+    )
+    hidespines!(ax2)
+    hidexdecorations!(ax2)
+    scatterlines!(ax1, 1:num_of_streams, state_stream_res.post_err, color=axis_colors[1])
+    scatterlines!(ax2, 1:num_of_streams, state_stream_res.conv_factor, color=axis_colors[2])
+    display(fig3)
+    save(joinpath(FILEPATH, "plots/heat2d/aposteriori_error.png"), fig3)
+end
+
+#========================#
+## Animate eyeball norm 
+#========================#
+Xtmp = heat2d.integrate_model(
+    heat2d.tspan, iVr' * heat2d.IC, U; linear_matrix=op_stream.A, control_matrix=op_stream.B, 
+    system_input=true, integrator_type=:BackwardEuler
+)
+X2d_stream = invec.(eachcol(iVr * Xtmp), heat2d.spatial_dim...) 
+X2d = invec.(eachcol(Xfull), heat2d.spatial_dim...)
+##
+with_theme(theme_latexfonts()) do
+    fig = Figure(fontsize=20, size=(1300,1000))
+    ax1 = Axis3(fig[1, 1], xlabel="x", ylabel="y", zlabel="u(x,y,t)")
+    ax2 = Axis3(fig[2, 1], xlabel="x", ylabel="y", zlabel="u(x,y,t)",
+                limits=(nothing, nothing, nothing, nothing, -2e-5, 2e-5))
+    ax3 = Axis(fig[1, 2], xlabel="x", ylabel="y", aspect=DataAspect())
+    ax4 = Axis(fig[2, 2], xlabel="x", ylabel="y", aspect=DataAspect())
+    colsize!(fig.layout, 2, Aspect(1, 0.8))
+    sf1 = surface!(ax1, heat2d.xspan, heat2d.yspan, X2d_stream[1])
+    sf2 = surface!(ax2, heat2d.xspan, heat2d.yspan, X2d[1] - X2d_stream[1], colorrange=(-2e-5,2e-5))
+    hm1 = heatmap!(ax3, heat2d.xspan, heat2d.yspan, X2d_stream[1])
+    hm2 = heatmap!(ax4, heat2d.xspan, heat2d.yspan, X2d[1] - X2d_stream[1], colorrange=(-2e-5,2e-5))
+    Colorbar(fig[1, 3], hm1)
+    Colorbar(fig[2, 3], hm2)
+    record(fig, joinpath(FILEPATH, "plots/heat2d/eyeball_norm.mp4"), 1:heat2d.time_dim) do i
+        sf1[3] = X2d_stream[i]
+        sf2[3] = X2d[i] - X2d_stream[i]
+        hm1[3] = X2d_stream[i]
+        hm2[3] = X2d[i] - X2d_stream[i]
+        autolimits!(ax1) # update limits
+        # autolimits!(ax2) # update limits
+        autolimits!(ax3) # update limits
+        autolimits!(ax4) # update limits
+    end
 end
