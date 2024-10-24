@@ -19,12 +19,12 @@ const LnL = LiftAndLearn
 #================================#
 FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/") : joinpath(pwd(), "scripts/Streaming-OpInf/")
 
-#==============================#
-## Include functions and files
-#==============================#
-include("utilities/plot_theme.jl")
-include("utilities/analysis.jl")
-include("utilities/plotting.jl")
+# #==============================#
+# ## Include functions and files
+# #==============================#
+# include("utilities/plot_theme.jl")
+# include("utilities/analysis.jl")
+# include("utilities/plotting.jl")
 
 
 #========================#
@@ -108,7 +108,7 @@ with_theme(theme_latexfonts()) do
                xticks=heat2d.spatial_domain[1][1]:0.2:heat2d.spatial_domain[1][2],
                yticks=heat2d.spatial_domain[2][1]:0.2:heat2d.spatial_domain[2][2],
                xlabelsize=35, ylabelsize=35, xticklabelsize=22, yticklabelsize=22)
-    Label(fig0[0, :], "2D Heat Equation at initial (top) and final time (bottom)", fontsize=35)
+    Label(fig0[0, :], "Temperature distribution at initial (top) and final time (bottom)", fontsize=35)
     colsize!(fig0.layout, 2, Aspect(1, 0.8))
     sf1 = surface!(ax1, heat2d.xspan, heat2d.yspan, Xflat[1])
     hm1 = heatmap!(ax2, heat2d.xspan, heat2d.yspan, Xflat[1])
@@ -140,13 +140,15 @@ iΣr = sort(iΣ, rev=true)[1:r]
 #======================#
 ## Plot Singular Values
 #======================#
-fig1 = Figure()
-ax = Axis(fig1[1,1], title="Singular Values", xlabel="Index", ylabel="Value", yscale=log10)
-scatterlines!(ax, 1:r, Σr, color=:black, linewidth=3, label="SVD")
-scatterlines!(ax, 1:r, iΣr, color=:red, linewidth=2, linestyle=:dash, label="iSVD")
-axislegend(ax, labelsize=20, position=:rt)
-display(fig1)
-save(joinpath(FILEPATH, "plots/heat2d/singular_values.png"), fig1)
+with_theme(theme_latexfonts()) do
+    fig0 = Figure(fontsize=20, backgroundcolor="#FFFFFF")
+    ax = Axis(fig0[1,1], title="Singular Values", xlabel="Index", ylabel="Value", yscale=log10)
+    scatterlines!(ax, 1:r, Σr, color=:black, linewidth=3, label="SVD")
+    scatterlines!(ax, 1:r, iΣr, color=:red, linewidth=2, linestyle=:dash, label="iSVD")
+    axislegend(ax, labelsize=20, position=:rt)
+    display(fig0)
+    save(joinpath(FILEPATH, "plots/heat2d/singular_values.png"), fig0)
+end
 
 #==============#
 ## POD-Galerkin
@@ -302,8 +304,8 @@ for (key, op) in op_dict
         )
 
         foo = LnL.rel_state_error(Xfull, Xtmp, Vri)
-        Y = op.C[1:end, 1:i] * Xtmp
-        bar = LnL.rel_output_error(Yfull, Y)
+        Ytmp = op.C[1:end, 1:i] * Xtmp
+        bar = LnL.rel_output_error(Yfull, Ytmp)
         push!(rse[key], foo)
         push!(roe[key], bar)
         @info "($key) r = $i, State Error = $(round(foo,sigdigits=4)), Output Error = $(round(bar,sigdigits=4))"
@@ -424,7 +426,7 @@ with_theme(theme_latexfonts()) do
         scatterlines!(axes[4*(j-1)+3], 1:num_of_streams, output_stream_res.rse[ri,:], color=axis_colors[1])
         scatterlines!(axes[4*(j-1)+4], 1:num_of_streams, output_stream_res.stream_err[ri,:], color=axis_colors[2])
         text!(axes[4*(j-1)+1], 0, ylimits[1][1]*2, text="r = $ri", fontsize=25)
-        text!(axes[4*(j-1)+3], 0, ylimits[1][1]*2, text="r = $ri", fontsize=25)
+        text!(axes[4*(j-1)+3], 0, ylimits[2][1]*2, text="r = $ri", fontsize=25)
         push!(lines_, l)
         push!(labels_, "r = $ri")
     end
@@ -443,7 +445,7 @@ with_theme(theme_latexfonts()) do
     ax1 = Axis(fig3[1, 1],
         title="A Posteriori Error and Conversion Factor per stream",
         xlabel=L"$k$-th stream", 
-        ylabel=L"(\xi_{\mathrm{post}})_k",
+        ylabel=L"\Vert(\xi_{\mathrm{post}})_k\Vert_2",
         # title=L"Relative State Error & Streaming Error, $r = %$ri$", 
         xticks=xtick_vals, yticklabelcolor=axis_colors[1],
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,

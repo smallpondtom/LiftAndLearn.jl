@@ -231,7 +231,7 @@ Streaming all the data for the output system using the inverse and
 QR Decomposition Recursive Least-Squares (iQRRLS/QRRLS) algorithm.
 """
 function stream_output_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, X::AbstractArray{<:AbstractArray{T}}, 
-                            Y::AbstractArray{<:AbstractArray{T}}, verbose::Bool=false) where T<:Real
+                            Y::AbstractArray{<:AbstractArray{T}}; verbose::Bool=false) where T<:Real
     N = length(X)
     if verbose
         p = Progress(N; desc="Streaming data...")
