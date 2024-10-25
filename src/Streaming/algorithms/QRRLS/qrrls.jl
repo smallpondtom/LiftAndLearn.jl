@@ -7,9 +7,9 @@ QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = 
     N::Int                                        # Number of features (total dimension of operators)
     n::Int                                        # Number of outputs (residual dimension)
     O::Array{T,2} = zeros(T,N,n)          # Operator matrix (N x n)
-    P::Array{T,2}                                 # Inverse covariance matrix (N x N)
+    P::Array{T,2}                                 # Inverse correlation matrix (N x N)
     K::Array{T,2} = zeros(T,N,1)          # Kalman gain matrix (N x 1)
-    Φsq::AbstractArray{T,2}                       # Square-root covariance matrix (upper triangular, N x N)
+    Φsq::AbstractArray{T,2}                       # Square-root correlation matrix (upper triangular, N x N)
     q::Array{T,2} = zeros(T,N,n)          # Auxiliary matrix (N x n)
     ξpre::Array{T,2} = zeros(T,1,n)       # A priori error vector (1 x n)
     ξpost::Array{T,2} = zeros(T,1,n)      # A posteriori error vector (1 x n)
@@ -75,7 +75,7 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
     # Update the cost J: J = λ * J + ξpre * ξpost'
     obj.J = obj.λ * obj.J + dot(vec(obj.ξpre), vec(obj.ξpost))
 
-    # Update inverse covariance matrix P
+    # Update inverse correlation matrix P
     # obj.P .= (obj.Φsq' * obj.Φsq) \ I  # P = (Φsq' * Φsq)^-1
     # temp_Kd = P * d'
     mul!(obj.temp_Kd, obj.P, d', T(1), T(0))  # temp_Kd: N x 1

@@ -7,7 +7,7 @@ Inverse QR Decomposition Recursive Least-Squares (iQRRLS) cache struct to solve 
     N::Int                                       # Number of features (total dimension of operators)
     n::Int                                       # Number of outputs (residual dimension)
     O::Array{T,2} = zeros(T,N,n)         # Operator matrix (N x n)
-    Psq::AbstractArray{T,2}                      # Square-root inverse covariance matrix (lower triangular, N x N)
+    Psq::AbstractArray{T,2}                      # Square-root inverse correlation matrix (lower triangular, N x N)
     K::Array{T,2} = zeros(T,N,1)         # Kalman gain matrix (N x 1)
     ξpre::Array{T,2} = zeros(T,1,n)      # A priori error vector (1 x n)
     ξpost::Array{T,2} = zeros(T,1,n)     # A posteriori error vector (1 x n)

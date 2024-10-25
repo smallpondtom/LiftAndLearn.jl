@@ -8,7 +8,7 @@ Recursive Least-Squares (RLS) cache struct to solve for DO = R.
     M::Int                                          # Number of data points
     n::Int                                          # Number of outputs (residual dimension)
     O::Array{T,2} = zeros(T,N,n)            # Operator matrix (N x n)
-    P::AbstractArray{T,2}                           # Inverse covariance matrix (N x N)
+    P::AbstractArray{T,2}                           # Inverse correlation matrix (N x N)
     K::Array{T,2} = zeros(T,N,M)            # Kalman gain matrix (N x M)
     ξpre::Array{T,2} = zeros(T,M,n)         # A priori error matrix (M x n)
     ξpost::Array{T,2} = zeros(T,M,n)        # A posteriori error matrix (M x n)
@@ -51,7 +51,7 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
     # Then we add R to ξpre
     obj.ξpre .+= R
 
-    # Update inverse covariance matrix P_k
+    # Update inverse correlation matrix P_k
     if M == 1  # Rank-1 update
         # Compute u = P * D'
         # D[1, :] is 1 x N, D[1, :]' is N x 1
@@ -144,7 +144,7 @@ function vrrls!(obj::RLSCache{T}, D::AbstractMatrix{T}, R::AbstractMatrix{T},
     mul!(obj.ξpre, D, obj.O, -1.0, 1.0)
     obj.ξpre .+= R
 
-    # Update inverse covariance matrix P_k with variable regularization
+    # Update inverse correlation matrix P_k with variable regularization
     if M == 1  # Rank-1 update
         # Compute u = P * D'
         u = similar(obj.P, N)
