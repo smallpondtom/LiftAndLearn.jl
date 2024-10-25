@@ -165,7 +165,7 @@ Xdot_stream = LnL.streamify(iVr' * Xdot, streamsize)
 num_of_streams = length(X_stream)
 
 # Initialize the stream
-γs = 1e-10
+γs = 1e-9
 γo = 1e-12
 state_stream, output_stream = LnL.StreamingOpInf(options=options, n=rmax, m=1, l=1, γs=γs, γo=γo, algorithm=:iQRRLS)
 
@@ -228,12 +228,13 @@ used_streams = []
             idx = extract_indices(state_stream, r, ri, options.system)
 
             # Streaming errors
-            state_stream_res.true_stream_err[j, ct] = norm(Es[idx,1:ri], 2)
+            O_norm = norm(O_inf[idx,1:ri], 2)
+            state_stream_res.true_stream_err[j, ct] = norm(Es[idx,1:ri], 2) / O_norm
             Es_full = ct == 1 ? Es[idx,1:ri] : (state_err_fact * Es)[idx]
-            state_stream_res.stream_err[j,ct] = norm(Es_full,2)
-            output_stream_res.true_stream_err[j,ct] = norm(Eo[1:ri], 2) 
+            state_stream_res.stream_err[j,ct] = norm(Es_full,2) / O_norm
+            output_stream_res.true_stream_err[j,ct] = norm(Eo[1:ri], 2) / O_norm
             Eo_full = ct == 1 ? Eo[1:ri] : (output_err_fact * Eo')[1:ri]
-            output_stream_res.stream_err[j,ct] = norm(Eo_full,2)
+            output_stream_res.stream_err[j,ct] = norm(Eo_full,2) / O_norm
         end
         # A posteriori error and conversion factors
         state_stream_res.post_err[ct] = norm(state_stream.cache.ξpost,2)
@@ -347,7 +348,7 @@ end
 ## Plot streaming error and rse per stream
 #==========================================#
 axis_colors = Makie.categorical_colors(:tab10, 2)
-ylimits = [[1e-5, 1e7], [1e-15, 1e1]]
+ylimits = [[1e-5, 1e1], [1e-5, 1e1], [1e-2, 1e1], [1e-21, 1e-17]]
 with_theme(theme_latexfonts()) do
     fig2 = Figure(size=(1500,900))
     xtick_vals = 0:(num_of_streams ÷ 2):num_of_streams
@@ -366,8 +367,11 @@ with_theme(theme_latexfonts()) do
             ylabelcolor=axis_colors[1]
         ))
         push!(axes, Axis(fig2[1, j], 
+            # ylabel=j==3 ? 
+            #           L"\Vert\mathcal{E}_k\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_k\mathbf{D}_k)\mathcal{E}_{k-1}\Vert_F" :
+            #           "", 
             ylabel=j==3 ? 
-                      L"\Vert\mathcal{E}_k\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_k\mathbf{D}_k)\mathcal{E}_{k-1}\Vert_F" :
+                      L"\Vert\mathbf{O}_* - \mathbf{O}_k\Vert_F / \Vert\mathbf{O}_*\Vert_F" :
                       "", 
             yticklabelcolor=axis_colors[2], yaxisposition=:right, yscale=log10, ygridstyle=:dash,
             xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
@@ -386,9 +390,12 @@ with_theme(theme_latexfonts()) do
             ylabelcolor=axis_colors[1]
         ))
         push!(axes, Axis(fig2[2, j],
+            # ylabel=j==3 ? 
+            #         L"\Vert\mathcal{E}_{y_k}\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_{y_k}\hat{\mathbf{X}}_k^\top)\mathcal{E}_{y_{k-1}}\Vert_F" :
+            #         "",
             ylabel=j==3 ? 
-                    L"\Vert\mathcal{E}_{y_k}\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_{y_k}\hat{\mathbf{X}}_k^\top)\mathcal{E}_{y_{k-1}}\Vert_F" :
-                    "",
+                      L"\Vert\mathbf{O}_* - \mathbf{O}_k\Vert_F / \Vert\mathbf{O}_*\Vert_F" :
+                      "", 
             yticklabelcolor=axis_colors[2], yaxisposition=:right, yscale=log10, ygridstyle=:dash,
             xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
             ylabelcolor=axis_colors[2]
@@ -397,16 +404,16 @@ with_theme(theme_latexfonts()) do
         hidexdecorations!(axes[4*(j-1)+4])
 
         ylims!(axes[4*(j-1)+1], ylimits[1]...)
-        ylims!(axes[4*(j-1)+2], ylimits[1]...)
-        ylims!(axes[4*(j-1)+3], ylimits[2]...)
-        ylims!(axes[4*(j-1)+4], ylimits[2]...)
+        ylims!(axes[4*(j-1)+2], ylimits[2]...)
+        ylims!(axes[4*(j-1)+3], ylimits[3]...)
+        ylims!(axes[4*(j-1)+4], ylimits[4]...)
 
         l = scatterlines!(axes[4*(j-1)+1], used_streams, state_stream_res.rse[ri,:], color=axis_colors[1])
-        scatterlines!(axes[4*(j-1)+2], used_streams, state_stream_res.true_stream_err[ri,:], color=axis_colors[2])
+        scatterlines!(axes[4*(j-1)+2], used_streams, state_stream_res.stream_err[ri,:], color=axis_colors[2])
         scatterlines!(axes[4*(j-1)+3], used_streams, output_stream_res.rse[ri,:], color=axis_colors[1])
-        scatterlines!(axes[4*(j-1)+4], used_streams, output_stream_res.true_stream_err[ri,:], color=axis_colors[2])
+        scatterlines!(axes[4*(j-1)+4], used_streams, output_stream_res.stream_err[ri,:], color=axis_colors[2])
         text!(axes[4*(j-1)+1], 0, ylimits[1][1]*2, text="r = $ri", fontsize=25)
-        text!(axes[4*(j-1)+3], 0, ylimits[2][1]*2, text="r = $ri", fontsize=25)
+        text!(axes[4*(j-1)+3], 0, ylimits[3][1]*2, text="r = $ri", fontsize=25)
         push!(lines_, l)
         push!(labels_, "r = $ri")
     end

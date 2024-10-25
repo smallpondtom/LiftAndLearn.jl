@@ -253,12 +253,13 @@ Eo_full = nothing
         idx = vcat(collect(1:ri),collect(r+1:r+4))
 
         # Streaming errors
-        state_stream_res.true_stream_err[j, i] = norm(Es[idx,1:ri], 2)
+        O_norm = norm(O_inf[idx,1:ri], 2)
+        state_stream_res.true_stream_err[j, i] = norm(Es[idx,1:ri], 2) / O_norm
         Es_full = i == 1 ? Es[idx,1:ri] : (state_err_fact * Es)[idx]
-        state_stream_res.stream_err[j,i] = norm(Es_full,2)
-        output_stream_res.true_stream_err[j,i] = norm(Eo[1:ri], 2)
+        state_stream_res.stream_err[j,i] = norm(Es_full,2) / O_norm
+        output_stream_res.true_stream_err[j,i] = norm(Eo[1:ri], 2) / O_norm
         Eo_full = i == 1 ? Eo[1:ri] : (output_err_fact * Eo')[1:ri]
-        output_stream_res.stream_err[j,i] = norm(Eo_full,2)
+        output_stream_res.stream_err[j,i] = norm(Eo_full,2) / O_norm
     end
 
     # A posteriori error and conversion factors
@@ -386,8 +387,11 @@ with_theme(theme_latexfonts()) do
             ylabelcolor=axis_colors[1]
         ))
         push!(axes, Axis(fig2[1, j], 
+            # ylabel=j==3 ? 
+            #           L"\Vert\mathcal{E}_k\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_k\mathbf{D}_k)\mathcal{E}_{k-1}\Vert_F" :
+            #           "", 
             ylabel=j==3 ? 
-                      L"\Vert\mathcal{E}_k\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_k\mathbf{D}_k)\mathcal{E}_{k-1}\Vert_F" :
+                      L"\Vert\mathbf{O}_* - \mathbf{O}_k\Vert_F / \Vert\mathbf{O}_*\Vert_F" :
                       "", 
             yticklabelcolor=axis_colors[2], yaxisposition=:right, yscale=log10, ygridstyle=:dash,
             xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
@@ -406,9 +410,12 @@ with_theme(theme_latexfonts()) do
             ylabelcolor=axis_colors[1]
         ))
         push!(axes, Axis(fig2[2, j],
+            # ylabel=j==3 ? 
+            #         L"\Vert\mathcal{E}_{y_k}\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_{y_k}\hat{\mathbf{X}}_k^\top)\mathcal{E}_{y_{k-1}}\Vert_F" :
+            #         "",
             ylabel=j==3 ? 
-                    L"\Vert\mathcal{E}_{y_k}\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_{y_k}\hat{\mathbf{X}}_k^\top)\mathcal{E}_{y_{k-1}}\Vert_F" :
-                    "",
+                      L"\Vert\mathbf{O}_* - \mathbf{O}_k\Vert_F / \Vert\mathbf{O}_*\Vert_F" :
+                      "", 
             yticklabelcolor=axis_colors[2], yaxisposition=:right, yscale=log10, ygridstyle=:dash,
             xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
             ylabelcolor=axis_colors[2]
