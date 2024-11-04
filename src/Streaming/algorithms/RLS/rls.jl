@@ -4,18 +4,18 @@ $(TYPEDEF)
 Recursive Least-Squares (RLS) cache struct to solve for DO = R.
 """
 @with_kw mutable struct RLSCache{T<:Real}
-    N::Int                                          # Number of features (total dimension of operators)
-    M::Int                                          # Number of data points
-    n::Int                                          # Number of outputs (residual dimension)
+    N::Int                                  # Number of features (total dimension of operators)
+    M::Int                                  # Number of data points
+    n::Int                                  # Number of outputs (residual dimension)
     O::Array{T,2} = zeros(T,N,n)            # Operator matrix (N x n)
-    P::AbstractArray{T,2}                           # Inverse correlation matrix (N x N)
+    P::AbstractArray{T,2}                   # Inverse correlation matrix (N x N)
     K::Array{T,2} = zeros(T,N,M)            # Kalman gain matrix (N x M)
     ξpre::Array{T,2} = zeros(T,M,n)         # A priori error matrix (M x n)
     ξpost::Array{T,2} = zeros(T,M,n)        # A posteriori error matrix (M x n)
     C::Array{T,2} = zeros(T,M,M)            # Conversion factor (M x M)
-    J::Array{T,2} = zeros(T,M,M)                                  # Cost (scalar)
-    γ::T                                            # Regularization term
-    λ::T                                            # Forgetting factor
+    J::Array{T,2} = zeros(T,M,M)            # Cost (scalar)
+    γ::T                                    # Regularization term
+    λ::T                                    # Forgetting factor
 
     # Preallocated temporary variables
     u::Array{T,1} = zeros(T,N)              # For rank-1 update (N x 1)
@@ -47,9 +47,11 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
     n = size(R, 2)   # n: residual dimension (state dimemsion)
 
     # Compute a priori error: ξpre = R - D * O
-    mul!(obj.ξpre, D, obj.O, -1.0, 0.0)  # ξpre = R - D * O
-    # Then we add R to ξpre
-    obj.ξpre .+= R
+    obj.ξpre .= R
+    mul!(obj.ξpre, D, obj.O, -1.0, 1.0)  # ξpre = R - D * O
+    # mul!(obj.ξpre, D, obj.O, -1.0, 0.0)  # ξpre = R - D * O
+    # # Then we add R to ξpre
+    # obj.ξpre .+= R
 
     # Update inverse correlation matrix P_k
     if M == 1  # Rank-1 update
@@ -65,11 +67,12 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
         obj.C[1,1] = 1 / denom  # obj.C is 1 x 1 in rank-1 case
 
         # Update P: P = (P - (u * uᵗ) / denom / λ) / λ
+        # NOTE: syr only updates the upper triangular part of the matrix
         BLAS.syr!('U', -1.0 / denom / obj.λ, obj.u, obj.P)
         obj.P ./= obj.λ
 
         # Ensure symmetry of P
-        for i in 1:N, j in i+1:N
+        @inbounds for i in 1:N, j in i+1:N
             obj.P[j, i] = obj.P[i, j]
         end
 
@@ -118,12 +121,15 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
     end
 
     # Update O: O += K * ξpre
-    mul!(obj.temp_Ke, obj.K, obj.ξpre, 1.0, 0.0)  # temp_Ke: N x n
-    obj.O .+= obj.temp_Ke
+    mul!(obj.O, obj.K, obj.ξpre, 1.0, 1.0)  # temp_Ke: N x n
+    # mul!(obj.temp_Ke, obj.K, obj.ξpre, 1.0, 0.0)  # temp_Ke: N x n
+    # obj.O .+= obj.temp_Ke
 
     # Compute a posteriori error: ξpost = R - D * O
-    mul!(obj.ξpost, D, obj.O, -1.0, 0.0)  # ξpost = R - D * O
-    obj.ξpost .+= R
+    obj.ξpost .= R
+    mul!(obj.ξpost, D, obj.O, -1.0, 1.0)  # ξpost = R - D * O
+    # mul!(obj.ξpost, D, obj.O, -1.0, 0.0)  # ξpost = R - D * O
+    # obj.ξpost .+= R
 
     # Update the cost J: J = λ * J + ξpre' .* ξpost
     obj.J = obj.λ * obj.J + obj.ξpre * obj.ξpost'

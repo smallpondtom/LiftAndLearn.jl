@@ -131,7 +131,7 @@ Vr = V[:, 1:r]
 #========================#
 ## Compute the iPOD basis
 #========================#
-isvd = iSVD(x1=X[:,1], algo=:baker, kselect=r)
+isvd = iSVD(x1=X[:,1], algo=:brand1)
 full_increment!(isvd, X[:,2:end], tol=1e-9, verbose=true)
 iVr = isvd.Q[:,1:r]
 iΣ = isvd.Σ
@@ -169,7 +169,7 @@ options.with_reg = true
 options.λ = LnL.TikhonovParameter(
     A = 1e-6,
     B = 1e-6,
-    C = 1e-3
+    C = 1e-6
 )
 op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y)
 
@@ -197,9 +197,11 @@ Xdot_stream = LnL.streamify(iVr' * Xdot, streamsize)
 num_of_streams = length(X_stream)
 
 ## Initialize the stream
-γs = 1e-15
-γo = 1e-15
-state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=4, l=1, algorithm=:iQRRLS, γs=γs, γo=γo)
+# γs = 1e-15
+# γo = 1e-15
+γs = 1e-9
+γo = 1e-9
+state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=4, l=1, algorithm=:RLS, γs=γs, γo=γo)
 
 # Placeholders
 state_stream_res = (
@@ -216,8 +218,8 @@ output_stream_res = (
     post_err        = zeros(num_of_streams),
     conv_factor     = zeros(num_of_streams),
 )
-Es_full = nothing
-Eo_full = nothing
+Es = nothing
+Eo = nothing
 
 ## Stream one-by-one and collect data
 @showprogress for i in 1:num_of_streams
@@ -233,10 +235,20 @@ Eo_full = nothing
     tmp.C = output_stream.cache.O'    
 
     # Error factors
-    state_err_fact = I - state_stream.cache.K * D
-    output_err_fact = I - output_stream.cache.K * X_stream[i]'
-    Es = O_inf - state_stream.cache.O
-    Eo = op_inf.C - output_stream.cache.O'
+    state_err_fact = 1.0I - state_stream.cache.K * D
+    output_err_fact = 1.0I - output_stream.cache.K * X_stream[i]'
+    Es_true = O_inf - state_stream.cache.O
+    Eo_true = op_inf.C - output_stream.cache.O'
+
+    # Initialize the error factors
+    if i == 1
+        Es = Es_true
+        Eo = Eo_true'
+    end
+    
+    # Update the error factors
+    Es = state_err_fact * Es
+    Eo = output_err_fact * Eo
 
     # Loop through each reduced dimension
     for (j, ri) in enumerate(1:r)
@@ -254,12 +266,15 @@ Eo_full = nothing
 
         # Streaming errors
         O_norm = norm(O_inf[idx,1:ri], 2)
-        state_stream_res.true_stream_err[j, i] = norm(Es[idx,1:ri], 2) / O_norm
-        Es_full = i == 1 ? Es[idx,1:ri] : (state_err_fact * Es)[idx]
-        state_stream_res.stream_err[j,i] = norm(Es_full,2) / O_norm
-        output_stream_res.true_stream_err[j,i] = norm(Eo[1:ri], 2) / O_norm
-        Eo_full = i == 1 ? Eo[1:ri] : (output_err_fact * Eo')[1:ri]
-        output_stream_res.stream_err[j,i] = norm(Eo_full,2) / O_norm
+        Es_true_sub = Es_true[idx,1:ri]
+        Eo_true_sub = Eo_true[1:ri]
+        Es_sub = Es[idx,1:ri]
+        Eo_sub = Eo[1:ri]
+
+        state_stream_res.true_stream_err[j, i] = norm(Es_true_sub, 2) / O_norm
+        state_stream_res.stream_err[j,i] = norm(Es_sub,2) / O_norm
+        output_stream_res.true_stream_err[j,i] = norm(Eo_true_sub, 2) / O_norm
+        output_stream_res.stream_err[j,i] = norm(Eo_sub,2) / O_norm
     end
 
     # A posteriori error and conversion factors
@@ -368,7 +383,7 @@ end
 ## Plot streaming error and rse per stream
 #==========================================#
 axis_colors = Makie.categorical_colors(:tab10, 2)
-ylimits = [[1e-6, 1e7], [1e-6, 1e3]]
+ylimits = [[1e-6, 1e1], [1e-1, 1e1], [1e-6, 1e1], [1e-11, 1e-4]]
 with_theme(theme_latexfonts()) do
     fig2 = Figure(size=(1500,900))
     xtick_vals = 0:(num_of_streams ÷ 2):num_of_streams
@@ -424,16 +439,16 @@ with_theme(theme_latexfonts()) do
         hidexdecorations!(axes[4*(j-1)+4])
 
         ylims!(axes[4*(j-1)+1], ylimits[1]...)
-        ylims!(axes[4*(j-1)+2], ylimits[1]...)
-        ylims!(axes[4*(j-1)+3], ylimits[2]...)
-        ylims!(axes[4*(j-1)+4], ylimits[2]...)
+        ylims!(axes[4*(j-1)+2], ylimits[2]...)
+        ylims!(axes[4*(j-1)+3], ylimits[3]...)
+        ylims!(axes[4*(j-1)+4], ylimits[4]...)
 
         l = scatterlines!(axes[4*(j-1)+1], 1:num_of_streams, state_stream_res.rse[ri,:], color=axis_colors[1])
         scatterlines!(axes[4*(j-1)+2], 1:num_of_streams, state_stream_res.stream_err[ri,:], color=axis_colors[2])
         scatterlines!(axes[4*(j-1)+3], 1:num_of_streams, output_stream_res.rse[ri,:], color=axis_colors[1])
         scatterlines!(axes[4*(j-1)+4], 1:num_of_streams, output_stream_res.stream_err[ri,:], color=axis_colors[2])
         text!(axes[4*(j-1)+1], 0, ylimits[1][1]*2, text="r = $ri", fontsize=25)
-        text!(axes[4*(j-1)+3], 0, ylimits[2][1]*2, text="r = $ri", fontsize=25)
+        text!(axes[4*(j-1)+3], 0, ylimits[3][1]*2, text="r = $ri", fontsize=25)
         push!(lines_, l)
         push!(labels_, "r = $ri")
     end
@@ -446,17 +461,17 @@ end
 ## Plot a posteriori error and conversion factor
 #================================================#
 with_theme(theme_latexfonts()) do 
-    fig3 = Figure(size=(900,800))
+    fig3 = Figure(size=(900,500))
     axis_colors = Makie.categorical_colors(:tab10, 2)
     xtick_vals = 0:(num_of_streams ÷ 5):num_of_streams
     ax1 = Axis(fig3[1, 1],
         title="A Posteriori Error and Conversion Factor per stream",
         xlabel=L"$k$-th stream", 
-        ylabel=L"\Vert(\xi_{\mathrm{post}})_k\Vert_2",
+        ylabel=L"\Vert\xi_k^+\Vert_2",
         # title=L"Relative State Error & Streaming Error, $r = %$ri$", 
         xticks=xtick_vals, yticklabelcolor=axis_colors[1],
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        ylabelcolor=axis_colors[1], titlesize=30
+        ylabelcolor=axis_colors[1], titlesize=30, yscale=log10
     )
     ax2 = Axis(fig3[1, 1],
         ylabel=L"\gamma_k",

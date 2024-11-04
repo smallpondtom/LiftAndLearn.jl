@@ -4,17 +4,17 @@ $(TYPEDEF)
 Inverse QR Decomposition Recursive Least-Squares (iQRRLS) cache struct to solve for DO = R.
 """
 @with_kw mutable struct iQRRLSCache{T<:Real}
-    N::Int                                       # Number of features (total dimension of operators)
-    n::Int                                       # Number of outputs (residual dimension)
+    N::Int                               # Number of features (total dimension of operators)
+    n::Int                               # Number of outputs (residual dimension)
     O::Array{T,2} = zeros(T,N,n)         # Operator matrix (N x n)
-    Psq::AbstractArray{T,2}                      # Square-root inverse correlation matrix (lower triangular, N x N)
+    Psq::AbstractArray{T,2}              # Square-root inverse correlation matrix (lower triangular, N x N)
     K::Array{T,2} = zeros(T,N,1)         # Kalman gain matrix (N x 1)
     ξpre::Array{T,2} = zeros(T,1,n)      # A priori error vector (1 x n)
     ξpost::Array{T,2} = zeros(T,1,n)     # A posteriori error vector (1 x n)
-    C::T = zero(T)                               # Conversion factor (scalar)
-    J::T = zero(T)                               # Cost (scalar)
-    γ::T                                         # Regularization term
-    λ::T                                         # Forgetting factor
+    C::T = zero(T)                       # Conversion factor (scalar)
+    J::T = zero(T)                       # Cost (scalar)
+    γ::T                                 # Regularization term
+    λ::T                                 # Forgetting factor
 
     # Preallocated temporary variables
     A::Array{T,2} = zeros(T,N+1,N+1)     # Temporary matrix for QR factorization ((N+1) x (N+1))

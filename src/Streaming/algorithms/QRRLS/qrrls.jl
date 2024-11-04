@@ -4,19 +4,19 @@ $(TYPEDEF)
 QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = R.
 """
 @with_kw mutable struct QRRLSCache{T<:Real}
-    N::Int                                        # Number of features (total dimension of operators)
-    n::Int                                        # Number of outputs (residual dimension)
+    N::Int                                # Number of features (total dimension of operators)
+    n::Int                                # Number of outputs (residual dimension)
     O::Array{T,2} = zeros(T,N,n)          # Operator matrix (N x n)
-    P::Array{T,2}                                 # Inverse correlation matrix (N x N)
+    P::Array{T,2}                         # Inverse correlation matrix (N x N)
     K::Array{T,2} = zeros(T,N,1)          # Kalman gain matrix (N x 1)
-    Φsq::AbstractArray{T,2}                       # Square-root correlation matrix (upper triangular, N x N)
+    Φsq::AbstractArray{T,2}               # Square-root correlation matrix (upper triangular, N x N)
     q::Array{T,2} = zeros(T,N,n)          # Auxiliary matrix (N x n)
     ξpre::Array{T,2} = zeros(T,1,n)       # A priori error vector (1 x n)
     ξpost::Array{T,2} = zeros(T,1,n)      # A posteriori error vector (1 x n)
-    C::T = zero(T)                                # Conversion factor (scalar)
-    J::T = zero(T)                                # Cost (scalar)
-    γ::T                                          # Regularization term
-    λ::T                                          # Forgetting factor
+    C::T = zero(T)                        # Conversion factor (scalar)
+    J::T = zero(T)                        # Cost (scalar)
+    γ::T                                  # Regularization term
+    λ::T                                  # Forgetting factor
 
     # Preallocated temporary variables
     A::Array{T,2} = zeros(T,N+n+1,N+n+1)  # Temporary matrix for QR factorization ((N + n + 1) x (N + n + 1))
@@ -61,7 +61,7 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
     # Extract Φsq (upper triangular) and q
     obj.Φsq .= @views A[1:N, 1:N]
     obj.q .= @views A[1:N, N+1:N+n]
-    Csq = A[N+n+1, N+n+1]
+    Csq = A[N+1, N+n+1]
     obj.C = Csq^2
 
     # Update operator matrix O by solving Φsq * O = q
@@ -79,7 +79,7 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
     # obj.P .= (obj.Φsq' * obj.Φsq) \ I  # P = (Φsq' * Φsq)^-1
     # temp_Kd = P * d'
     mul!(obj.temp_Kd, obj.P, d', T(1), T(0))  # temp_Kd: N x 1
-    denom = T(1) + (d * obj.temp_Kd)[1,1] / obj.λ  # Scalar
+    denom = T(1) + dot(d, obj.temp_Kd) / obj.λ  # Scalar
 
     # Update P in-place
     BLAS.syr!('U', -1.0 / (obj.λ * denom), obj.temp_Kd[:,1], obj.P)
