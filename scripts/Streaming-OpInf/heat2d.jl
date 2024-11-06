@@ -90,21 +90,21 @@ Y = C * X
 Xflat = invec.(eachcol(X), heat2d.spatial_dim...)
 with_theme(theme_latexfonts()) do
     fig0 = Figure(fontsize=20, size=(1200,1050))
-    ax1 = Axis3(fig0[1, 1], xlabel=L"x", ylabel=L"y", zlabel=L"u(x,y,t)",
+    ax1 = Axis3(fig0[1, 1], xlabel=L"\omega_1", ylabel=L"\omega_2", zlabel=L"x(\omega_1,\omega_2,t)",
                 xticks=heat2d.spatial_domain[1][1]:0.2:heat2d.spatial_domain[1][2],
                 yticks=heat2d.spatial_domain[2][1]:0.2:heat2d.spatial_domain[2][2],
                 xlabelsize=35, ylabelsize=35, zlabelsize=35,
                 xticklabelsize=22, yticklabelsize=22, zticklabelsize=22)
-    ax2 = Axis(fig0[1, 2], xlabel=L"x", ylabel=L"y", aspect=DataAspect(),
+    ax2 = Axis(fig0[1, 2], xlabel=L"\omega_1", ylabel=L"\omega_2", aspect=DataAspect(),
                xticks=heat2d.spatial_domain[1][1]:0.2:heat2d.spatial_domain[1][2],
                yticks=heat2d.spatial_domain[2][1]:0.2:heat2d.spatial_domain[2][2],
                xlabelsize=35, ylabelsize=35, xticklabelsize=22, yticklabelsize=22)
-    ax3 = Axis3(fig0[2, 1], xlabel=L"x", ylabel=L"y", zlabel=L"u(x,y,t)",
+    ax3 = Axis3(fig0[2, 1], xlabel=L"\omega_1", ylabel=L"\omega_2", zlabel=L"x(\omega_1,\omega_2,t)",
                 xticks=heat2d.spatial_domain[1][1]:0.2:heat2d.spatial_domain[1][2],
                 yticks=heat2d.spatial_domain[2][1]:0.2:heat2d.spatial_domain[2][2],
                 xlabelsize=35, ylabelsize=35, zlabelsize=35,
                 xticklabelsize=22, yticklabelsize=22, zticklabelsize=22)
-    ax4 = Axis(fig0[2, 2], xlabel=L"x", ylabel=L"y", aspect=DataAspect(),
+    ax4 = Axis(fig0[2, 2], xlabel=L"\omega_1", ylabel=L"\omega_2", aspect=DataAspect(),
                xticks=heat2d.spatial_domain[1][1]:0.2:heat2d.spatial_domain[1][2],
                yticks=heat2d.spatial_domain[2][1]:0.2:heat2d.spatial_domain[2][2],
                xlabelsize=35, ylabelsize=35, xticklabelsize=22, yticklabelsize=22)
