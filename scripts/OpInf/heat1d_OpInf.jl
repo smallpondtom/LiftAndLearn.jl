@@ -262,7 +262,7 @@ param_region = collect(heat1d.diffusion_coeffs)
 
 @showprogress for j = 1:num_tests
     # Generate new parameter
-    μ = rand(heat1d.param_domain[1]:0.01:heat1d.param_domain[2])
+    μ = rand(heat1d.param_domain[1]+eps():0.01:heat1d.param_domain[2]-eps())
 
     # Interpolate model operators
     Aint = LnL.interpolate_matrix_elements(param_region, A_intru, μ; order=3)

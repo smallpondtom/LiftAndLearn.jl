@@ -379,6 +379,61 @@ with_theme(theme_latexfonts()) do
     save(joinpath(FILEPATH, "plots/heat2d/relative_error.png"), fig1)
 end
 
+## Plot
+provided_keys = ["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"]
+with_theme(theme_latexfonts()) do
+    fig1 = Figure(fontsize=20, size=(900,600))
+    # Relative State Error
+    lines = []
+    labels = []
+    ax1 = Axis(fig1[1, 1], 
+        xlabel=L"reduced dimension, $r$",
+        ylabel="Relative State Error", 
+        # title="Relative State Error", 
+        yscale=log10,
+        xlabelsize=30,
+        ylabelsize=30,
+        xticklabelsize=25,
+        yticklabelsize=25,
+        xticks=1:r
+    )
+    for key in provided_keys
+        l = scatterlines!(ax1, 1:r, rse[key])
+        push!(lines, l)
+        push!(labels, key)
+    end
+    # Relative Output Error
+    # lines = []
+    # labels = []
+    # ax2 = Axis(fig1[1, 2], 
+    #     xlabel=L"reduced dimensions, $r$", 
+    #     ylabel="Relative Output Error", 
+    #     # title="Relative Output Error", 
+    #     yscale=log10,
+    #     xlabelsize=30,
+    #     ylabelsize=30,
+    #     xticklabelsize=25,
+    #     yticklabelsize=25,
+    #     xticks=1:r
+    # )
+    # for key in provided_keys
+    #     l = scatterlines!(ax2, 1:r, roe[key], label=key)
+    #     push!(lines, l)
+    #     push!(labels, key)
+    # end
+    Legend(fig1[2, 1], 
+        lines, labels,
+        orientation=:horizontal, 
+        halign=:center, 
+        tellwidth=false, 
+        tellheight=true,
+        labelsize=28
+    )
+    # Label(fig1[0, :], "2D Heat Equation", fontsize=35)
+    display(fig1)
+    save(joinpath(FILEPATH, "plots/heat2d/relative_state_error.png"), fig1)
+end
+
 #==========================================#
 ## Plot streaming error and rse per stream
 #==========================================#
@@ -457,6 +512,82 @@ with_theme(theme_latexfonts()) do
     save(joinpath(FILEPATH, "plots/heat2d/streaming_error.png"), fig2)
 end
 
+##
+axis_colors = Makie.categorical_colors(:tab10, 2)
+ylimits = [[1e-6, 1e1], [1e-1, 1e1], [1e-6, 1e1], [1e-11, 1e-4]]
+with_theme(theme_latexfonts()) do
+    fig2 = Figure(size=(1500,450))
+    xtick_vals = 0:(num_of_streams ÷ 2):num_of_streams
+    lines_ = []
+    labels_ = []
+    axes = []
+    for (j,ri) in enumerate([4,8,12])
+        push!(axes, Axis(fig2[1, j], 
+            xlabel=L"$k$-th stream", 
+            ylabel=j == 1 ? 
+                   L"\Vert \mathbf{X}-\bar{\mathbf{X}}\mathbf{V}_r^\top\Vert_F / \Vert\mathbf{X}\Vert_F" :
+                   "", 
+            # title=L"Relative State Error & Streaming Error, $r = %$ri$", 
+            yscale=log10, xticks=xtick_vals, yticklabelcolor=axis_colors[1],
+            xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+            ylabelcolor=axis_colors[1]
+        ))
+        push!(axes, Axis(fig2[1, j], 
+            # ylabel=j==3 ? 
+            #           L"\Vert\mathcal{E}_k\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_k\mathbf{D}_k)\mathcal{E}_{k-1}\Vert_F" :
+            #           "", 
+            ylabel=j==3 ? 
+                      L"\Vert\mathbf{O}_* - \mathbf{O}_k\Vert_F / \Vert\mathbf{O}_*\Vert_F" :
+                      "", 
+            yticklabelcolor=axis_colors[2], yaxisposition=:right, yscale=log10, ygridstyle=:dash,
+            xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+            ylabelcolor=axis_colors[2]
+        ))
+        hidespines!(axes[2*(j-1)+2])
+        hidexdecorations!(axes[2*(j-1)+2])
+        # push!(axes, Axis(fig2[2, j], 
+        #     xlabel=L"$k$-th stream", 
+        #     ylabel=j==1 ? 
+        #             L"\Vert\mathbf{Y}_{\mathrm{true}}-\mathbf{Y}_{\mathrm{recon}}\Vert_F / \Vert\mathbf{Y}_{\mathrm{true}}\Vert_F" :
+        #             "", 
+        #     # title=L"Relative Output Error & Streaming Error, $r = %$ri$", 
+        #     yscale=log10, xticks=xtick_vals, yticklabelcolor=axis_colors[1],
+        #     xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        #     ylabelcolor=axis_colors[1]
+        # ))
+        # push!(axes, Axis(fig2[2, j],
+        #     # ylabel=j==3 ? 
+        #     #         L"\Vert\mathcal{E}_{y_k}\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_{y_k}\hat{\mathbf{X}}_k^\top)\mathcal{E}_{y_{k-1}}\Vert_F" :
+        #     #         "",
+        #     ylabel=j==3 ? 
+        #               L"\Vert\mathbf{O}_* - \mathbf{O}_k\Vert_F / \Vert\mathbf{O}_*\Vert_F" :
+        #               "", 
+        #     yticklabelcolor=axis_colors[2], yaxisposition=:right, yscale=log10, ygridstyle=:dash,
+        #     xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        #     ylabelcolor=axis_colors[2]
+        # ))
+        # hidespines!(axes[4*(j-1)+4])
+        # hidexdecorations!(axes[4*(j-1)+4])
+
+        ylims!(axes[2*(j-1)+1], ylimits[1]...)
+        ylims!(axes[2*(j-1)+2], ylimits[2]...)
+        # ylims!(axes[4*(j-1)+3], ylimits[3]...)
+        # ylims!(axes[4*(j-1)+4], ylimits[4]...)
+
+        l = scatterlines!(axes[2*(j-1)+1], 1:num_of_streams, state_stream_res.rse[ri,:], color=axis_colors[1])
+        scatterlines!(axes[2*(j-1)+2], 1:num_of_streams, state_stream_res.stream_err[ri,:], color=axis_colors[2])
+        # scatterlines!(axes[4*(j-1)+3], 1:num_of_streams, output_stream_res.rse[ri,:], color=axis_colors[1])
+        # scatterlines!(axes[4*(j-1)+4], 1:num_of_streams, output_stream_res.stream_err[ri,:], color=axis_colors[2])
+        text!(axes[2*(j-1)+1], 0, ylimits[1][1]*2, text="r = $ri", fontsize=25)
+        # text!(axes[4*(j-1)+3], 0, ylimits[3][1]*2, text="r = $ri", fontsize=25)
+        push!(lines_, l)
+        push!(labels_, "r = $ri")
+    end
+    Label(fig2[0, :], "Relative State and Streaming Error per stream for different reduced dimensions", fontsize=32)
+    display(fig2)
+    save(joinpath(FILEPATH, "plots/heat2d/streaming_state_error.png"), fig2)
+end
+
 #================================================#
 ## Plot a posteriori error and conversion factor
 #================================================#
@@ -470,13 +601,13 @@ with_theme(theme_latexfonts()) do
         ylabel=L"\Vert\xi_k^+\Vert_2",
         # title=L"Relative State Error & Streaming Error, $r = %$ri$", 
         xticks=xtick_vals, yticklabelcolor=axis_colors[1],
-        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        xlabelsize=30, ylabelsize=35, xticklabelsize=25, yticklabelsize=25,
         ylabelcolor=axis_colors[1], titlesize=30, yscale=log10
     )
     ax2 = Axis(fig3[1, 1],
-        ylabel=L"\gamma_k",
+        ylabel=L"c_k",
         yticklabelcolor=axis_colors[2], yaxisposition=:right, ygridstyle=:dash,
-        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        xlabelsize=30, ylabelsize=35, xticklabelsize=25, yticklabelsize=25,
         ylabelcolor=axis_colors[2]
     )
     hidespines!(ax2)
