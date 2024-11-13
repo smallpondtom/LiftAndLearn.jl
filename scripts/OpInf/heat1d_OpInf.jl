@@ -2,9 +2,9 @@
 One-dimensional heat equation test case using Operator Inference.
 """
 
-#################
+#===============#
 ## Load packages
-#################
+#===============#
 using CSV
 using DataFrames
 using LinearAlgebra
@@ -13,22 +13,22 @@ using ProgressMeter
 using PolynomialModelReductionDataset
 const Pomoreda = PolynomialModelReductionDataset
 
-############
+#==========#
 ## Load LnL
-############
+#==========#
 using LiftAndLearn
 const LnL = LiftAndLearn
 
-####################
+#==================#
 ## Set some options
-####################
+#==================#
 SAVEFIG = false
 PROVIDE_DERIVATIVE = false
 SAVEDATA = false
 
-#########################
+#=======================#
 ## 1D Heat equation setup
-#########################
+#=======================#
 Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-3
 heat1d = Pomoreda.Heat1DModel(
@@ -58,11 +58,10 @@ options = LnL.LSOpInfOption(
 
 Xfull = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 Yfull = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-pod_bases = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 
-# A_full = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-# B_full = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-# C_full = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+A_full = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+B_full = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
+C_full = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 
 A_intru = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 B_intru = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
@@ -72,37 +71,54 @@ A_opinf = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 B_opinf = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 C_opinf = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
 
-######################
-## Generate operators
-######################
-r = 8  # order of the reduced form
+#====================#
+## Generate data
+#====================#
 Ubc = ones(heat1d.time_dim)
-@info "Generate intrusive and inferred operators"
+@info "Generate the data"
 p = Progress(length(heat1d.diffusion_coeffs))
 for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
     A, B = heat1d.finite_diff_model(heat1d, μ)
     C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
     op_heat = LnL.Operators(A=A, B=B, C=C)
-    # A_full[idx] = A
-    # B_full[idx] = B
-    # C_full[idx] = C
+    A_full[idx] = A
+    B_full[idx] = B
+    C_full[idx] = C
 
     # Compute the states with backward Euler
     X = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
                                system_input=true, integrator_type=:BackwardEuler)
     Xfull[idx] = X
 
-    # Compute the SVD for the POD basis
-    F = svd(X)
-    Vr = F.U[:, 1:r]
-    pod_bases[idx] = Vr
-
     # Compute the output of the system
     Y = C * X
     Yfull[idx] = Y
+    next!(p)
+end
+
+#====================#
+## Generate basis
+#====================#
+@info "Generate the POD basis"
+r = 8  # order of the reduced form
+tmp = svd(reduce(hcat, Xfull))
+Vrmax = tmp.U[:, 1:r]
+
+#====================#
+## Generate operators
+#====================#
+@info "Generate intrusive and inferred operators"
+p = Progress(length(heat1d.diffusion_coeffs))
+for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
+    A = A_full[idx]
+    B = B_full[idx]
+    C = C_full[idx]
+    X = Xfull[idx]
+    Y = Yfull[idx]
 
     # Compute the values for the intrusive model
-    op_heat_new = LnL.pod(op_heat, Vr, options.system)
+    op_heat = Operators(A=A, B=B, C=C)
+    op_heat_new = LnL.pod(op_heat, Vrmax, options.system)
     A_intru[idx] = op_heat_new.A
     B_intru[idx] = op_heat_new.B
     C_intru[idx] = op_heat_new.C
@@ -114,9 +130,9 @@ for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
         Un = Ubc[jj, :]
         Yn = Y[:, jj]
         Xdot = A * Xn + B * Un'
-        op_infer = LnL.opinf(Xn, Vr, options; U=Un, Y=Yn, Xdot=Xdot)
+        op_infer = LnL.opinf(Xn, Vrmax, options; U=Un, Y=Yn, Xdot=Xdot)
     else
-        op_infer = LnL.opinf(X, Vr, options; U=Ubc, Y=Y)
+        op_infer = LnL.opinf(X, Vrmax, options; U=Ubc, Y=Y)
     end
 
     A_opinf[idx] = op_infer.A
@@ -126,9 +142,9 @@ for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
     next!(p)
 end
 
-###########
+#=========#
 ## Analyze
-###########
+#=========#
 @info "Compute errors"
 
 # Error analysis 
@@ -141,7 +157,7 @@ proj_err = zeros(r, 1)
 @showprogress for i = 1:r, j = 1:heat1d.param_dim
     Xf = Xfull[j]  # full order model states
     Yf = Yfull[j]  # full order model outputs
-    Vr = pod_bases[j][:, 1:i]  # basis
+    Vr = Vrmax[:, 1:i]
 
     # Unpack intrusive operators
     Aint = A_intru[j]
@@ -192,9 +208,9 @@ if SAVEDATA
     CSV.write("scripts/OpInf/data/heat1d_data.csv", df)  # Write the data just in case
 end
 
-################
+#==============#
 ## Plot results
-################
+#==============#
 @info "Plotting results"
 # Projection error
 p1 = plot(1:r, df.projection_err, marker=(:rect),show=true)
@@ -250,7 +266,7 @@ end
 ## Testing
 #==========#
 @info "Testing by interpolating with the training parameter region."
-num_tests = 20
+num_tests = 5
 
 # Error analysis 
 intru_state_err = zeros(r, 1)
@@ -273,11 +289,6 @@ param_region = collect(heat1d.diffusion_coeffs)
     Binf = LnL.interpolate_matrix_elements(param_region, B_opinf, μ; order=3)
     Cinf = LnL.interpolate_matrix_elements(param_region, C_opinf, μ; order=3)
 
-    # A = interpolate_matrix_elements(param_region, A_full, μ; order=3)
-    # B = interpolate_matrix_elements(param_region, B_full, μ; order=3)
-    # C = interpolate_matrix_elements(param_region, C_full, μ; order=3)
-    # V = interpolate_matrix_elements(param_region, pod_bases, μ; order=3)
-
     # Generate full models for new parameter to get POD-basis
     A, B = heat1d.finite_diff_model(heat1d, μ)
     C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
@@ -286,10 +297,9 @@ param_region = collect(heat1d.diffusion_coeffs)
     X = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
                                system_input=true, integrator_type=:BackwardEuler)
     Y = C * X
-    V = svd(X).U[:, 1:r]
 
     for i = 1:r
-        Vr = V[:, 1:i]
+        Vr = Vrmax[:, 1:i]
 
         # Integrate the intrusive model
         Xint = heat1d.integrate_model(
@@ -329,9 +339,9 @@ if SAVEDATA
     CSV.write("scripts/OpInf/data/heat1d_test_data.csv", df)  # Write the data just in case
 end
 
-################
+#==============#
 ## Plot results
-################
+#==============#
 @info "Plotting results"
 # State error
 p2 = plot(1:r, df.intrusive_state_err, marker=(:cross, 10), label="intru", show=true)
@@ -339,7 +349,7 @@ plot!(p2, 1:r, df.inferred_state_err, marker=(:circle), ls=:dash, label="opinf")
 plot!(p2, 
     yscale=:log10, 
     majorgrid=true, minorgrid=true,
-    # yticks=[round(10.0^i, digits=-i) for i in -10:0],
+    yticks=[round(10.0^i, digits=-i) for i in -10:0],
     xticks=1:r,
     xlabel="dimension n",
     ylabel="avg error of states",
@@ -354,7 +364,7 @@ plot!(p3, 1:r, df.inferred_output_err, marker=(:circle), ls=:dash, label="opinf"
 plot!(p3, 
     yscale=:log10, 
     majorgrid=true, minorgrid=true,
-    # yticks=[round(10.0^i, digits=-i) for i in -10:0],
+    yticks=[round(10.0^i, digits=-i) for i in -10:0],
     xticks=1:r,
     xlabel="dimension n",
     ylabel="avg error of outputs",
