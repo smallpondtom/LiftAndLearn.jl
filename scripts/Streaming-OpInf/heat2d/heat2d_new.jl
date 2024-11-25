@@ -19,24 +19,18 @@ const LnL = LiftAndLearn
 #================================#
 FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/") : joinpath(pwd(), "scripts/Streaming-OpInf/")
 
-# #==============================#
-# ## Include functions and files
-# #==============================#
-# include("utilities/plot_theme.jl")
-# include("utilities/analysis.jl")
-# include("utilities/plotting.jl")
-
-
 #========================#
 ## 2D Heat equation setup
 #========================#
 Ω = ((0.0, 1.0), (0.0, 1.25))
 Nx = 32
 Ny = 40
+M = 10
+μs = range(0.1, 2.0, length=M)
 heat2d = Heat2DModel(
     spatial_domain=Ω, time_domain=(0,1.0), 
     Δx=(Ω[1][2] + 1/Nx)/Nx, Δy=(Ω[2][2] + 1/Ny)/Ny, Δt=1e-3,
-    diffusion_coeffs=0.1, BC=(:dirichlet, :dirichlet)
+    diffusion_coeffs=μs, BC=(:dirichlet, :dirichlet)
 )
 xgrid0 = heat2d.yspan' .* ones(heat2d.spatial_dim[1])
 ygrid0 = ones(heat2d.spatial_dim[2])' .* heat2d.xspan
@@ -376,13 +370,11 @@ with_theme(theme_latexfonts()) do
     )
     Label(fig1[0, :], "2D Heat Equation", fontsize=35)
     display(fig1)
-    save(joinpath(FILEPATH, "plots/heat2d/relative_error.pdf"), fig1)
+    save(joinpath(FILEPATH, "plots/heat2d/relative_error.png"), fig1)
 end
 
 ## Plot
 provided_keys = ["POD", "OpInf", "TR-OpInf", "Streaming-OpInf"]
-marker_styles = [:circle, :diamond, :cross, :rect]
-line_styles = [:solid, :dash, :dot, :dashdot]
 with_theme(theme_latexfonts()) do
     fig1 = Figure(fontsize=20, size=(900,600))
     # Relative State Error
@@ -399,12 +391,8 @@ with_theme(theme_latexfonts()) do
         yticklabelsize=25,
         xticks=1:r
     )
-    for (i,key) in enumerate(provided_keys)
-        l = scatterlines!(
-            ax1, 1:r, rse[key],
-            marker=marker_styles[i], markersize=(35-(i-1)*2),
-            linestyle=line_styles[i], linewidth=7,
-        )
+    for key in provided_keys
+        l = scatterlines!(ax1, 1:r, rse[key])
         push!(lines, l)
         push!(labels, key)
     end
@@ -437,7 +425,7 @@ with_theme(theme_latexfonts()) do
     )
     # Label(fig1[0, :], "2D Heat Equation", fontsize=35)
     display(fig1)
-    save(joinpath(FILEPATH, "plots/heat2d/relative_state_error.pdf"), fig1)
+    save(joinpath(FILEPATH, "plots/heat2d/relative_state_error.png"), fig1)
 end
 
 #==========================================#
@@ -591,7 +579,7 @@ with_theme(theme_latexfonts()) do
     end
     Label(fig2[0, :], "Relative State and Streaming Error per stream for different reduced dimensions", fontsize=32)
     display(fig2)
-    save(joinpath(FILEPATH, "plots/heat2d/streaming_state_error.pdf"), fig2)
+    save(joinpath(FILEPATH, "plots/heat2d/streaming_state_error.png"), fig2)
 end
 
 #================================================#
@@ -621,7 +609,7 @@ with_theme(theme_latexfonts()) do
     scatterlines!(ax1, 1:num_of_streams, state_stream_res.post_err, color=axis_colors[1])
     scatterlines!(ax2, 1:num_of_streams, state_stream_res.conv_factor, color=axis_colors[2])
     display(fig3)
-    save(joinpath(FILEPATH, "plots/heat2d/aposteriori_error.pdf"), fig3)
+    save(joinpath(FILEPATH, "plots/heat2d/aposteriori_error.png"), fig3)
 end
 
 #========================#
