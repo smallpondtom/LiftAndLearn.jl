@@ -3,7 +3,7 @@
 """
 
 ## Generate data
-include("datagen.jl")
+include("01-datagen.jl")
        
 ## Generate the POD basis
-include("basis.jl")
+include("02-basis.jl")
