@@ -14,7 +14,7 @@ Recursive Least-Squares (RLS) cache struct to solve for DO = R.
     ξpost::Array{T,2} = zeros(T,M,n)        # A posteriori error matrix (M x n)
     C::Array{T,2} = zeros(T,M,M)            # Conversion factor (M x M)
     J::Array{T,2} = zeros(T,M,M)            # Cost (scalar)
-    γ::T                                    # Regularization term
+    Γ::Union{T,AbstractArray{T,2}}          # Regularization term (matrix or constant)
     λ::T                                    # Forgetting factor
 
     # Preallocated temporary variables
@@ -45,7 +45,7 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
               Q::Union{Real, AbstractMatrix{T}}) where T<:Real
     M, N = size(D)   # M: number of data points, N: number of features
     n = size(R, 2)   # n: residual dimension (state dimemsion)
-
+ 
     # Compute a priori error: ξpre = R - D * O
     obj.ξpre .= R
     mul!(obj.ξpre, D, obj.O, -1.0, 1.0)  # ξpre = R - D * O
@@ -145,7 +145,7 @@ function vrrls!(obj::RLSCache{T}, D::AbstractMatrix{T}, R::AbstractMatrix{T},
                 Q::Union{Real,AbstractMatrix{T}}, γ_k::Real, γ_km1::Real) where T<:Number
     M, N = size(D)
     n = size(R, 2)
-
+    
     # Compute a priori error: obj.ξpre = R - D * obj.O
     mul!(obj.ξpre, D, obj.O, -1.0, 1.0)
     obj.ξpre .+= R
@@ -234,7 +234,7 @@ function vrrls!(obj::RLSCache{T}, D::AbstractMatrix{T}, R::AbstractMatrix{T},
     obj.J = obj.λ * obj.J + sum(obj.ξpre .* obj.ξpost)  # For matrix e and ξ
 
     # Update regularization term
-    obj.γs = γ_k
+    obj.Γ = γ_k
 
     return nothing
 end

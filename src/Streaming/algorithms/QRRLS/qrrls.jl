@@ -15,7 +15,6 @@ QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = 
     ξpost::Array{T,2} = zeros(T,1,n)      # A posteriori error vector (1 x n)
     C::T = zero(T)                        # Conversion factor (scalar)
     J::T = zero(T)                        # Cost (scalar)
-    γ::T                                  # Regularization term
     λ::T                                  # Forgetting factor
 
     # Preallocated temporary variables

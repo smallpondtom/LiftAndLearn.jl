@@ -11,7 +11,7 @@ the standard Recursive Least-Squares (RLS) algorithm with regularization.
 """
 function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::AbstractArray{T}=T[], 
                  Q::Union{T,AbstractArray{<:Real}}=size(X,2)==1 ? 1.0 : 1.0I(size(X,2)),
-                 γs::Real=0.0, final_step::Bool=false) where T<:Number
+                 Γs::Union{Real,AbstractArray{<:Real}}=0.0, final_step::Bool=false) where T<:Number
 
     tdim = size(X, 2)  # number of data points (time dimension)
 
@@ -49,9 +49,9 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
 
     # Execute the update
     if obj.variable_regularization  # if variable regularization is enabled
-        vrrls!(obj.cache, D, R, Q, γs, obj.γ)
+        vrrls!(obj.cache, D, R, Q, Γs, obj.cache.Γ)
     else
-        if obj.initial_step && iszero(obj.γ)
+        if obj.initial_step && iszero(obj.cache.Γ)
             Q_inv = isa(Q, Number) ? 1 / Q : Q \ I
             obj.cache.P = (D' * Q_inv * D) \ I
             obj.cache.K = obj.cache.P * D' * Q_inv
@@ -70,7 +70,7 @@ $(SIGNATURES)
 
 Single stream update for the output data.
 """
-function stream_output!(obj::RLSOpInf, X::AbstractArray{T}, Y::AbstractArray{T}; γo::Real=0.0, 
+function stream_output!(obj::RLSOpInf, X::AbstractArray{T}, Y::AbstractArray{T}; Γo::Union{Real,AbstractArray{<:Real}}=0.0, 
                         Z::Union{T,AbstractArray{T}}=size(X,2)==1 ? 1.0 : 1.0I(size(X,2))) where T<:Number
     tdim = size(X, 2)  # number of data points (time dimension)
     foo, bar = checksize(Y)
@@ -86,9 +86,9 @@ function stream_output!(obj::RLSOpInf, X::AbstractArray{T}, Y::AbstractArray{T};
     Xt = X'
 
     if obj.variable_regularization  # if variable regularization is enabled
-        vrrls!(obj.cache, Xt, Y, Z, γo, obj.cache.γ)
+        vrrls!(obj.cache, Xt, Y, Z, Γo, obj.cache.Γ)
     else 
-        if obj.initial_step && iszero(obj.cache.γ)
+        if obj.initial_step && iszero(obj.cache.Γ)
             Z_inv = isa(Z, Number) ? 1 / Z : Z \ I
             obj.cache.P = (X * Z_inv * Xt) \ I
             obj.cache.K = obj.Py * X * Z_inv
