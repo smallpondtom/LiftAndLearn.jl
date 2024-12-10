@@ -266,6 +266,7 @@ Eo = nothing
 
         # Streaming errors
         O_norm = norm(O_inf[idx,1:ri], 2)
+        C_norm = norm(op_inf.C[:,1:ri], 2)
         Es_true_sub = Es_true[idx,1:ri]
         Eo_true_sub = Eo_true[1:ri]
         Es_sub = Es[idx,1:ri]
@@ -273,8 +274,8 @@ Eo = nothing
 
         state_stream_res.true_stream_err[j, i] = norm(Es_true_sub, 2) / O_norm
         state_stream_res.stream_err[j,i] = norm(Es_sub,2) / O_norm
-        output_stream_res.true_stream_err[j,i] = norm(Eo_true_sub, 2) / O_norm
-        output_stream_res.stream_err[j,i] = norm(Eo_sub,2) / O_norm
+        output_stream_res.true_stream_err[j,i] = norm(Eo_true_sub, 2) / C_norm
+        output_stream_res.stream_err[j,i] = norm(Eo_sub,2) / C_norm
     end
 
     # A posteriori error and conversion factors
@@ -444,7 +445,7 @@ end
 ## Plot streaming error and rse per stream
 #==========================================#
 axis_colors = Makie.categorical_colors(:tab10, 2)
-ylimits = [[1e-6, 1e1], [1e-1, 1e1], [1e-6, 1e1], [1e-11, 1e-4]]
+ylimits = [[1e-6, 1e1], [1e-1, 1e1], [1e-6, 1e1], [1e-7, 1e2]]
 with_theme(theme_latexfonts()) do
     fig2 = Figure(size=(1500,900))
     xtick_vals = 0:(num_of_streams ÷ 2):num_of_streams
@@ -517,6 +518,126 @@ with_theme(theme_latexfonts()) do
     display(fig2)
     save(joinpath(FILEPATH, "plots/heat2d/streaming_error.png"), fig2)
 end
+
+##
+ylimits = [[1e-6, 1e1], [1e-1, 1e1], [1e-6, 1e1], [1e-11, 1e-4]]
+with_theme(theme_latexfonts()) do
+    fig2 = Figure(size=(1500,450))
+    xtick_vals = 0:(num_of_streams ÷ 2):num_of_streams
+    lines_ = []
+    labels_ = []
+    axes = []
+    for (j,ri) in enumerate([4,8,12])
+        push!(axes, Axis(fig2[1, j], 
+            xlabel=L"$k$-th stream", 
+            ylabel=j == 1 ? 
+                   L"\Vert \mathbf{X}-\bar{\mathbf{X}}\mathbf{V}_r^\top\Vert_F / \Vert\mathbf{X}\Vert_F" :
+                   "", 
+            # title=L"Relative State Error & Streaming Error, $r = %$ri$", 
+            yscale=log10, xticks=xtick_vals, yticklabelcolor=axis_colors[1],
+            xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+            ylabelcolor=axis_colors[1]
+        ))
+        push!(axes, Axis(fig2[1, j], 
+            # ylabel=j==3 ? 
+            #           L"\Vert\mathcal{E}_k\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_k\mathbf{D}_k)\mathcal{E}_{k-1}\Vert_F" :
+            #           "", 
+            ylabel=j==3 ? 
+                      L"\Vert\mathbf{O}_* - \mathbf{O}_k\Vert_F / \Vert\mathbf{O}_*\Vert_F" :
+                      "", 
+            yticklabelcolor=axis_colors[2], yaxisposition=:right, yscale=log10, ygridstyle=:dash,
+            xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+            ylabelcolor=axis_colors[2]
+        ))
+        hidespines!(axes[2*(j-1)+2])
+        hidexdecorations!(axes[2*(j-1)+2])
+        # push!(axes, Axis(fig2[2, j], 
+        #     xlabel=L"$k$-th stream", 
+        #     ylabel=j==1 ? 
+        #             L"\Vert\mathbf{Y}_{\mathrm{true}}-\mathbf{Y}_{\mathrm{recon}}\Vert_F / \Vert\mathbf{Y}_{\mathrm{true}}\Vert_F" :
+        #             "", 
+        #     # title=L"Relative Output Error & Streaming Error, $r = %$ri$", 
+        #     yscale=log10, xticks=xtick_vals, yticklabelcolor=axis_colors[1],
+        #     xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        #     ylabelcolor=axis_colors[1]
+        # ))
+        # push!(axes, Axis(fig2[2, j],
+        #     # ylabel=j==3 ? 
+        #     #         L"\Vert\mathcal{E}_{y_k}\Vert_F=\Vert(\mathbf{I}-\mathbf{K}_{y_k}\hat{\mathbf{X}}_k^\top)\mathcal{E}_{y_{k-1}}\Vert_F" :
+        #     #         "",
+        #     ylabel=j==3 ? 
+        #               L"\Vert\mathbf{O}_* - \mathbf{O}_k\Vert_F / \Vert\mathbf{O}_*\Vert_F" :
+        #               "", 
+        #     yticklabelcolor=axis_colors[2], yaxisposition=:right, yscale=log10, ygridstyle=:dash,
+        #     xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        #     ylabelcolor=axis_colors[2]
+        # ))
+        # hidespines!(axes[4*(j-1)+4])
+        # hidexdecorations!(axes[4*(j-1)+4])
+
+        ylims!(axes[2*(j-1)+1], ylimits[1]...)
+        ylims!(axes[2*(j-1)+2], ylimits[2]...)
+        # ylims!(axes[4*(j-1)+3], ylimits[3]...)
+        # ylims!(axes[4*(j-1)+4], ylimits[4]...)
+
+        l = scatterlines!(axes[2*(j-1)+1], 1:num_of_streams, state_stream_res.rse[ri,:], color=axis_colors[1])
+        scatterlines!(axes[2*(j-1)+2], 1:num_of_streams, state_stream_res.stream_err[ri,:], color=axis_colors[2])
+        # scatterlines!(axes[4*(j-1)+3], 1:num_of_streams, output_stream_res.rse[ri,:], color=axis_colors[1])
+        # scatterlines!(axes[4*(j-1)+4], 1:num_of_streams, output_stream_res.stream_err[ri,:], color=axis_colors[2])
+        text!(axes[2*(j-1)+1], 0, ylimits[1][1]*2, text="r = $ri", fontsize=25)
+        # text!(axes[4*(j-1)+3], 0, ylimits[3][1]*2, text="r = $ri", fontsize=25)
+        push!(lines_, l)
+        push!(labels_, "r = $ri")
+    end
+    Label(fig2[0, :], "Relative State and Streaming Error per stream for different reduced dimensions", fontsize=32)
+    display(fig2)
+    save(joinpath(FILEPATH, "plots/heat2d/streaming_state_error.pdf"), fig2)
+end
+
+
+## Plot the relative state error for all reduced dimensions over the streams
+# line_colors = Makie.categorical_colors(:tab20, r)
+line_colors = Makie.resample_cmap(:viridis, r÷2)
+with_theme(theme_latexfonts()) do
+    fig = Figure(size=(900,700))
+    xtick_vals = 0:(num_of_streams ÷ 4):num_of_streams
+    ax = Axis(fig[1, 1], 
+        xlabel=L"$k$-th stream", 
+        ylabel="Relative state error", 
+        title="Relative State Error per stream", 
+        yscale=log10, xticks=xtick_vals, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    for (j,ri) in enumerate(2:2:r)  # over all reduced dimensions
+        scatterlines!(ax, 1:num_of_streams, state_stream_res.rse[ri,:], color=line_colors[j], label="r = $ri")
+    end
+    axislegend(ax, labelsize=30, position=:rt)
+    display(fig)
+    save(joinpath(FILEPATH, "plots/heat2d/rel_state_err_per_stream.png"), fig)
+end
+
+
+## Plot the streaming errors for all reduced dimensions over the streams
+# line_colors = Makie.categorical_colors(:tab20, r)
+line_colors = Makie.resample_cmap(:viridis, r÷2)
+with_theme(theme_latexfonts()) do
+    fig = Figure(size=(900,700))
+    xtick_vals = 0:(num_of_streams ÷ 4):num_of_streams
+    ax = Axis(fig[1, 1], 
+        xlabel=L"$k$-th stream", 
+        ylabel="Relative streaming errors", 
+        title="Relative Streaming Error per stream", 
+        yscale=log10, xticks=xtick_vals, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    for (j,ri) in enumerate(2:2:r)  # over all reduced dimensions
+        scatterlines!(ax, 1:num_of_streams, state_stream_res.stream_err[ri,:], color=line_colors[j], label="r = $ri")
+    end
+    axislegend(ax, labelsize=30, position=:rt)
+    display(fig)
+    save(joinpath(FILEPATH, "plots/heat2d/rel_stream_err_per_stream.png"), fig)
+end
+
 
 ##
 axis_colors = Makie.categorical_colors(:tab10, 2)
@@ -594,34 +715,39 @@ with_theme(theme_latexfonts()) do
     save(joinpath(FILEPATH, "plots/heat2d/streaming_state_error.pdf"), fig2)
 end
 
+
 #================================================#
 ## Plot a posteriori error and conversion factor
 #================================================#
 with_theme(theme_latexfonts()) do 
-    fig3 = Figure(size=(900,500))
-    axis_colors = Makie.categorical_colors(:tab10, 2)
+    fig3 = Figure(size=(1000,600))
+    axis_colors = Makie.categorical_colors(:tab10, 10)
     xtick_vals = 0:(num_of_streams ÷ 5):num_of_streams
+
+    c1 = 1
+    c2 = 6
+
     ax1 = Axis(fig3[1, 1],
         title="A Posteriori Error and Conversion Factor per stream",
         xlabel=L"$k$-th stream", 
-        ylabel=L"\Vert\xi_k^+\Vert_2",
+        ylabel=L"a posteriori error norm, $\Vert\mathbf{\xi}_k^+\Vert_2$",
         # title=L"Relative State Error & Streaming Error, $r = %$ri$", 
-        xticks=xtick_vals, yticklabelcolor=axis_colors[1],
+        xticks=xtick_vals, yticklabelcolor=axis_colors[c1],
         xlabelsize=30, ylabelsize=35, xticklabelsize=25, yticklabelsize=25,
-        ylabelcolor=axis_colors[1], titlesize=30, yscale=log10
+        ylabelcolor=axis_colors[c1], titlesize=30, yscale=log10
     )
     ax2 = Axis(fig3[1, 1],
-        ylabel=L"c_k",
-        yticklabelcolor=axis_colors[2], yaxisposition=:right, ygridstyle=:dash,
+        ylabel=L"conversion factor, $c_k$",
+        yticklabelcolor=axis_colors[c2], yaxisposition=:right, ygridstyle=:dash,
         xlabelsize=30, ylabelsize=35, xticklabelsize=25, yticklabelsize=25,
-        ylabelcolor=axis_colors[2]
+        ylabelcolor=axis_colors[c2]
     )
     hidespines!(ax2)
     hidexdecorations!(ax2)
-    scatterlines!(ax1, 1:num_of_streams, state_stream_res.post_err, color=axis_colors[1])
-    scatterlines!(ax2, 1:num_of_streams, state_stream_res.conv_factor, color=axis_colors[2])
+    scatterlines!(ax1, 1:num_of_streams, state_stream_res.post_err, color=axis_colors[c1])
+    scatterlines!(ax2, 1:num_of_streams, state_stream_res.conv_factor, color=axis_colors[c2])
     display(fig3)
-    save(joinpath(FILEPATH, "plots/heat2d/aposteriori_error.pdf"), fig3)
+    save(joinpath(FILEPATH, "plots/heat2d/aposteriori_error.png"), fig3)
 end
 
 #========================#

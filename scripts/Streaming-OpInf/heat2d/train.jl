@@ -116,7 +116,7 @@ for (i, data_file) in enumerate(training_data_files)
         X = Xfull[:, idx]  
         U = Ufull[:, idx]
         Y = Yfull[:, idx] 
-
+        
         ## Streamify the data based on the selected streamsizes
         streamsize = 1
         X_stream = LnL.streamify(iVr' * X, streamsize)
