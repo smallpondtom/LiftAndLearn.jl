@@ -151,13 +151,12 @@ with_theme(theme_latexfonts()) do
     )
     lines = []
     labels = []
-    marker_styles = [:circle, :diamond, :cross, :rect]
-    line_styles = [:solid, :dash, :dot, :dashdot]
+    marker_styles = [:diamond, :cross, :circle, :rect]
+    line_styles = [:dot, :dash, :solid, :dashdot]
     i = 1
-    for (algo, basis) in bases
-        if algo == "batch"
-            continue
-        end
+    for Algo in ["Baker", "Brand", "Sketchy"]
+        algo = lowercase(Algo)
+        basis = bases[algo]
         Σr = basis.iΣr
         Σr_batch = bases["batch"].Σr
         error = abs.(Σr - Σr_batch) ./ Σr_batch
@@ -168,7 +167,7 @@ with_theme(theme_latexfonts()) do
         )
         i += 1
         push!(lines, l)
-        push!(labels, algo)
+        push!(labels, Algo)
     end
     axislegend(ax, 
         lines, labels,

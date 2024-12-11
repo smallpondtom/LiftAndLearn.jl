@@ -55,8 +55,8 @@ function StreamingOpInf(;
     options::LSOpInfOption,             # Standard (Least-Squares) Operator Inference options
     n::Int, m::Int, l::Int,             # state, input, and output dimensions
     algorithm::Symbol=:RLS,             # algorithm type
-    Γs::Union{T,AbstractArray{T}}=0.0,  # regularization term for state regression
-    Γo::Union{T,AbstractArray{T}}=0.0,  # regularization term for output regression
+    Γs::Union{T,AbstractArray{T}}=0.0,  # regularization term for state regression (regularization ||Γ^(1/2) * O||_F^2)
+    Γo::Union{T,AbstractArray{T}}=0.0,  # regularization term for output regression (regularization ||Γ^(1/2) * O||_F^2)
     λ::T=1.0,                           # forgetting factor
     # γs::T=0.0, γo::T=0.0, λ::T=1.0,     # regularization terms and forgetting factor
     rank::Int=1,                        # rank of the update (default rank-1 update)

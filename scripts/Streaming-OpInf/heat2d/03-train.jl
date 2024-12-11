@@ -185,6 +185,7 @@ for (i, data_file) in enumerate(training_data_files)
 
                 # Streaming errors
                 O_norm = norm(O_inf[idx,1:ri], 2)
+                C_norm = norm(op_inf.C[:,1:ri], 2)
                 Es_true_sub = Es_true[idx,1:ri]
                 Eo_true_sub = Eo_true[1:ri]
                 Es_sub = Es[idx,1:ri]
@@ -193,8 +194,8 @@ for (i, data_file) in enumerate(training_data_files)
                 # Errors
                 state_stream_res.true_stream_err[j, i] += norm(Es_true_sub, 2) / O_norm 
                 state_stream_res.stream_err[j,i] += norm(Es_sub,2) / O_norm
-                output_stream_res.true_stream_err[j,i] += norm(Eo_true_sub, 2) / O_norm 
-                output_stream_res.stream_err[j,i] += norm(Eo_sub,2) / O_norm
+                output_stream_res.true_stream_err[j,i] += norm(Eo_true_sub, 2) / C_norm 
+                output_stream_res.stream_err[j,i] += norm(Eo_sub,2) / C_norm
             end
 
             # A posteriori error and conversion factors 
