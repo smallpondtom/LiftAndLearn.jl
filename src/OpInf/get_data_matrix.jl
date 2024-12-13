@@ -19,7 +19,7 @@ function get_data_matrix(Xhat::AbstractArray, Xhat_t::AbstractArray, Ut::Abstrac
                          verbose::Bool=true)
     dims = []
     operator_symbols = []
-    K, m = size(Ut)
+    K, m = checksize(Ut)
     state_struct = copy(options.system.state)
     flag = false
 

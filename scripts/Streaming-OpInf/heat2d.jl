@@ -197,11 +197,11 @@ Xdot_stream = LnL.streamify(iVr' * Xdot, streamsize)
 num_of_streams = length(X_stream)
 
 ## Initialize the stream
-# γs = 1e-15
-# γo = 1e-15
-γs = 1e-9
-γo = 1e-9
-state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=4, l=1, algorithm=:RLS, γs=γs, γo=γo)
+# Γs = 1e-15
+# Γo = 1e-15
+Γs = 1e-9
+Γo = 1e-9
+state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=4, l=1, algorithm=:RLS, Γs=Γs, Γo=Γo)
 
 # Placeholders
 state_stream_res = (

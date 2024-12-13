@@ -58,7 +58,6 @@ function StreamingOpInf(;
     Γs::Union{T,AbstractArray{T}}=0.0,  # regularization term for state regression (regularization ||Γ^(1/2) * O||_F^2)
     Γo::Union{T,AbstractArray{T}}=0.0,  # regularization term for output regression (regularization ||Γ^(1/2) * O||_F^2)
     λ::T=1.0,                           # forgetting factor
-    # γs::T=0.0, γo::T=0.0, λ::T=1.0,     # regularization terms and forgetting factor
     rank::Int=1,                        # rank of the update (default rank-1 update)
     variable_regularize::Bool=false     # variable regularization flag
     ) where {T<:Real}
@@ -74,10 +73,8 @@ function StreamingOpInf(;
 
     if algorithm == :RLS  # Standard Recursive Least-Squares (RLS)
         # Initialize the inverse correlation matrices
-        Ps = typeof(Γs) ? (iszero(Γs) ? Matrix{T}(undef,d,d) : Matrix(1.0I(d) / Γs)) : Matrix(Γs \ 1.0I(d))  # State
-        Po = typeof(Γo) ? (iszero(Γo) ? Matrix{T}(undef,n,n) : Matrix(1.0I(n) / Γo)) : Matrix(Γo \ 1.0I(n))  # Output
-        # Ps    = iszero(γs) ? Matrix{T}(undef,d,d) : Matrix(1.0I(d) / γs)
-        # Po    = iszero(γo) ? Matrix{T}(undef,n,n) : Matrix(1.0I(n) / γo)
+        Ps = iszero(Γs) ? Matrix{T}(undef,d,d) : Matrix(Γs \ 1.0I(d))  # State
+        Po = iszero(Γo) ? Matrix{T}(undef,n,n) : Matrix(Γo \ 1.0I(n))  # Output
 
         # State regression
         state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, Γ=Γs, λ=λ)
@@ -102,8 +99,8 @@ function StreamingOpInf(;
         Po    = Matrix(Γo \ 1.0I(n))  # Output
         # Ps    = Matrix(1.0I(d) / γs)
         # Po    = Matrix(1.0I(n) / γo)
-        Φsqs  = sqrt(Γs)  # State 
-        Φsqo  = sqrt(Γo)  # Output
+        Φsqs  = typeof(Γs)<:Real ? Matrix(sqrt(Γs) * 1.0I(d)) : sqrt(Γs) # State 
+        Φsqo  = typeof(Γo)<:Real ? Matrix(sqrt(Γo) * 1.0I(n)) : sqrt(Γo) # Output
         # Φsqs  = Matrix(sqrt(γs) * 1.0I(d))
         # Φsqo  = Matrix(sqrt(γo) * 1.0I(n))
 
@@ -122,8 +119,6 @@ function StreamingOpInf(;
         # Initialize the square-root inverse correlation matrices (Psq)
         Psqs = Matrix(sqrt(Γs) \ 1.0I(d))  # State
         Psqo = Matrix(sqrt(Γo) \ 1.0I(n))  # Output
-        # Psqs = Matrix(1.0I(d) / sqrt(γs))
-        # Psqo = Matrix(1.0I(n) / sqrt(γo))
 
         # State regression
         state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, λ=λ)
