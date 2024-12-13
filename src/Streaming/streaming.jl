@@ -97,12 +97,8 @@ function StreamingOpInf(;
         # Initialize the inverse correlation matrices (P) and square-root correlation matrices (Φsq)
         Ps    = Matrix(Γs \ 1.0I(d))  # State
         Po    = Matrix(Γo \ 1.0I(n))  # Output
-        # Ps    = Matrix(1.0I(d) / γs)
-        # Po    = Matrix(1.0I(n) / γo)
         Φsqs  = typeof(Γs)<:Real ? Matrix(sqrt(Γs) * 1.0I(d)) : sqrt(Γs) # State 
         Φsqo  = typeof(Γo)<:Real ? Matrix(sqrt(Γo) * 1.0I(n)) : sqrt(Γo) # Output
-        # Φsqs  = Matrix(sqrt(γs) * 1.0I(d))
-        # Φsqo  = Matrix(sqrt(γo) * 1.0I(n))
 
         # State regression
         state_cache = QRRLSCache{T}(N=d, n=n, P=Ps, Φsq=Φsqs, λ=λ)
