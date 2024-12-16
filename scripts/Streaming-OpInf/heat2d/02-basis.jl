@@ -66,7 +66,7 @@ training_data_files = readdir(joinpath(FILEPATH, "data/training"), join=true)
 #=========================================================#
 ## Generate the POD basis using iSVD using all algorithms
 #=========================================================#
-rmax = 12
+rmax = 15
 Xall = Array[]
 
 # Execution times 

@@ -17,12 +17,6 @@ import LiftAndLearn as LnL
 #================================#
 FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/heat2d") : joinpath(pwd(), "scripts/Streaming-OpInf/heat2d")
 
-# #======================================#
-# ## Obtain all the saved training files
-# #======================================#
-# testing_data_files = readdir(joinpath(FILEPATH, "data/testing"), join=true)
-# model_files = readdir(joinpath(FILEPATH, "data/models"), join=true)
-
 #===================#
 ## Load the options
 #===================#
@@ -30,7 +24,10 @@ setup_file = joinpath(FILEPATH, "data/setup.jld2")
 setup = load(setup_file)
 options = setup["options"]
 heat2d = setup["heat2d"]
-rmax = 12
+basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
+basis_data = load(basis_file)
+Vrmax = basis_data["batch"].Vr
+rmax = size(Vrmax, 2)
 
 #============================================================#
 ## Plot the error between the batch and iSVD singular values
@@ -199,9 +196,10 @@ with_theme(theme_latexfonts()) do
         title="RLS", 
         yscale=log10, xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 1e-6, 1e1),
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(ax1, 1:num_of_streams-1, stream_res[:rls].rse[ri,1:end-1], color=line_colors[j])
+        scatterlines!(ax1, 1:num_of_streams, stream_res[:rls].rse[ri,:], color=line_colors[j])
     end
     # iQRRLS
     ax2 = Axis(fig[1, 2], 
@@ -210,9 +208,10 @@ with_theme(theme_latexfonts()) do
         title="iQRRLS", 
         yscale=log10, xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 1e-6, 1e1),
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(ax2, 1:num_of_streams-1, stream_res[:iqrrls].rse[ri,1:end-1], color=line_colors[j])
+        scatterlines!(ax2, 1:num_of_streams, stream_res[:iqrrls].rse[ri,:], color=line_colors[j])
     end
     # QRRLS
     ax3 = Axis(fig[1, 3], 
@@ -221,11 +220,12 @@ with_theme(theme_latexfonts()) do
         title="QRRLS", 
         yscale=log10, xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 1e-6, 1e1),
     )
     lines = []
     labels = []
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        l = scatterlines!(ax3, 1:num_of_streams-1, stream_res[:qrrls].rse[ri,1:end-1], color=line_colors[j])
+        l = scatterlines!(ax3, 1:num_of_streams, stream_res[:qrrls].rse[ri,:], color=line_colors[j])
         push!(lines, l)
         push!(labels, "r = $ri")
     end
@@ -247,33 +247,36 @@ with_theme(theme_latexfonts()) do
         xlabel=L"$k$-th stream", 
         ylabel="Relative streaming errors", 
         title="RLS", 
-        yscale=log10, xticks=xtick_vals, titlesize=30, 
+        # yscale=log10, 
+        xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(ax1, 1:num_of_streams-1, stream_res[:rls].stream_err[ri,1:end-1], color=line_colors[j])
+        scatterlines!(ax1, 1:num_of_streams, stream_res[:rls].stream_err[ri,:], color=line_colors[j])
     end
     # iQRRLS
     ax2 = Axis(fig[1, 2], 
         xlabel=L"$k$-th stream", 
         title="iQRRLS", 
-        yscale=log10, xticks=xtick_vals, titlesize=30, 
+        # yscale=log10, 
+        xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(ax2, 1:num_of_streams-1, stream_res[:iqrrls].stream_err[ri,1:end-1], color=line_colors[j])
+        scatterlines!(ax2, 1:num_of_streams, stream_res[:iqrrls].stream_err[ri,:], color=line_colors[j])
     end
     # QRRLS
     ax3 = Axis(fig[1, 3], 
         xlabel=L"$k$-th stream", 
         title="QRRLS", 
-        yscale=log10, xticks=xtick_vals, titlesize=30, 
+        # yscale=log10, 
+        xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     lines = []
     labels = []
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        l = scatterlines!(ax3, 1:num_of_streams-1, stream_res[:qrrls].stream_err[ri,1:end-1], color=line_colors[j])
+        l = scatterlines!(ax3, 1:num_of_streams, stream_res[:qrrls].stream_err[ri,:], color=line_colors[j])
         push!(lines, l)
         push!(labels, "r = $ri")
     end
@@ -303,20 +306,21 @@ with_theme(theme_latexfonts()) do
     line_styles = Dict(:rls => :dot, :iqrrls => :dash, :qrrls => :dashdot)
     for (i, algo) in enumerate(algos_lower)
         scatterlines!(
-            ax1, 1:num_of_streams-1, stream_res[algo].post_err[1:end-1],
-            linestyle=line_styles[algo], linewidth=7-2*(i-1), marker=marker_styles[algo], markersize=15-2*(i-1),
+            ax1, 1:num_of_streams, stream_res[algo].post_err,
+            linestyle=line_styles[algo], linewidth=7-2*(i-1), marker=marker_styles[algo], markersize=25-8*(i-1),
         )
     end
     # Conversion factor
     ax2 = Axis(fig[1, 2],
+        xlabel=L"$k$-th stream", 
         ylabel=L"conversion factor, $c_k$",
         xlabelsize=30, ylabelsize=35, xticklabelsize=25, yticklabelsize=25,
     )
     lines = []
     for (i, algo) in enumerate(algos_lower)
         l = scatterlines!(
-            ax2, 1:num_of_streams-1, stream_res[algo].conv_factor[1:end-1],
-            linestyle=line_styles[algo], linewidth=7-2*(i-1), marker=marker_styles[algo], markersize=15-2*(i-1),
+            ax2, 1:num_of_streams, stream_res[algo].conv_factor,
+            linestyle=line_styles[algo], linewidth=7-2*(i-1), marker=marker_styles[algo], markersize=25-8*(i-1),
         )
         push!(lines, l)
     end
