@@ -74,7 +74,7 @@ constructed such that the row is the state vector and the column is the time.
 - `op::Operators`: inferred operators
 """
 function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
-               U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
+               U::AbstractArray=[0.0], Y::AbstractArray=[0.0],
                Xdot::AbstractArray=[])::Operators
     Ut = fat2tall(U)  # make sure that the U-matrix is tall
     Yt = fat2tall(Y)  # make sure that the Y-matrix is tall
@@ -84,8 +84,8 @@ function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption;
         Xdot, idx = time_derivative_approx(X, options)
         Xhat = Vn' * X[:, idx]  # fix the index of states
         Xhat_t = Xhat'
-        Ut = iszero(Ut) ? 0 : Ut[idx, :]  # fix the index of inputs
-        Yt = iszero(Yt) ? 0 : Yt[idx, :]  # fix the index of outputs
+        Ut = iszero(Ut) ? [0.0] : Ut[idx, :]  # fix the index of inputs
+        Yt = iszero(Yt) ? [0.0] : Yt[idx, :]  # fix the index of outputs
         Rt = Xdot' * Vn
     else
         Xhat = Vn' * X

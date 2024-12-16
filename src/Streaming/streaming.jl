@@ -53,7 +53,7 @@ Streaming Operator Inference/Lift And Learn
 """
 function StreamingOpInf(;
     options::LSOpInfOption,             # Standard (Least-Squares) Operator Inference options
-    n::Int, m::Int, l::Int,             # state, input, and output dimensions
+    n::Int, m::Int=0, l::Int=0,         # state (n), input (m), and output (l) dimensions
     algorithm::Symbol=:RLS,             # algorithm type
     Γs::Union{T,AbstractArray{T}}=0.0,  # regularization term for state regression (regularization ||Γ^(1/2) * O||_F^2)
     Γo::Union{T,AbstractArray{T}}=0.0,  # regularization term for output regression (regularization ||Γ^(1/2) * O||_F^2)

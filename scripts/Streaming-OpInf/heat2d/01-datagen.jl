@@ -13,8 +13,7 @@ using ProgressMeter
 using PolynomialModelReductionDataset: Heat2DModel
 using Printf
 using Random
-using LiftAndLearn
-const LnL = LiftAndLearn
+import LiftAndLearn as LnL
 
 #================================#
 ## Configure filepath for saving
@@ -28,7 +27,7 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/heat2d")
 Nx = 32
 Ny = 40
 M = 10
-μs = range(0.1, 2.0, length=M)
+μs = range(0.1, 1.0, length=M)
 heat2d = Heat2DModel(
     spatial_domain=Ω, time_domain=(0,1.0), 
     Δx=(Ω[1][2] + 1/Nx)/Nx, Δy=(Ω[2][2] + 1/Ny)/Ny, Δt=1e-3,
@@ -44,7 +43,6 @@ options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=1,
         control=1,
-        output=1,
     ),
     vars=LnL.VariableStructure(
         N=1,
@@ -66,11 +64,12 @@ U = [1.0, 1.0, -1.0, -1.0]
 U = repeat(U, 1, heat2d.time_dim)
 
 # Construct the output matrix (same for all parameters)
-C = ones(1, (Int ∘ prod)(heat2d.spatial_dim)) / heat2d.spatial_dim[1] / heat2d.spatial_dim[2]
+# C = ones(1, (Int ∘ prod)(heat2d.spatial_dim)) / heat2d.spatial_dim[1] / heat2d.spatial_dim[2]
 
-@showprogress for (i, μ) in enumerate(heat2d.diffusion_coeffs)
+@showprogress Threads.@threads for (i, μ) in collect(enumerate(heat2d.diffusion_coeffs))
     A, B = heat2d.finite_diff_model(heat2d, μ)
-    op_heat = LnL.Operators(A=A, B=B, C=C)
+    # op_heat = LnL.Operators(A=A, B=B, C=C)
+    op_heat = LnL.Operators(A=A, B=B)
 
     # Compute the state snapshot data with backward Euler
     X = heat2d.integrate_model(
@@ -79,11 +78,11 @@ C = ones(1, (Int ∘ prod)(heat2d.spatial_dim)) / heat2d.spatial_dim[1] / heat2d
     )
 
     # Compute the output of the system
-    Y = C * X
+    # Y = C * X
 
     data = Dict(
-        "X" => X, "U" => U, "Y" => Y,
-        "A" => A, "B" => B, "C" => C,
+        "X" => X, "U" => U, # "Y" => Y,
+        "A" => A, "B" => B, # "C" => C,
         "mu" => μ,
     )
     mu_str = @sprintf("%1.4f", μ)
@@ -97,9 +96,10 @@ Mtest = 5
 seed = 1234
 randn_gen = Random.MersenneTwister(seed)
 μs_test = rand(randn_gen, Mtest) * (heat2d.param_domain[2] - heat2d.param_domain[1]) .+ heat2d.param_domain[1]
-@showprogress for (i,μ) in enumerate(μs_test)
+@showprogress Threads.@threads for (i,μ) in collect(enumerate(μs_test))
     A, B = heat2d.finite_diff_model(heat2d, μ)
-    op_heat = LnL.Operators(A=A, B=B, C=C)
+    # op_heat = LnL.Operators(A=A, B=B, C=C)
+    op_heat = LnL.Operators(A=A, B=B)
 
     # Compute the state snapshot data with backward Euler
     X = heat2d.integrate_model(
@@ -108,11 +108,11 @@ randn_gen = Random.MersenneTwister(seed)
     )
 
     # Compute the output of the system
-    Y = C * X
+    # Y = C * X
 
     data = Dict(
-        "X" => X, "U" => U, "Y" => Y,
-        "A" => A, "B" => B, "C" => C,
+        "X" => X, "U" => U, # "Y" => Y,
+        "A" => A, "B" => B, # "C" => C,
         "mu" => μ
     )
     mu_str = @sprintf("%1.4f", μ)

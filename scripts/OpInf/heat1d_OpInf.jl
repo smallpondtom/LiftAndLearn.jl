@@ -10,8 +10,7 @@ using DataFrames
 using LinearAlgebra
 using Plots
 using ProgressMeter
-using PolynomialModelReductionDataset
-const Pomoreda = PolynomialModelReductionDataset
+using PolynomialModelReductionDataset: Heat1DModel
 
 #==========#
 ## Load LnL
@@ -31,7 +30,7 @@ SAVEDATA = false
 #=======================#
 Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-3
-heat1d = Pomoreda.Heat1DModel(
+heat1d = Heat1DModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), 
     Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt, 
     diffusion_coeffs=range(0.1, 10, 10),

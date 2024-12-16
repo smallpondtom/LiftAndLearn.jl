@@ -36,7 +36,7 @@ Ny = 40
 heat2d = Heat2DModel(
     spatial_domain=Ω, time_domain=(0,1.0), 
     Δx=(Ω[1][2] + 1/Nx)/Nx, Δy=(Ω[2][2] + 1/Ny)/Ny, Δt=1e-3,
-    diffusion_coeffs=0.1, BC=(:dirichlet, :dirichlet)
+    diffusion_coeffs=1, BC=(:dirichlet, :dirichlet)
 )
 xgrid0 = heat2d.yspan' .* ones(heat2d.spatial_dim[1])
 ygrid0 = ones(heat2d.spatial_dim[2])' .* heat2d.xspan
@@ -167,9 +167,9 @@ O_inf = vcat(op_inf.A', op_inf.B')
 #============================#
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(
-    A = 1e-6,
-    B = 1e-6,
-    C = 1e-6
+    A = 1e-5,
+    B = 1e-5,
+    C = 1e-5
 )
 op_inf_reg = LnL.opinf(X, Vr, options; U=U, Y=Y)
 
@@ -201,7 +201,7 @@ num_of_streams = length(X_stream)
 # Γo = 1e-15
 Γs = 1e-9
 Γo = 1e-9
-state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=4, l=1, algorithm=:RLS, Γs=Γs, Γo=Γo)
+state_stream, output_stream = LnL.StreamingOpInf(options=options, n=r, m=4, l=1, algorithm=:iQRRLS, Γs=Γs, Γo=Γo)
 
 # Placeholders
 state_stream_res = (
@@ -398,7 +398,8 @@ with_theme(theme_latexfonts()) do
         ylabelsize=30,
         xticklabelsize=25,
         yticklabelsize=25,
-        xticks=1:r
+        xticks=1:r,
+        # limits=(nothing,nothing,1e-7,1),
     )
     for (i,key) in enumerate(provided_keys)
         l = scatterlines!(
@@ -438,7 +439,7 @@ with_theme(theme_latexfonts()) do
     )
     # Label(fig1[0, :], "2D Heat Equation", fontsize=35)
     display(fig1)
-    save(joinpath(FILEPATH, "plots/heat2d/relative_state_error.pdf"), fig1)
+    # save(joinpath(FILEPATH, "plots/heat2d/relative_state_error.pdf"), fig1)
 end
 
 #==========================================#

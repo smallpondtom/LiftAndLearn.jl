@@ -11,8 +11,7 @@ using JLD2
 using IncrementalSVD
 using LinearAlgebra
 using ProgressMeter
-using LiftAndLearn
-const LnL = LiftAndLearn
+import LiftAndLearn as LnL
 
 #================================#
 ## Configure filepath for saving
@@ -138,71 +137,21 @@ save(
     "baker", time_baker, "brand", time_brand, "sketchy", time_sketchy, "batch", time_batch,
 )
 
-#============================================================#
-## Plot the error between the batch and iSVD singular values
-#============================================================#
-with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(800, 600))
-    ax = Axis(
-        fig[1, 1], xlabel=L"singular value index, $i$", ylabel="relative error of singular values",
-        yscale=log10, xticks=1:rmax, titlesize=30, 
-        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        # title="Relative error between batch and \n incremental singular values",
-    )
-    lines = []
-    labels = []
-    marker_styles = [:diamond, :cross, :circle, :rect]
-    line_styles = [:dot, :dash, :solid, :dashdot]
-    i = 1
-    for Algo in ["Baker", "Brand", "Sketchy"]
-        algo = lowercase(Algo)
-        basis = bases[algo]
-        Σr = basis.iΣr
-        Σr_batch = bases["batch"].Σr
-        error = abs.(Σr - Σr_batch) ./ Σr_batch
-        l = scatterlines!(
-            ax, 1:rmax, error, 
-            marker=marker_styles[i], markersize=(35-(i-1)*2),
-            linestyle=line_styles[i], linewidth=7,
-        )
-        i += 1
-        push!(lines, l)
-        push!(labels, Algo)
-    end
-    axislegend(ax, 
-        lines, labels,
-        position=:rb,
-        # orientation=:horizontal, 
-        # halign=:center, 
-        # tellwidth=false, 
-        # tellheight=true,
-        labelsize=30
-    )
-    # Label(fig[0, :], "Relative error between batch and incremental singular values", fontsize=35)
-    display(fig)
-    save(joinpath(FILEPATH, "plots/relative_sval_error.pdf"), fig)
+#================================#
+## Compute the projection errors
+#================================#
+X = reduce(hcat, Xall)
+proj_error = Dict(
+    "baker" => zeros(rmax),
+    "brand" => zeros(rmax),
+    "sketchy" => zeros(rmax),
+    "batch" => zeros(rmax),
+)
+for i in 1:rmax
+    proj_error["baker"][i] = norm(X - bases["baker"].iVr[:,1:i] * bases["baker"].iVr[:,1:i]' * X, 2) / norm(X, 2)
+    proj_error["brand"][i] = norm(X - bases["brand"].iVr[:,1:i] * bases["brand"].iVr[:,1:i]' * X, 2) / norm(X, 2)
+    proj_error["sketchy"][i] = norm(X - bases["sketchy"].iVr[:,1:i] * bases["sketchy"].iVr[:,1:i]' * X, 2) / norm(X, 2)
+    proj_error["batch"][i] = norm(X - bases["batch"].Vr[:,1:i] * bases["batch"].Vr[:,1:i]' * X, 2) / norm(X, 2)
 end
 
-#=======================================================#
-## Plot the runtime of the iSVD algorithms over streams
-#=======================================================#
-with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(550, 600))
-    ax = Axis(
-        fig[1, 1], xlabel="Algorithm", ylabel="runtime per stream (s)",
-        xticks = (1:3, ["Baker", "Brand", "Sketchy"]), yscale=log10,
-        titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        # title="Runtime of iSVD algorithms over streams",
-    )
-    # Baker
-    foo = fill(1, length(time_baker))
-    boxplot!(ax, foo, time_baker; whiskerwidth=1.0, width=0.6, mediancolor=:black)
-    # Brand
-    foo = fill(2, length(time_brand))
-    boxplot!(ax, foo, time_brand; whiskerwidth=1.0, width=0.6, mediancolor=:black)
-    # Sketchy
-    foo = fill(3, length(time_sketchy))
-    boxplot!(ax, foo, time_sketchy; whiskerwidth=1.0, width=0.6, mediancolor=:black)
-    display(fig)
-    save(joinpath(FILEPATH, "plots/basis_runtime.pdf"), fig)
-end
+save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)
