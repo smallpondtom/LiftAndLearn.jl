@@ -13,8 +13,7 @@ using ProgressMeter
 using Random
 using Statistics
 using UniqueKronecker
-using PolynomialModelReductionDataset
-const Pomoreda = PolynomialModelReductionDataset
+using PolynomialModelReductionDataset: BurgersModel
 
 #==========#
 ## Load LnL
@@ -33,7 +32,7 @@ SAVEDATA = false
 #==================#
 Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-4
-burger = Pomoreda.BurgersModel(
+burger = BurgersModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
     diffusion_coeffs=range(0.1, 1.0, length=10), BC=:dirichlet,
 )
@@ -55,8 +54,8 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
-    with_tol=true,
-    pinv_tol=1e-2,
+    # with_tol=true,
+    # pinv_tol=1e-6,
 )
 Utest = ones(burger.time_dim, 1);  # Reference input/boundary condition for OpInf testing 
 
@@ -130,7 +129,7 @@ end
 ## Generate the basis
 #===========================#
 @info "Generate the basis"
-rmax = 20
+rmax = 15
 tmp = svd(reduce(hcat, Xtrain))
 Vrmax = tmp.U[:, 1:rmax]
 
@@ -223,7 +222,7 @@ end
 ## Plotting
 #==========#
 @info "Plotting results"
-cutoff = 1:13
+cutoff = 1:rmax-k-1
 # Projection error
 p1 = plot(df.order[cutoff], df.projection_err[cutoff], marker=(:rect))
 plot!(yscale=:log10, majorgrid=true, minorgrid=true, legend=false)
@@ -341,7 +340,7 @@ end
 ## Plot results
 #==============#
 @info "Plotting results"
-cutoff = 1:13
+cutoff = 1:rmax-k-1
 # State error
 p2 = plot(df.order[cutoff], df.intrusive_state_err[cutoff], marker=(:cross, 10), label="intru", show=true)
 plot!(p2, df.order[cutoff], df.inferred_state_err[cutoff], marker=(:circle), ls=:dash, label="opinf")

@@ -23,9 +23,9 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/heat2d")
 #========================#
 ## 2D Heat equation setup
 #========================#
-Ω = ((0.0, 1.0), (0.0, 1.25))
+Ω = ((0.0, 1.0), (0.0, 1.0))  # or ω1 ∈ [0,1], ω2 ∈ [0,1.25]
 Nx = 32
-Ny = 40
+Ny = 32 # or 40
 M = 10
 μs = range(0.1, 1.0, length=M)
 heat2d = Heat2DModel(

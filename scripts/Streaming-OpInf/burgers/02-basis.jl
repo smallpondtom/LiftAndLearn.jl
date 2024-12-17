@@ -1,5 +1,5 @@
 """
-2D heat equation: generate data
+1D Viscous Burgers' equation: generate data
 """
 
 #================#
@@ -16,57 +16,17 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/heat2d") : joinpath(pwd(), "scripts/Streaming-OpInf/heat2d")
+FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/burgers") : joinpath(pwd(), "scripts/Streaming-OpInf/burgers")
 
 #======================================#
 ## Obtain all the saved training files
 #======================================#
 training_data_files = readdir(joinpath(FILEPATH, "data/training"), join=true)
 
-# #============================================================#
-# ## Generate the POD basis using iSVD using Baker's algorithm
-# #============================================================#
-# rmax = 12
-# Xall = Array[]
-
-# # Initialize the iSVD object with the first dataset
-# data = load(training_data_files[1])
-# isvd = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
-# # isvd = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
-# # isvd = iSVD(x1=data["X"][:,1], algo=:sketchy; m=32*40, n=10010, r=rmax, ReduxMap=:Sparse)
-# full_increment!(isvd, data["X"][:,2:end], verbose=true, tol=1e-12)
-# push!(Xall, data["X"])
-
-# # Increment for the rest of the data
-# for (i,data_file) in enumerate(training_data_files[2:end])
-#     jldopen(data_file, "r") do data
-#         # Load the data
-#         X = data["X"]
-#         # Compute the POD basis using the incremental SVD
-#         full_increment!(isvd, X, verbose=true, tol=1e-12)
-#         # Save the data for batch SVD
-#         push!(Xall, X)
-#     end
-# end
-
-# #============================================#
-# ## Compute the POD basis using the batch SVD 
-# #============================================#
-# F = svd(reduce(hcat, Xall))
-
-# #=====================================================================#
-# ## Save the POD basis and singular values from the iSVD and batch SVD
-# #=====================================================================#
-# save(
-#     joinpath(FILEPATH, "data/basis.jld2"),
-#     "iVr", isvd.Q[:,1:rmax], "iΣr", isvd.Σ[1:rmax], 
-#     "Vr", F.U[:,1:rmax], "Σr", F.S[1:rmax], "r", rmax
-# )
-
 #=========================================================#
 ## Generate the POD basis using iSVD using all algorithms
 #=========================================================#
-rmax = 10
+rmax = 15
 Xall = Array[]
 
 # Execution times 
@@ -78,7 +38,7 @@ time_sketchy = []
 data = load(training_data_files[1])
 # baker
 baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
-tmp = full_increment!(baker, data["X"][:,2:end], verbose=true, runtime=true)
+tmp = full_increment!(baker, data["X"][:,2:end], verbose=true, tol=1e-12, runtime=true)
 push!(time_baker, tmp)
 # brand
 brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
@@ -97,7 +57,7 @@ for (i,data_file) in enumerate(training_data_files[2:end])
         # Load the data
         X = data["X"]
         # Compute the POD basis using Baker's algorithm
-        tmp = full_increment!(baker, X, verbose=true, runtime=true)
+        tmp = full_increment!(baker, X, verbose=true, tol=1e-12, runtime=true)
         push!(time_baker, tmp)
         # Comput the POD basis using Brand's algorithm
         tmp = full_increment!(brand, X, verbose=true, tol=1e-12, runtime=true)

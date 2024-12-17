@@ -1,5 +1,5 @@
 """
-2D heat equation: plotting results
+1D Viscous Burgers equation: plotting results
 """
 
 #================#
@@ -9,13 +9,13 @@ using CairoMakie
 using FileIO
 using JLD2
 using LinearAlgebra
-using PolynomialModelReductionDataset: Heat2DModel
+using PolynomialModelReductionDataset: BurgersModel
 import LiftAndLearn as LnL
 
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/heat2d") : joinpath(pwd(), "scripts/Streaming-OpInf/heat2d")
+FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/burgers") : joinpath(pwd(), "scripts/Streaming-OpInf/burgers")
 
 #===================#
 ## Load the options
@@ -23,11 +23,11 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/heat2d")
 setup_file = joinpath(FILEPATH, "data/setup.jld2")
 setup = load(setup_file)
 options = setup["options"]
-heat2d = setup["heat2d"]
+burgers = setup["burgers"]
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
-rmax = size(Vrmax, 2)
+rmax = size(Vrmax, 2)-1
 
 #============================================================#
 ## Plot the error between the batch and iSVD singular values
