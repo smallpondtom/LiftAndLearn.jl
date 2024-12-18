@@ -12,6 +12,7 @@ using IncrementalSVD
 using LinearAlgebra
 using ProgressMeter
 import LiftAndLearn as LnL
+using PolynomialModelReductionDataset: Heat2DModel
 
 #================================#
 ## Configure filepath for saving
@@ -22,6 +23,13 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/heat2d")
 ## Obtain all the saved training files
 #======================================#
 training_data_files = readdir(joinpath(FILEPATH, "data/training"), join=true)
+
+#=================#
+## Load the setup
+#=================#
+setup_file = joinpath(FILEPATH, "data/setup.jld2")
+setup = load(setup_file)
+heat2d = setup["heat2d"]
 
 # #============================================================#
 # ## Generate the POD basis using iSVD using Baker's algorithm
@@ -85,10 +93,38 @@ brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
 tmp = full_increment!(brand, data["X"][:,2:end], verbose=true, tol=1e-12, runtime=true)
 push!(time_brand, tmp)
 # sketchy
-sketchy = iSVD(x1=data["X"][:,1], algo=:sketchy; m=32*40, n=10010, r=rmax, ReduxMap=:Sparse)
-_, tmp = full_increment!(sketchy, data["X"][:,2:end], verbose=true, runtime=true)
-push!(time_sketchy, tmp)
+# sketchy = iSVD(x1=data["X"][:,1], algo=:sketchy; m=prod(heat2d.spatial_dim), n=heat2d.time_dim*heat2d.param_dim, 
+#                r=rmax, ReduxMap=:Sparse)
+# _, tmp = full_increment!(sketchy, data["X"][:,2:end], verbose=true, runtime=true)
+# push!(time_sketchy, tmp)
 
+## mergesketchy
+X = data["X"]
+K = size(X,2)
+blks = 4
+m = size(X,2) ÷ blks
+Vmerge = nothing
+Smerge = nothing
+Wmerge = nothing
+for i in 1:blks
+    isvd2 = iSVD(algo=:sketchy, m=prod(heat2d.spatial_dim), n=m, r=rmax, ReduxMap=:Sparse)
+    Xi = X[:,m*(i-1)+1:m*i]
+    full_increment!(isvd2, Xi, verbose=false)
+    if i == 1
+        Vmerge = isvd2.Q 
+        Smerge = isvd2.Σ
+        Wmerge = isvd2.W
+    else
+        Vmerge, Smerge = IncrementalSVD.opt_merge_eigenspace(
+            Vmerge, isvd2.Q, Smerge, isvd2.Σ, rmax
+        )
+    end
+    @info "MergingSketchySVD: block #$i"
+end
+# Vr[:sketchy] = Vmerge
+# Σr[:sketchy] = Smerge
+
+##
 push!(Xall, data["X"])
 
 # Increment for the rest of the data

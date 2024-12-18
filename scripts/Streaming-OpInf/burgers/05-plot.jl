@@ -101,6 +101,51 @@ with_theme(theme_latexfonts()) do
     save(joinpath(FILEPATH, "plots/basis_runtime.pdf"), fig)
 end
 
+#=================================================#
+## Plot the total runtime of the iSVD algorithms
+#=================================================#
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(600, 600))
+    ax = Axis(
+        fig[1, 1], xlabel="Algorithm", ylabel="total runtime (s)",
+        xticks = (1:4, ["Batch", "Baker", "Brand", "Sketchy"]),
+        titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        xgridvisible=false, ygridvisible=false,
+        # title="Runtime of iSVD algorithms over streams",
+    )
+    tbl = (
+        cat = collect(1:4),
+        height = [
+            sum(basis_runtime["batch"]), sum(basis_runtime["baker"]),
+            sum(basis_runtime["brand"]), sum(basis_runtime["sketchy"])
+        ],
+        grp = collect(1:4),
+    )
+    barplot!(ax, tbl.cat, tbl.height, color=Makie.wong_colors()[tbl.grp])
+
+    # inset for excluding sketchy
+    inset_ax = Axis(fig[1, 1],
+        width=Relative(0.5),
+        height=Relative(0.5),
+        halign=0.3,
+        valign=0.8,
+        xticks = (1:3, ["Batch", "Baker", "Brand"]),
+        xgridvisible=false, ygridvisible=false,
+        xlabelsize=22, ylabelsize=22, xticklabelsize=18, yticklabelsize=18)
+    tbl = (
+        cat = collect(1:3),
+        height = [
+            sum(basis_runtime["batch"]), sum(basis_runtime["baker"]),
+            sum(basis_runtime["brand"]),
+        ],
+        grp = collect(1:3),
+    )
+    barplot!(inset_ax, tbl.cat, tbl.height, color=Makie.wong_colors()[tbl.grp])
+    bracket!(ax, 0.8, 300, 3.2, 300, offset=5, text="Zoom-in", fontsize=20)
+    display(fig)
+    save(joinpath(FILEPATH, "plots/basis_total_runtime.pdf"), fig)
+end
+
 #=============================#
 ## Plot the projection errors
 #=============================#
@@ -114,12 +159,13 @@ with_theme(theme_latexfonts()) do
         # title="Projection error of the POD basis",
     )
     lines = []
-    marker_styles = [:diamond, :cross, :circle, :rect]
-    line_styles = [:dot, :dash, :solid, :dashdot]
+    algos = ["batch", "baker", "brand", "sketchy"]
+    marker_styles = [:rect, :diamond, :cross, :circle]
+    line_styles = [:solid, :dot, :dash, :dashdot]
     i = 1
-    for (i, (algo, error)) in enumerate(proj_error)
+    for algo in algos
         l = scatterlines!(
-            ax, 1:rmax, error,
+            ax, 1:rmax, proj_error[algo],
             marker=marker_styles[i], markersize=(35-(i-1)*2),
             linestyle=line_styles[i], linewidth=7,
         )
@@ -127,8 +173,7 @@ with_theme(theme_latexfonts()) do
         i += 1
     end
     axislegend(
-        ax, lines, 
-        [k for k in keys(proj_error)],
+        ax, lines, algos,
         position=:rt,
         # orientation=:horizontal, 
         # halign=:center, 

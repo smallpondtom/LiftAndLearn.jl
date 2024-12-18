@@ -23,6 +23,13 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/burgers"
 #======================================#
 training_data_files = readdir(joinpath(FILEPATH, "data/training"), join=true)
 
+#=================#
+## Load the setup
+#=================#
+setup_file = joinpath(FILEPATH, "data/setup.jld2")
+setup = load(setup_file)
+burgers = setup["burgers"]
+
 #=========================================================#
 ## Generate the POD basis using iSVD using all algorithms
 #=========================================================#
@@ -38,14 +45,15 @@ time_sketchy = []
 data = load(training_data_files[1])
 # baker
 baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
-tmp = full_increment!(baker, data["X"][:,2:end], verbose=true, tol=1e-12, runtime=true)
+tmp = full_increment!(baker, data["X"][:,2:end], verbose=true, runtime=true)
 push!(time_baker, tmp)
 # brand
 brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
 tmp = full_increment!(brand, data["X"][:,2:end], verbose=true, tol=1e-12, runtime=true)
 push!(time_brand, tmp)
 # sketchy
-sketchy = iSVD(x1=data["X"][:,1], algo=:sketchy; m=32*40, n=10010, r=rmax, ReduxMap=:Sparse)
+sketchy = iSVD(x1=data["X"][:,1], algo=:sketchy; m=burgers.spatial_dim, n=burgers.time_dim*burgers.param_dim,
+               r=rmax, ReduxMap=:Sparse)
 _, tmp = full_increment!(sketchy, data["X"][:,2:end], verbose=true, runtime=true)
 push!(time_sketchy, tmp)
 
@@ -57,7 +65,7 @@ for (i,data_file) in enumerate(training_data_files[2:end])
         # Load the data
         X = data["X"]
         # Compute the POD basis using Baker's algorithm
-        tmp = full_increment!(baker, X, verbose=true, tol=1e-12, runtime=true)
+        tmp = full_increment!(baker, X, verbose=true, runtime=true)
         push!(time_baker, tmp)
         # Comput the POD basis using Brand's algorithm
         tmp = full_increment!(brand, X, verbose=true, tol=1e-12, runtime=true)
