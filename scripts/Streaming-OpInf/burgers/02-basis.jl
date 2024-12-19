@@ -12,6 +12,7 @@ using IncrementalSVD
 using LinearAlgebra
 using ProgressMeter
 import LiftAndLearn as LnL
+using PolynomialModelReductionDataset: BurgersModel
 
 #================================#
 ## Configure filepath for saving
@@ -43,6 +44,7 @@ time_sketchy = []
 
 # Initialize the iSVD object with the first dataset
 data = load(training_data_files[1])
+##
 # baker
 baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
 tmp = full_increment!(baker, data["X"][:,2:end], verbose=true, runtime=true)

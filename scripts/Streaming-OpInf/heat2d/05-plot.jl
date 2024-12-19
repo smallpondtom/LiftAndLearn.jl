@@ -44,10 +44,10 @@ with_theme(theme_latexfonts()) do
     )
     lines = []
     labels = []
-    marker_styles = [:diamond, :cross, :circle]
-    line_styles = [:dot, :dash, :dashdot]
+    marker_styles = [:diamond, :cross, :circle, :rect]
+    line_styles = [:solid, :dot, :dash, :dashdot]
     i = 1
-    for Algo in ["Baker", "Brand", "Sketchy"]
+    for Algo in ["Baker", "Brand", "Sketchy", "MergingSketchy"]
         algo = lowercase(Algo)
         basis = bases[algo]
         Σr = basis.iΣr
@@ -84,7 +84,7 @@ with_theme(theme_latexfonts()) do
     fig = Figure(size=(550, 600))
     ax = Axis(
         fig[1, 1], xlabel="Algorithm", ylabel="runtime per stream (s)",
-        xticks = (1:3, ["Baker", "Brand", "Sketchy"]), yscale=log10,
+        xticks = (1:4, ["Baker", "Brand", "Sketchy", "MergingSketchy"]), yscale=log10,
         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         # title="Runtime of iSVD algorithms over streams",
     )
@@ -97,6 +97,9 @@ with_theme(theme_latexfonts()) do
     # Sketchy
     foo = fill(3, length(basis_runtime["sketchy"]))
     boxplot!(ax, foo, basis_runtime["sketchy"]; whiskerwidth=1.0, width=0.6, mediancolor=:black)
+    # MergingSketchy
+    foo = fill(4, length(basis_runtime["mergingsketchy"]))
+    boxplot!(ax, foo, basis_runtime["mergingsketchy"]; whiskerwidth=1.0, width=0.6, mediancolor=:black)
     display(fig)
     save(joinpath(FILEPATH, "plots/basis_runtime.pdf"), fig)
 end
@@ -105,10 +108,10 @@ end
 ## Plot the total runtime of the iSVD algorithms
 #=================================================#
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(600, 600))
+    fig = Figure(size=(800, 600))
     ax = Axis(
         fig[1, 1], xlabel="Algorithm", ylabel="total runtime (s)",
-        xticks = (1:4, ["Batch", "Baker", "Brand", "Sketchy"]),
+        xticks = (1:5, ["Batch", "Baker", "Brand", "Sketchy", "MergingSketchy"]),
         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         xgridvisible=false, ygridvisible=false,
         # title="Runtime of iSVD algorithms over streams",
@@ -117,7 +120,8 @@ with_theme(theme_latexfonts()) do
         cat = collect(1:4),
         height = [
             sum(basis_runtime["batch"]), sum(basis_runtime["baker"]),
-            sum(basis_runtime["brand"]), sum(basis_runtime["sketchy"])
+            sum(basis_runtime["brand"]), sum(basis_runtime["sketchy"]),
+            sum(basis_runtime["mergingsketchy"]),
         ],
         grp = collect(1:4),
     )
@@ -159,9 +163,9 @@ with_theme(theme_latexfonts()) do
         # title="Projection error of the POD basis",
     )
     lines = []
-    algos = ["batch", "baker", "brand", "sketchy"]
-    marker_styles = [:rect, :diamond, :cross, :circle]
-    line_styles = [:solid, :dot, :dash, :dashdot]
+    algos = ["batch", "baker", "brand", "sketchy", "mergingsketchy"]
+    marker_styles = [:rect, :diamond, :cross, :circle, :rect]
+    line_styles = [:solid, :dot, :dash, :dashdot, :dashdotdot]
     i = 1
     for algo in algos
         l = scatterlines!(
