@@ -49,6 +49,7 @@ model_files = []
         # Load the data
         X = data["X"]
         U = data["U"]
+        Xdot = data["Xdot"]
         # Y = data["Y"]
 
         # Load the operators
@@ -64,8 +65,8 @@ model_files = []
         op_pod = LnL.pod(tmp, Vrmax, options.system)
         # OpInf
         options.with_reg = false
-        # op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y)
-        op_inf = LnL.opinf(X, Vrmax, options; U=U)
+        # op_inf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
+        op_inf = LnL.opinf(X, Vrmax, options; U=U, Xdot=Xdot)
         # Tikhonov Regularized OpInf
         options.with_reg = true
         options.λ = LnL.TikhonovParameter(
@@ -73,8 +74,8 @@ model_files = []
             B = 1e-6,
             # C = 1e-6
         )
-        # op_trinf = LnL.opinf(X, Vr, options; U=U, Y=Y)
-        op_trinf = LnL.opinf(X, Vrmax, options; U=U)
+        # op_trinf = LnL.opinf(X, Vr, options; U=U, Y=Y, Xdot=Xdot)
+        op_trinf = LnL.opinf(X, Vrmax, options; U=U, Xdot=Xdot)
         # Save the model
         mu_str = @sprintf("%1.4f", μ)
         ops = Dict("pod" => op_pod, "opinf" => op_inf, "tropinf" => op_trinf, "mu" => μ)
@@ -89,7 +90,7 @@ end
 #====================================#
 # Placeholders
 rmax = size(Vrmax,2)
-num_of_streams = heat2d.time_dim-1
+num_of_streams = heat2d.time_dim-1  # -1 for the derivative and -1 for the removed last state
 tmp_res = (
     true_stream_err = zeros(rmax, num_of_streams),
     stream_err      = zeros(rmax, num_of_streams),
@@ -107,14 +108,17 @@ model_files = readdir(joinpath(FILEPATH, "data/models"), join=true)
 for (file_idx, data_file) in enumerate(training_data_files)
     jldopen(data_file, "r") do data
         # Load the data
-        Xfull = data["X"]
-        Ufull = data["U"]
+        X = data["X"]
+        U = data["U"]
+        Xdot = data["Xdot"]
+        Xref = data["Xref"]
+        Uref = data["Uref"]
 
-        # Obtain derivative data and adjust data
-        Xdot = (Xfull[:, 2:end] - Xfull[:, 1:end-1]) / heat2d.Δt
-        idx = 2:heat2d.time_dim
-        X = Xfull[:, idx]  
-        U = Ufull[:, idx]
+        # # Obtain derivative data and adjust data
+        # Xdot = (Xfull[:, 2:end] - Xfull[:, 1:end-1]) / heat2d.Δt
+        # idx = 2:heat2d.time_dim-1
+        # X = Xfull[:, idx]  
+        # U = Ufull[:, idx]
         
         ## Streamify the data based on the selected streamsizes
         streamsize = 1
@@ -203,10 +207,10 @@ for (file_idx, data_file) in enumerate(training_data_files)
                 for (j, ri) in enumerate(1:rmax)
                     # Relative state and output errors
                     Xtmp = heat2d.integrate_model(
-                        heat2d.tspan, iVrmax[:,1:ri]' * heat2d.IC, U; linear_matrix=op_tmp[key].A[1:ri,1:ri], control_matrix=op_tmp[key].B[1:ri,:], 
-                        system_input=true, integrator_type=:BackwardEuler
+                        heat2d.tspan, iVrmax[:,1:ri]' * heat2d.IC, Uref; linear_matrix=op_tmp[key].A[1:ri,1:ri],
+                        control_matrix=op_tmp[key].B[1:ri,:], system_input=true, integrator_type=:BackwardEuler
                     )
-                    stream_res[key].rse[j, i] = LnL.rel_state_error(Xfull, Xtmp, iVrmax[:,1:ri])
+                    stream_res[key].rse[j, i] = LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:ri])
 
                     # Index for streaming errors
                     idx = vcat(collect(1:ri),collect(rmax+1:rmax+4))
@@ -280,8 +284,8 @@ train_errors = Dict(
 @showprogress for (file_idx, train_file) in enumerate(training_data_files)
     jldopen(train_file, "r") do data
         # Load the data
-        X = data["X"]
-        U = data["U"]
+        Xref = data["Xref"]
+        Uref = data["Uref"]
 
         # Load the trained models
         mu_str = @sprintf("%1.4f", data["mu"])
@@ -300,13 +304,13 @@ train_errors = Dict(
 
                 # Integrate the model
                 Xrecon = heat2d.integrate_model(
-                    heat2d.tspan, Vr' * heat2d.IC, U,
+                    heat2d.tspan, Vr' * heat2d.IC, Uref,
                     linear_matrix=ops[string(key)].A[1:r, 1:r], control_matrix=ops[string(key)].B[1:r,:],
                     system_input=true, integrator_type=:BackwardEuler
                 )
 
                 # Compute relative state error (averaged over parameters)
-                train_errors[key][i] += norm(X - Vr * Xrecon) / norm(X) / num_train
+                train_errors[key][i] += norm(Xref - Vr * Xrecon) / norm(Xref) / num_train
             end
         end
     end

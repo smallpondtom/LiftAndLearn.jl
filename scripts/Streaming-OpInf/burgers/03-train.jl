@@ -276,8 +276,6 @@ train_errors = Dict(
 @showprogress for (file_idx, train_file) in enumerate(training_data_files)
     jldopen(train_file, "r") do data
         # Load the data
-        X = data["X"]
-        U = data["U"]
         Xref = data["Xref"]
         Uref = data["Uref"]
 
@@ -305,7 +303,7 @@ train_errors = Dict(
                 )
 
                 # Compute relative state error (averaged over parameters)
-                train_errors[key][i] += norm(X - Vr * Xrecon) / norm(X) / num_train
+                train_errors[key][i] += norm(Xref - Vr * Xrecon) / norm(Xref) / num_train
             end
         end
     end

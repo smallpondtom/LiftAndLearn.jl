@@ -94,19 +94,17 @@ brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
 tmp = full_increment!(brand, data["X"][:,2:end], verbose=true, tol=1e-12, runtime=true)
 push!(time_brand, tmp)
 # sketchy
-sketchy = iSVD(x1=data["X"][:,1], algo=:sketchy; m=prod(heat2d.spatial_dim), n=heat2d.time_dim*heat2d.param_dim, 
+sketchy = iSVD(algo=:sketchy; m=prod(heat2d.spatial_dim), n=heat2d.time_dim*heat2d.param_dim, 
                r=rmax, ReduxMap=:Sparse)
-_, tmp = full_increment!(sketchy, data["X"][:,2:end], verbose=true, runtime=true)
-push!(time_sketchy, tmp)
-## mergingsketchy
-blk = 4
+tmp = full_increment!(sketchy, data["X"], verbose=true, runtime=true)
+push!(time_sketchy, tmp.runtime)
+# mergingsketchy
+blk = 10
 blksize = size(data["X"],2) ÷ blk
-mergingsketchy = iSVD(x1=data["X"][:,1], algo=:mergingsketchy; m=prod(heat2d.spatial_dim), b=blksize, 
-               r=rmax, ReduxMap=:Sparse)
-_, tmp = full_increment!(mergingsketchy, data["X"][:,2:end], verbose=true, runtime=true)
+mergingsketchy = iSVD(algo=:mergingsketchy; m=prod(heat2d.spatial_dim), b=blksize, r=rmax, ReduxMap=:Sparse)
+tmp = full_increment!(mergingsketchy, data["X"], verbose=true, runtime=true)
 push!(time_mergingsketchy, tmp)
 
-##
 push!(Xall, data["X"])
 
 # Increment for the rest of the data
@@ -121,11 +119,11 @@ for (i,data_file) in enumerate(training_data_files[2:end])
         tmp = full_increment!(brand, X, verbose=true, tol=1e-12, runtime=true)
         push!(time_brand, tmp)
         # Compute the POD basis using SketchySVD
-        _, tmp = full_increment!(sketchy, X, verbose=true, runtime=true)
-        push!(time_sketchy, tmp)
+        tmp = full_increment!(sketchy, X, verbose=true, runtime=true)
+        push!(time_sketchy, tmp.runtime)
         # Compute the POD basis using MergingSketchySVD
         tmp = full_increment!(mergingsketchy, X, verbose=true, runtime=true)
-        push!(time_mergingketchy, tmp)
+        push!(time_mergingsketchy, tmp)
         # Save the data for batch SVD
         push!(Xall, X)
     end

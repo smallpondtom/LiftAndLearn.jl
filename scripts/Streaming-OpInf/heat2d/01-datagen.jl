@@ -43,6 +43,7 @@ options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=1,
         control=1,
+        # output=1,
     ),
     vars=LnL.VariableStructure(
         N=1,
@@ -59,9 +60,9 @@ options = LnL.LSOpInfOption(
 #=========================#
 ## Generate training data
 #=========================#
-# Generate the input data (same for all parameters)
-U = [1.0, 1.0, -1.0, -1.0]
-U = repeat(U, 1, heat2d.time_dim)
+# Generate the (reference) input data (same for all parameters)
+Uref = [1.0, 1.0, -1.0, -1.0]
+Uref = repeat(Uref, 1, heat2d.time_dim)
 
 # Construct the output matrix (same for all parameters)
 # C = ones(1, (Int ∘ prod)(heat2d.spatial_dim)) / heat2d.spatial_dim[1] / heat2d.spatial_dim[2]
@@ -71,17 +72,21 @@ U = repeat(U, 1, heat2d.time_dim)
     # op_heat = LnL.Operators(A=A, B=B, C=C)
     op_heat = LnL.Operators(A=A, B=B)
 
-    # Compute the state snapshot data with backward Euler
-    X = heat2d.integrate_model(
-        heat2d.tspan, heat2d.IC, U; linear_matrix=A, control_matrix=B, 
+    # Compute the (reference) state snapshot data with backward Euler
+    Xref = heat2d.integrate_model(
+        heat2d.tspan, heat2d.IC, Uref; linear_matrix=A, control_matrix=B, 
         system_input=true, integrator_type=:BackwardEuler
     )
+    Xdot = (Xref[:, 2:end] - Xref[:, 1:end-1]) / heat2d.Δt
+    X = Xref[:, 2:end]
+    U = Uref[:, 2:end]
 
     # Compute the output of the system
     # Y = C * X
 
     data = Dict(
-        "X" => X, "U" => U, # "Y" => Y,
+        "X" => X, "U" => U, "Xdot" => Xdot, # "Y" => Y,
+        "Xref" => Xref, "Uref" => Uref,
         "A" => A, "B" => B, # "C" => C,
         "mu" => μ,
     )
@@ -103,15 +108,16 @@ randn_gen = Random.MersenneTwister(seed)
 
     # Compute the state snapshot data with backward Euler
     X = heat2d.integrate_model(
-        heat2d.tspan, heat2d.IC, U; linear_matrix=A, control_matrix=B, 
+        heat2d.tspan, heat2d.IC, Uref; linear_matrix=A, control_matrix=B, 
         system_input=true, integrator_type=:BackwardEuler
     )
 
     # Compute the output of the system
     # Y = C * X
 
+    # NOTE: Remove the last state to make size nice
     data = Dict(
-        "X" => X, "U" => U, # "Y" => Y,
+        "X" => X, "U" => Uref, # "Y" => Y,
         "A" => A, "B" => B, # "C" => C,
         "mu" => μ
     )
