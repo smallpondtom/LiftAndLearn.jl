@@ -87,7 +87,7 @@ C_opinf = Vector{Matrix{Float64}}(undef, burger.param_dim)
 ## Generate the data
 #===========================#
 @info "Generate the data"
-@showprogress for i in eachindex(burger.diffusion_coeffs)
+@showprogress @Threads.threads for i in eachindex(burger.diffusion_coeffs)
     μ = burger.diffusion_coeffs[i]
 
     # Obtain full operators

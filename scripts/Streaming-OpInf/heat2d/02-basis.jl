@@ -85,23 +85,39 @@ time_mergingsketchy = []
 
 # Initialize the iSVD object with the first dataset
 data = load(training_data_files[1])
-# baker
+
+## (Dry) Run it once due to JUlia's JIT compilation
 baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
+full_increment!(baker, data["X"][:,2:3], verbose=true, runtime=true)
+brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
+full_increment!(brand, data["X"][:,2:3], verbose=true, tol=1e-12, runtime=true)
+sketchy = iSVD(algo=:sketchy; m=prod(heat2d.spatial_dim), n=(heat2d.time_dim-1), r=rmax, ReduxMap=:Sparse)
+full_increment!(sketchy, data["X"][:,2:3], verbose=true, runtime=true)
+mergingsketchy = iSVD(algo=:mergingsketchy; m=prod(heat2d.spatial_dim), b=100, r=rmax, ReduxMap=:Sparse)
+full_increment!(mergingsketchy, data["X"][:,2:201], verbose=true, runtime=true)
+svd(data["X"][:,1:10])
+
+## baker
+tmp = @elapsed baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
+push!(time_baker, tmp)
 tmp = full_increment!(baker, data["X"][:,2:end], verbose=true, runtime=true)
 push!(time_baker, tmp)
 # brand
-brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
+tmp = @elapsed brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
+push!(time_brand, tmp)
 tmp = full_increment!(brand, data["X"][:,2:end], verbose=true, tol=1e-12, runtime=true)
 push!(time_brand, tmp)
 # sketchy
-sketchy = iSVD(algo=:sketchy; m=prod(heat2d.spatial_dim), n=heat2d.time_dim*heat2d.param_dim, 
+tmp = @elapsed sketchy = iSVD(algo=:sketchy; m=prod(heat2d.spatial_dim), n=(heat2d.time_dim-1)*heat2d.param_dim, 
                r=rmax, ReduxMap=:Sparse)
+push!(time_sketchy, tmp)
 tmp = full_increment!(sketchy, data["X"], verbose=true, runtime=true)
 push!(time_sketchy, tmp.runtime)
 # mergingsketchy
 blk = 10
 blksize = size(data["X"],2) ÷ blk
-mergingsketchy = iSVD(algo=:mergingsketchy; m=prod(heat2d.spatial_dim), b=blksize, r=rmax, ReduxMap=:Sparse)
+tmp = @elapsed mergingsketchy = iSVD(algo=:mergingsketchy; m=prod(heat2d.spatial_dim), b=blksize, r=rmax, ReduxMap=:Sparse)
+push!(time_mergingsketchy, tmp)
 tmp = full_increment!(mergingsketchy, data["X"], verbose=true, runtime=true)
 push!(time_mergingsketchy, tmp)
 

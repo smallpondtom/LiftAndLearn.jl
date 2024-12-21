@@ -29,6 +29,7 @@ burgers = BurgersModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
     diffusion_coeffs=range(0.1, 1.0, length=10), BC=:dirichlet,
 )
+burgers.IC=0.1*sin.(2π*burgers.xspan)
 num_inputs = 10  # number of random inputs for training data
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
@@ -40,7 +41,8 @@ options = LnL.LSOpInfOption(
     ),
     data=LnL.DataStructure(
         Δt=dt,
-        deriv_type="SI"
+        deriv_type="SI",
+        DS=20,  # downsampling factor
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
@@ -50,6 +52,9 @@ options = LnL.LSOpInfOption(
 #=========================#
 ## Generate training data
 #=========================#
+seed = 1234
+rgen = Random.MersenneTwister(seed)
+Urand_all = randn(rgen, burgers.time_dim, num_inputs, burgers.param_dim) # Random input/boundary condition for training data
 @showprogress Threads.@threads for (i, μ) in collect(enumerate(burgers.diffusion_coeffs))
     A, F, B = burgers.finite_diff_model(burgers, μ)
     op_burgers = LnL.Operators(A=A, B=B, A2u=F)
@@ -62,7 +67,7 @@ options = LnL.LSOpInfOption(
     )
 
     # Compute the training with random input 
-    Urand = rand(burgers.time_dim, num_inputs) # Random input/boundary condition for training data
+    Urand = Urand_all[:, :, i]
     Xall = Vector{Matrix{Float64}}(undef, num_inputs)
     Xdotall = Vector{Matrix{Float64}}(undef, num_inputs)
     for j in 1:num_inputs
@@ -77,9 +82,14 @@ options = LnL.LSOpInfOption(
     Xdot = reduce(hcat, Xdotall)
     U = reshape(Urand[2:end,:], (burgers.time_dim - 1) * num_inputs, 1)
 
+    # Down sample the training data
+    X = X[:, 1:options.data.DS:end]
+    Xdot = Xdot[:, 1:options.data.DS:end]
+    U = U[1:options.data.DS:end]
+
     data = Dict(
         "X" => X, "U" => U, "Xdot" => Xdot, "Xref" => Xref, "Uref" => Uref,
-        "A" => A, "B" => B, "F" => F, "mu" => μ,
+        "A" => A, "B" => B, "F" => F, "mu" => μ, "num_inputs" => num_inputs
     )
     mu_str = @sprintf("%1.4f", μ)
     save(joinpath(FILEPATH, "data/training/0$(i)_mu$(mu_str).jld2"), data)
@@ -89,9 +99,7 @@ end
 ## Generate testing data
 #========================#
 Mtest = 5
-seed = 12345
-randn_gen = Random.MersenneTwister(seed)
-μs_test = rand(randn_gen, Mtest) * (burgers.param_domain[2] - burgers.param_domain[1]) .+ burgers.param_domain[1]
+μs_test = rand(rgen, Mtest) * (burgers.param_domain[2] - burgers.param_domain[1]) .+ burgers.param_domain[1]
 @showprogress Threads.@threads for (i,μ) in collect(enumerate(μs_test))
     A, F, B = burgers.finite_diff_model(burgers, μ)
     op_burgers = LnL.Operators(A=A, B=B, A2u=F)

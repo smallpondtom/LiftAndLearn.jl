@@ -45,9 +45,9 @@ with_theme(theme_latexfonts()) do
     lines = []
     labels = []
     marker_styles = [:diamond, :cross, :circle, :rect]
-    line_styles = [:dot, :dash, :solid, :dashdot]
+    line_styles = [:solid, :solid, :solid, :solid]
     i = 1
-    for Algo in ["Baker", "Brand", "Sketchy"]
+    for Algo in ["Baker", "Brand", "Sketchy", "MergingSketchy"]
         algo = lowercase(Algo)
         basis = bases[algo]
         Σr = basis.iΣr
@@ -81,22 +81,22 @@ end
 #=======================================================#
 basis_runtime = load(joinpath(FILEPATH, "data/streaming/basis_runtime.jld2"))
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(550, 600))
+    fig = Figure(size=(800, 1000))
+    algorithms = ["Baker", "Brand", "Sketchy", "MergingSketchy"]
+    yticks = -5.0:1.0:0.0
+	yticklabels = [L"10^{%$(Int(y))}" for y in yticks]
     ax = Axis(
         fig[1, 1], xlabel="Algorithm", ylabel="runtime per stream (s)",
-        xticks = (1:3, ["Baker", "Brand", "Sketchy"]), yscale=log10,
+        xticks=(1:length(algorithms), algorithms),
+        yticks=(yticks, yticklabels),
         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         # title="Runtime of iSVD algorithms over streams",
     )
-    # Baker
-    foo = fill(1, length(basis_runtime["baker"]))
-    boxplot!(ax, foo, basis_runtime["baker"]; whiskerwidth=1.0, width=0.6, mediancolor=:black)
-    # Brand
-    foo = fill(2, length(basis_runtime["brand"]))
-    boxplot!(ax, foo, basis_runtime["brand"]; whiskerwidth=1.0, width=0.6, mediancolor=:black)
-    # Sketchy
-    foo = fill(3, length(basis_runtime["sketchy"]))
-    boxplot!(ax, foo, basis_runtime["sketchy"]; whiskerwidth=1.0, width=0.6, mediancolor=:black)
+    for (i, algo) in enumerate(algorithms)
+        algo = lowercase(algo)
+        foo = fill(i, length(basis_runtime[algo]))
+        boxplot!(ax, foo, log10.(basis_runtime[algo]); whiskerwidth=1.0, width=0.8, mediancolor=:black)
+    end
     display(fig)
     save(joinpath(FILEPATH, "plots/basis_runtime.pdf"), fig)
 end
@@ -105,43 +105,44 @@ end
 ## Plot the total runtime of the iSVD algorithms
 #=================================================#
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(600, 600))
+    fig = Figure(size=(1050, 800))
+    algorithms = ["Batch", "Baker", "Brand", "Sketchy", "MergingSketchy"]
     ax = Axis(
         fig[1, 1], xlabel="Algorithm", ylabel="total runtime (s)",
-        xticks = (1:4, ["Batch", "Baker", "Brand", "Sketchy"]),
-        titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        xgridvisible=false, ygridvisible=false,
+        xticks = (1:5, algorithms), yscale=log10,
+        titlesize=30, xlabelsize=35, ylabelsize=30, xticklabelsize=30, yticklabelsize=25,
+        xgridvisible=false, # ygridvisible=false,
         # title="Runtime of iSVD algorithms over streams",
     )
     tbl = (
-        cat = collect(1:4),
+        cat = collect(1:5),
         height = [
-            sum(basis_runtime["batch"]), sum(basis_runtime["baker"]),
-            sum(basis_runtime["brand"]), sum(basis_runtime["sketchy"])
+            sum(basis_runtime[lowercase(algo)]) for algo in algorithms
         ],
-        grp = collect(1:4),
+        grp = collect(1:5),
     )
-    barplot!(ax, tbl.cat, tbl.height, color=Makie.wong_colors()[tbl.grp])
+    barplot!(ax, tbl.cat, tbl.height, bar_labels=:y, label_size=30, label_offset=2, 
+             color=vcat(:black, Makie.wong_colors()[tbl.grp][1:end-1]))
 
-    # inset for excluding sketchy
-    inset_ax = Axis(fig[1, 1],
-        width=Relative(0.5),
-        height=Relative(0.5),
-        halign=0.3,
-        valign=0.8,
-        xticks = (1:3, ["Batch", "Baker", "Brand"]),
-        xgridvisible=false, ygridvisible=false,
-        xlabelsize=22, ylabelsize=22, xticklabelsize=18, yticklabelsize=18)
-    tbl = (
-        cat = collect(1:3),
-        height = [
-            sum(basis_runtime["batch"]), sum(basis_runtime["baker"]),
-            sum(basis_runtime["brand"]),
-        ],
-        grp = collect(1:3),
-    )
-    barplot!(inset_ax, tbl.cat, tbl.height, color=Makie.wong_colors()[tbl.grp])
-    bracket!(ax, 0.8, 300, 3.2, 300, offset=5, text="Zoom-in", fontsize=20)
+    # # inset for excluding sketchy
+    # inset_ax = Axis(fig[1, 1],
+    #     width=Relative(0.5),
+    #     height=Relative(0.5),
+    #     halign=0.3,
+    #     valign=0.8,
+    #     xticks = (1:3, ["Batch", "Baker", "Brand"]),
+    #     xgridvisible=false, ygridvisible=false,
+    #     xlabelsize=22, ylabelsize=22, xticklabelsize=18, yticklabelsize=18)
+    # tbl = (
+    #     cat = collect(1:3),
+    #     height = [
+    #         sum(basis_runtime["batch"]), sum(basis_runtime["baker"]),
+    #         sum(basis_runtime["brand"]),
+    #     ],
+    #     grp = collect(1:3),
+    # )
+    # barplot!(inset_ax, tbl.cat, tbl.height, color=Makie.wong_colors()[tbl.grp])
+    # bracket!(ax, 0.8, 300, 3.2, 300, offset=5, text="Zoom-in", fontsize=20)
     display(fig)
     save(joinpath(FILEPATH, "plots/basis_total_runtime.pdf"), fig)
 end
@@ -153,21 +154,22 @@ proj_error = load(joinpath(FILEPATH, "data/projection_errors.jld2"))
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(800, 600))
     ax = Axis(
-        fig[1, 1], xlabel="Algorithm", ylabel="projection error",
+        fig[1, 1], xlabel=L"reduced dimension, $r$", ylabel="mean projection error",
         xticks=1:rmax, yscale=log10,
         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         # title="Projection error of the POD basis",
     )
     lines = []
-    algos = ["batch", "baker", "brand", "sketchy"]
-    marker_styles = [:rect, :diamond, :cross, :circle]
-    line_styles = [:solid, :dot, :dash, :dashdot]
+    algos = ["batch", "baker", "brand", "sketchy", "mergingsketchy"]
+    marker_styles = [:rect, :diamond, :cross, :circle, :rect]
+    line_styles = [:solid, :dot, :dash, :dashdot, :dashdotdot]
+    colors = vcat(:black, Makie.wong_colors()[1:4])
     i = 1
     for algo in algos
         l = scatterlines!(
             ax, 1:rmax, proj_error[algo],
             marker=marker_styles[i], markersize=(35-(i-1)*2),
-            linestyle=line_styles[i], linewidth=7,
+            linestyle=line_styles[i], linewidth=7, color=colors[i],
         )
         push!(lines, l)
         i += 1
