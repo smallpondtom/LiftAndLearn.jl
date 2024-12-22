@@ -11,7 +11,7 @@ Split an array into streams of the given size.
 An array of arrays, each containing a stream of the original array.
 """
 function streamify(X::AbstractArray{<:Number}, streamsize::Integer)
-    m, n = size(X)
+    m, n = checksize(X)
     if m > n
         return map(Iterators.partition(axes(X,1), streamsize)) do cols
             X[cols, :]
@@ -37,7 +37,7 @@ Split an array into streams of the given sizes.
 An array of arrays, each containing a stream of the original array.
 """
 function streamify(X::AbstractArray{<:Number}, streamsize::Array{<:Integer})
-    m, n = size(X)
+    m, n = checksize(X)
     cum = cumsum(streamsize)
     if m > n
         return [

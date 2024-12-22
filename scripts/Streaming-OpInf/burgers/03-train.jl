@@ -70,7 +70,7 @@ model_files = []
         options.λ = LnL.TikhonovParameter(
             A = 1e-6,
             B = 1e-6,
-            A2u = 1e-6
+            A2 = 1e-6
         )
         op_trinf = LnL.opinf(X, Vrmax, options; U=U, Xdot=Xdot)
         # Save the model
@@ -107,6 +107,7 @@ for (file_idx, data_file) in enumerate(training_data_files)
         # Load the data
         X = data["X"]
         U = data["U"]
+        U = reshape(U, size(U,1), :)
         Xdot = data["Xdot"]
         Xref = data["Xref"]
         Uref = data["Uref"]
@@ -121,11 +122,11 @@ for (file_idx, data_file) in enumerate(training_data_files)
         ## Initialize the stream
         Γs = 1e-9
         # standard RLS
-        rls_stream  = LnL.StreamingOpInf(options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γs) 
+        rls_stream  = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS, Γs=Γs) 
         # inverse-QR RLS
-        iqrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γs)
+        iqrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γs)
         # QR RLS
-        qrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γs)
+        qrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γs)
 
         # Initialize the error factor
         Eps = nothing
@@ -134,7 +135,7 @@ for (file_idx, data_file) in enumerate(training_data_files)
         mu_str = @sprintf("%1.4f", data["mu"])
         model_idx = findfirst(x -> occursin("mu$(mu_str)", x), model_files)
         op_inf = load(model_files[model_idx], "opinf")
-        O_inf = vcat(op_inf.A', op_inf.B')
+        O_inf = vcat(op_inf.A', op_inf.B', op_inf.A2u')
 
         ## Stream one-by-one and collect data
         @showprogress for i in 1:num_of_streams
@@ -198,8 +199,8 @@ for (file_idx, data_file) in enumerate(training_data_files)
                 for (j, ri) in enumerate(1:rmax)
                     # Numerical integrate the reference solution with reference input
                     F_extract = UniqueKronecker.extractF(op_tmp[key].A2u, ri)
-                    Xtmp = burger.integrate_model(
-                        burger.tspan, iVrmax[:,1:ri]' * burger.IC, Uref; linear_matrix=op_tmp[key].A[1:ri, 1:ri],
+                    Xtmp = burgers.integrate_model(
+                        burgers.tspan, iVrmax[:,1:ri]' * burgers.IC, Uref; linear_matrix=op_tmp[key].A[1:ri, 1:ri],
                         control_matrix=op_tmp[key].B[1:ri,:], quadratic_matrix=F_extract, system_input=true
                     )
                     stream_res[key].rse[j, i] = LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:ri])
