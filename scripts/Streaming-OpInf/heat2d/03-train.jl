@@ -40,6 +40,11 @@ basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
 iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
 
+#=======================#
+## Additional functions
+#=======================#
+include(joinpath(FILEPATH, "../utilities/extract_operators.jl"))
+
 #====================#
 ## Train batch models
 #====================#
@@ -210,10 +215,12 @@ for (file_idx, data_file) in enumerate(training_data_files)
                         heat2d.tspan, iVrmax[:,1:ri]' * heat2d.IC, Uref; linear_matrix=op_tmp[key].A[1:ri,1:ri],
                         control_matrix=op_tmp[key].B[1:ri,:], system_input=true, integrator_type=:BackwardEuler
                     )
-                    stream_res[key].rse[j, i] = LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:ri])
+                    # stream_res[key].rse[j, i] = LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:ri])
+                    stream_res[key].rse[j, i] += LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:ri])
 
                     # Index for streaming errors
-                    idx = vcat(collect(1:ri),collect(rmax+1:rmax+4))
+                    # idx = vcat(collect(1:ri),collect(rmax+1:rmax+4))
+                    idx = extract_indices(rls_stream, rmax, ri, options.system)
 
                     # Streaming errors
                     O_norm = norm(O_inf[idx,1:ri], 2)
@@ -255,6 +262,7 @@ end
 
 # Average over the number of parameters
 for key in keys(stream_res)
+    stream_res[key].rse ./= heat2d.param_dim
     stream_res[key].true_stream_err ./= heat2d.param_dim
     stream_res[key].stream_err ./= heat2d.param_dim
     stream_res[key].post_err ./= heat2d.param_dim

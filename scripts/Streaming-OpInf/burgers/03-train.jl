@@ -41,6 +41,11 @@ basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
 iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
 
+#=======================#
+## Additional functions
+#=======================#
+include(joinpath(FILEPATH, "../utilities/extract_operators.jl"))
+
 #====================#
 ## Train batch models
 #====================#
@@ -87,7 +92,7 @@ end
 #====================================#
 # Placeholders
 rmax = size(Vrmax,2)
-num_of_streams = burgers.time_dim-1
+num_of_streams = 5000 # Number of streams !!! CHANGE THIS MANUALLY !!!
 tmp_res = (
     true_stream_err = zeros(rmax, num_of_streams),
     stream_err      = zeros(rmax, num_of_streams),
@@ -203,10 +208,10 @@ for (file_idx, data_file) in enumerate(training_data_files)
                         burgers.tspan, iVrmax[:,1:ri]' * burgers.IC, Uref; linear_matrix=op_tmp[key].A[1:ri, 1:ri],
                         control_matrix=op_tmp[key].B[1:ri,:], quadratic_matrix=F_extract, system_input=true
                     )
-                    stream_res[key].rse[j, i] = LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:ri])
+                    stream_res[key].rse[j, i] += LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:ri])
 
                     # Index for streaming errors
-                    idx = vcat(collect(1:ri),collect(rmax+1:rmax+4))
+                    idx = extract_indices(rls_stream, rmax, ri, options.system)
 
                     # Streaming errors
                     O_norm = norm(O_inf[idx,1:ri], 2)
@@ -246,12 +251,13 @@ for (file_idx, data_file) in enumerate(training_data_files)
     @info "Streaming for model $(file_idx) out of $(length(training_data_files)) is completed"
 end
 
-# Average over the number of parameters
+## Average over the number of parameters
 for key in keys(stream_res)
-    stream_res[key].true_stream_err ./= heat2d.param_dim
-    stream_res[key].stream_err ./= heat2d.param_dim
-    stream_res[key].post_err ./= heat2d.param_dim
-    stream_res[key].conv_factor ./= heat2d.param_dim
+    stream_res[key].rse ./= burgers.param_dim
+    stream_res[key].true_stream_err ./= burgers.param_dim
+    stream_res[key].stream_err ./= burgers.param_dim
+    stream_res[key].post_err ./= burgers.param_dim
+    stream_res[key].conv_factor ./= burgers.param_dim
 end
 
 ## Save the streaming results

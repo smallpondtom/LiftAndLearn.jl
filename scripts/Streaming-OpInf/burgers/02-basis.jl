@@ -98,8 +98,8 @@ for (i,data_file) in enumerate(training_data_files[2:end])
         tmp = full_increment!(brand, X, verbose=true, tol=1e-12, runtime=true)
         push!(time_brand, tmp)
         # Compute the POD basis using SketchySVD
-        _, tmp = full_increment!(sketchy, X, verbose=true, runtime=true)
-        push!(time_sketchy, tmp)
+        tmp = full_increment!(sketchy, X, verbose=true, runtime=true)
+        push!(time_sketchy, tmp.runtime)
         # Compute the POD basis using MergingSketchySVD
         tmp = full_increment!(mergingsketchy, X, verbose=true, runtime=true)
         push!(time_mergingsketchy, tmp)

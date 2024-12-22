@@ -122,4 +122,4 @@ end
 #===============================#
 ## Save the options for system
 #===============================#
-save(joinpath(FILEPATH, "data/setup.jld2"), "options", options, "burgers", burgers)
+save(joinpath(FILEPATH, "data/setup.jld2"), "options", options, "burgers", burgers) 

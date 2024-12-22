@@ -7,7 +7,7 @@ end
 function cube_indices(N,r)
     ct = 0
     tmp = []
-    for i in 1:N, j in i:N, k in j:N
+    @inbounds @fastmath for i in 1:N, j in i:N, k in j:N
         ct += 1
         if (i <= r) && (j <= r) && (k <= r)
             push!(tmp, ct)
@@ -21,6 +21,15 @@ function extract_indices(stream, n, r, system)
     extract_idx = collect(1:r)
     shift = n
 
+    # control
+    if !iszero(system.control)
+        extract_idx = vcat(
+            extract_idx, 
+            collect(1:stream.dims[:m]) .+ shift
+        )
+        shift += stream.dims[:m]
+    end
+
     # Quadratic 
     if 2 in system.state
         tmp = quad_indices(n, r)
@@ -32,15 +41,7 @@ function extract_indices(stream, n, r, system)
     if 3 in system.state
         tmp = cube_indices(n, r)
         extract_idx = vcat(extract_idx, tmp .+ shift)
-        shift += n * (n + 1) * (n + 2) / 6
-    end
-
-    # control
-    if !iszero(system.control)
-        extract_idx = vcat(
-            extract_idx, 
-            collect(1:stream.dims[:m]) .+ shift
-        )
+        # shift += n * (n + 1) * (n + 2) / 6
     end
 
     return Int.(extract_idx)

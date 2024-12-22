@@ -27,7 +27,7 @@ burgers = setup["burgers"]
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
-rmax = size(Vrmax, 2)-1
+rmax = size(Vrmax, 2)
 
 #============================================================#
 ## Plot the error between the batch and iSVD singular values
@@ -64,7 +64,7 @@ with_theme(theme_latexfonts()) do
     end
     axislegend(ax, 
         lines, labels,
-        position=:rb,
+        position=:lt,
         # orientation=:horizontal, 
         # halign=:center, 
         # tellwidth=false, 
@@ -197,7 +197,7 @@ with_theme(theme_latexfonts()) do
         fig[1, 1], xlabel="Algorithm", ylabel="relative state error",
         xticks=1:rmax, yscale=log10,
         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-6, 1e0),
+        # limits=(nothing, nothing, 1e-5, 4e0),
         # title="Relative state error of the training data",
     )
     lines = []
