@@ -17,7 +17,7 @@ using PolynomialModelReductionDataset: Heat2DModel
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Streaming-OpInf/heat2d") : joinpath(pwd(), "scripts/Streaming-OpInf/heat2d")
+FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
 
 #======================================#
 ## Obtain all the saved training files
@@ -30,46 +30,6 @@ training_data_files = readdir(joinpath(FILEPATH, "data/training"), join=true)
 setup_file = joinpath(FILEPATH, "data/setup.jld2")
 setup = load(setup_file)
 heat2d = setup["heat2d"]
-
-# #============================================================#
-# ## Generate the POD basis using iSVD using Baker's algorithm
-# #============================================================#
-# rmax = 12
-# Xall = Array[]
-
-# # Initialize the iSVD object with the first dataset
-# data = load(training_data_files[1])
-# isvd = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
-# # isvd = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
-# # isvd = iSVD(x1=data["X"][:,1], algo=:sketchy; m=32*40, n=10010, r=rmax, ReduxMap=:Sparse)
-# full_increment!(isvd, data["X"][:,2:end], verbose=true, tol=1e-12)
-# push!(Xall, data["X"])
-
-# # Increment for the rest of the data
-# for (i,data_file) in enumerate(training_data_files[2:end])
-#     jldopen(data_file, "r") do data
-#         # Load the data
-#         X = data["X"]
-#         # Compute the POD basis using the incremental SVD
-#         full_increment!(isvd, X, verbose=true, tol=1e-12)
-#         # Save the data for batch SVD
-#         push!(Xall, X)
-#     end
-# end
-
-# #============================================#
-# ## Compute the POD basis using the batch SVD 
-# #============================================#
-# F = svd(reduce(hcat, Xall))
-
-# #=====================================================================#
-# ## Save the POD basis and singular values from the iSVD and batch SVD
-# #=====================================================================#
-# save(
-#     joinpath(FILEPATH, "data/basis.jld2"),
-#     "iVr", isvd.Q[:,1:rmax], "iΣr", isvd.Σ[1:rmax], 
-#     "Vr", F.U[:,1:rmax], "Σr", F.S[1:rmax], "r", rmax
-# )
 
 #=========================================================#
 ## Generate the POD basis using iSVD using all algorithms
@@ -87,17 +47,18 @@ time_mergingsketchy = []
 data = load(training_data_files[1])
 
 ## (Dry) Run it once due to JUlia's JIT compilation
-baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
+baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax) 
 full_increment!(baker, data["X"][:,2:3], verbose=true, runtime=true)
 brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
-full_increment!(brand, data["X"][:,2:3], verbose=true, tol=1e-12, runtime=true)
+full_increment!(brand, data["X"][:,2:3], verbose=true, tol=1e-10, runtime=true)
 sketchy = iSVD(algo=:sketchy; m=prod(heat2d.spatial_dim), n=(heat2d.time_dim-1), r=rmax, ReduxMap=:Sparse)
 full_increment!(sketchy, data["X"][:,2:3], verbose=true, runtime=true)
-mergingsketchy = iSVD(algo=:mergingsketchy; m=prod(heat2d.spatial_dim), b=100, r=rmax, ReduxMap=:Sparse)
+mergingsketchy = iSVD(algo=:mergingsketchy; m=prod(heat2d.spatial_dim), b=200, r=rmax, ReduxMap=:Sparse)
 full_increment!(mergingsketchy, data["X"][:,2:201], verbose=true, runtime=true)
 svd(data["X"][:,1:10])
 
 ## baker
+@info "Processing file 1 out of $(length(training_data_files))"
 tmp = @elapsed baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
 push!(time_baker, tmp)
 tmp = full_increment!(baker, data["X"][:,2:end], verbose=true, runtime=true)
@@ -105,7 +66,7 @@ push!(time_baker, tmp)
 # brand
 tmp = @elapsed brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
 push!(time_brand, tmp)
-tmp = full_increment!(brand, data["X"][:,2:end], verbose=true, tol=1e-12, runtime=true)
+tmp = full_increment!(brand, data["X"][:,2:end], verbose=true, tol=1e-10, runtime=true)
 push!(time_brand, tmp)
 # sketchy
 tmp = @elapsed sketchy = iSVD(algo=:sketchy; m=prod(heat2d.spatial_dim), n=(heat2d.time_dim-1)*heat2d.param_dim, 
@@ -125,6 +86,7 @@ push!(Xall, data["X"])
 
 # Increment for the rest of the data
 for (i,data_file) in enumerate(training_data_files[2:end])
+    @info "Processing file $(i+1) out of $(length(training_data_files))"
     jldopen(data_file, "r") do data
         # Load the data
         X = data["X"]
@@ -194,4 +156,4 @@ for i in 1:rmax
     proj_error["batch"][i] = norm(X - bases["batch"].Vr[:,1:i] * bases["batch"].Vr[:,1:i]' * X, 2) / norm(X, 2)
 end
 
-save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)
+save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)            
