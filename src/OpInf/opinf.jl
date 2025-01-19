@@ -45,7 +45,7 @@ function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Yt::AbstractArr
     O = transpose(Ot)
 
     # Extract the operators
-    operators = Operators()
+    operators = Operators(O=O)
 
     # Unpack the operators
     unpack_operators!(operators, O, Yt, Xhat_t, dims, operator_symbols, options)
@@ -89,9 +89,8 @@ function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption;
         Rt = Xdot' * Vn
     else
         Xhat = Vn' * X
-        Xhat_t = transpose(Xhat)
+        Xhat_t = Xhat'
         Rt = Xdot' * Vn  
-        # Rt = transpose(Vn' * Xdot)
     end
 
     D, dims, op_symbols = get_data_matrix(Xhat, Xhat_t, Ut, options; verbose=true)

@@ -16,7 +16,8 @@ Tikhonov regression
 """
 function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real; flag::Bool=false)
     if flag
-        Ag = A' * A + Γ' * Γ
+        # Ag = A' * A + Γ' * Γ  # This is if || Γ*O ||_F is desired
+        Ag = A' * A + Γ         # This is if || Γ^{1/2}*O ||_2 is desired
         Ag_svd = svd(Ag)
         sing_idx = findfirst(Ag_svd.S .< tol)
 
@@ -31,7 +32,8 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::R
             return Ag \ (A' * b)
         end
     else
-        return (A' * A + Γ' * Γ) \ (A' * b)
+        # return (A' * A + Γ' * Γ) \ (A' * b)  # This is if || Γ*O ||_F is desired
+        return (A' * A + Γ) \ (A' * b)    # This is if || Γ^{1/2}*O ||_2 is desired
     end
 end
 

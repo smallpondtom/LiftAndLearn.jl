@@ -68,6 +68,9 @@ Base.@kwdef mutable struct Operators
             end
         end 
 
+    # Concatenated operators from the solution of OpInf
+    O::Union{AbstractArray{<:Number},Real} = 0
+
     # Dimensions
     dims::Dict{Symbol, Int64} = Dict(
         :A => iszero(A) ? 0 : size(A,1), 

@@ -80,7 +80,6 @@ test_errors = Dict(
 
 param_region = collect(heat2d.diffusion_coeffs)
 
-##
 @showprogress for (file_idx, test_file) in enumerate(testing_data_files)
     jldopen(test_file, "r") do data
         # Load the data
@@ -121,11 +120,13 @@ param_region = collect(heat2d.diffusion_coeffs)
         Threads.@threads for i in eachindex(op_keys)
             key = op_keys[i]
             for (i,r) = enumerate(1:rmax)
-                if occursin(r"stream", key)
-                    Vr = iVrmax[:, 1:r]
-                else
-                    Vr = Vrmax[:, 1:r]
-                end
+                # if occursin(r"stream", key)
+                #     Vr = iVrmax[:, 1:r]
+                # else
+                #     Vr = Vrmax[:, 1:r]
+                # end
+
+                Vr = iVrmax[:, 1:r]
 
                 # Integrate the model
                 Xrecon = heat2d.integrate_model(

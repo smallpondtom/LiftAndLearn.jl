@@ -20,6 +20,9 @@ Inverse QR Decomposition Recursive Least-Squares (iQRRLS) cache struct to solve 
     u::Array{T,2} = zeros(T,N,1)         # Temporary vector for computations (N x 1)
     temp_dO::Array{T,2} = zeros(T,1,n)   # Temporary vector for d * O (1 x n)
     temp_Ke::Array{T,2} = zeros(T,N,n)   # Temporary matrix for K * ξpre (N x n)
+
+    # Update counter
+    counter::Int = 0
 end
 
 

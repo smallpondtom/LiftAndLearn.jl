@@ -64,7 +64,7 @@ with_theme(theme_latexfonts()) do
     end
     axislegend(ax, 
         lines, labels,
-        position=:lb,
+        position=:lt,
         # orientation=:horizontal, 
         # halign=:center, 
         # tellwidth=false, 
@@ -195,7 +195,7 @@ with_theme(theme_latexfonts()) do
     fig = Figure(size=(800, 600))
     ax = Axis(
         fig[1, 1], xlabel=L"reduced dimension, $r$", ylabel="mean relative state error",
-        xticks=1:rmax, yscale=log10, limits=(nothing, nothing, 1e-8, 1e1),
+        xticks=1:rmax, yscale=log10, # limits=(nothing, nothing, 1e-8, 1e1),
         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         # limits=(nothing, nothing, 1e-5, 2e-1),
         # title="Relative state error of the training data",
@@ -297,7 +297,7 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(ax1, 1:num_of_streams, stream_res[:rls].stream_err[ri,:], color=line_colors[j])
+        scatterlines!(ax1, 1:num_of_streams, stream_res[:rls].true_stream_err[ri,:], color=line_colors[j])
     end
     # iQRRLS
     ax2 = Axis(fig[1, 2], 
@@ -308,7 +308,7 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(ax2, 1:num_of_streams, stream_res[:iqrrls].stream_err[ri,:], color=line_colors[j])
+        scatterlines!(ax2, 1:num_of_streams, stream_res[:iqrrls].true_stream_err[ri,:], color=line_colors[j])
     end
     # QRRLS
     ax3 = Axis(fig[1, 3], 
@@ -321,7 +321,7 @@ with_theme(theme_latexfonts()) do
     lines = []
     labels = []
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        l = scatterlines!(ax3, 1:num_of_streams, stream_res[:qrrls].stream_err[ri,:], color=line_colors[j])
+        l = scatterlines!(ax3, 1:num_of_streams, stream_res[:qrrls].true_stream_err[ri,:], color=line_colors[j])
         push!(lines, l)
         push!(labels, "r = $ri")
     end

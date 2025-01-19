@@ -21,21 +21,35 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
         if foo == bar && foo != 1
             @warn "Transposing while assuming the row dim is the input dim and the column dim is the number of data points."
         end
-        if final_step
+        if iszero(obj.cache.counter)
             D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
             obj.termination_settings[:dims] = operator_dims
             obj.termination_settings[:syms] = operator_symbols
         else
             D = get_data_matrix(X, U', obj.options; verbose=false)
         end
+        # if final_step
+        #     D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
+        #     obj.termination_settings[:dims] = operator_dims
+        #     obj.termination_settings[:syms] = operator_symbols
+        # else
+        #     D = get_data_matrix(X, U', obj.options; verbose=false)
+        # end
     else
-        if final_step
+        if iszero(obj.cache.counter)
             D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
             obj.termination_settings[:dims] = operator_dims
             obj.termination_settings[:syms] = operator_symbols
         else
             D = get_data_matrix(X, U, obj.options; verbose=false)
         end
+        # if final_step
+        #     D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
+        #     obj.termination_settings[:dims] = operator_dims
+        #     obj.termination_settings[:syms] = operator_symbols
+        # else
+        #     D = get_data_matrix(X, U, obj.options; verbose=false)
+        # end
     end
 
     # Reorganize the dimension of the derivative data matrix
@@ -61,6 +75,10 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
             rls!(obj.cache, D, R, Q)
         end
     end
+
+    # Update the counter
+    obj.cache.counter += 1
+
     return D
 end
 

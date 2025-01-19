@@ -23,6 +23,9 @@ Recursive Least-Squares (RLS) cache struct to solve for DO = R.
     temp_PD::Array{T,2} = zeros(T,N,M)      # Temporary matrix P * D' (N x M)
     temp_update::Array{T,2} = zeros(T,N,N)  # Temporary matrix (N x N)
     temp_Ke::Array{T,2} = zeros(T,N,n)      # For updating O (N x n)
+
+    # Update counter
+    counter::Int = 0
 end
 
 """
@@ -49,9 +52,6 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
     # Compute a priori error: ξpre = R - D * O
     obj.ξpre .= R
     mul!(obj.ξpre, D, obj.O, -1.0, 1.0)  # ξpre = R - D * O
-    # mul!(obj.ξpre, D, obj.O, -1.0, 0.0)  # ξpre = R - D * O
-    # # Then we add R to ξpre
-    # obj.ξpre .+= R
 
     # Update inverse correlation matrix P_k
     if M == 1  # Rank-1 update
@@ -64,7 +64,17 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
         denom = Q + dot(D, obj.u) / obj.λ  # scalar
 
         # Compute conversion factor: C = 1 / denom
-        obj.C[1,1] = 1 / denom  # obj.C is 1 x 1 in rank-1 case
+        obj.C .= 1 / denom  # obj.C is 1 x 1 in rank-1 case
+
+        # Compute Kalman gain: K = P(i-1) * Dᵗ * C / Q / λ
+        if isa(Q, Number)
+            Q_inv = 1 / Q
+            mul!(obj.K, obj.P, D[:], obj.C[1,1] * (Q_inv / obj.λ), 0.0)  # K: N x 1
+        else
+            Q_inv = Q \ I
+            mul!(obj.K, obj.P, D[:], obj.C[1,1] / obj.λ, 0.0)
+            obj.K .= Q_inv * obj.K
+        end
 
         # Update P: P = (P - (u * uᵗ) / denom / λ) / λ
         # NOTE: syr only updates the upper triangular part of the matrix
@@ -76,15 +86,15 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
             obj.P[j, i] = obj.P[i, j]
         end
 
-        # Compute Kalman gain: K = P * Dᵗ / Q / λ
-        if isa(Q, Number)
-            Q_inv = 1 / Q
-            mul!(obj.K, obj.P, D[:], Q_inv / obj.λ, 0.0)  # K: N x 1
-        else
-            Q_inv = Q \ I
-            mul!(obj.K, obj.P, D[:], 1.0 / obj.λ, 0.0)
-            mul!(obj.K, Q_inv, obj.K)
-        end
+        # # Compute Kalman gain: K = P(i) * Dᵗ / Q / λ
+        # if isa(Q, Number)
+        #     Q_inv = 1 / Q
+        #     mul!(obj.K, obj.P, D[:], Q_inv / obj.λ, 0.0)  # K: N x 1
+        # else
+        #     Q_inv = Q \ I
+        #     mul!(obj.K, obj.P, D[:], 1.0 / obj.λ, 0.0)
+        #     mul!(obj.K, Q_inv, obj.K)
+        # end
     else  # Block (rank-M) update
         # Compute temp_DP = D * P / λ
         mul!(obj.temp_DP, D, obj.P, 1 / obj.λ, 0.0)  # temp_DP: M x N
@@ -104,6 +114,10 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
         # Compute temp_PD = P * D'
         mul!(obj.temp_PD, obj.P, D', 1.0, 0.0)  # temp_PD: N x M
 
+        # # Compute Kalman gain: K = P * Dᵗ * S_inv / λ
+        mul!(obj.K, obj.P, D', 1.0 / obj.λ, 0.0)
+        obj.K *= S_inv
+
         # Update P: P = (P - temp_PD * S_inv * temp_PDᵗ) / λ
         mul!(obj.temp_update, temp_PD, S_inv)
         mul!(obj.temp_update, obj.temp_update, temp_PD', 1.0 / obj.λ, 0.0)
@@ -115,21 +129,16 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
             obj.P[j, i] = obj.P[i, j]
         end
 
-        # Compute Kalman gain: K = P * Dᵗ * S_inv / λ
-        mul!(obj.K, obj.P, D', 1.0 / obj.λ, 0.0)
-        mul!(obj.K, obj.K, S_inv)
+        # # Compute Kalman gain: K = P * Dᵗ * S_inv / λ
+        # mul!(obj.K, obj.P, D', 1.0 / obj.λ, 0.0)
     end
 
     # Update O: O += K * ξpre
     mul!(obj.O, obj.K, obj.ξpre, 1.0, 1.0)  # temp_Ke: N x n
-    # mul!(obj.temp_Ke, obj.K, obj.ξpre, 1.0, 0.0)  # temp_Ke: N x n
-    # obj.O .+= obj.temp_Ke
 
     # Compute a posteriori error: ξpost = R - D * O
     obj.ξpost .= R
     mul!(obj.ξpost, D, obj.O, -1.0, 1.0)  # ξpost = R - D * O
-    # mul!(obj.ξpost, D, obj.O, -1.0, 0.0)  # ξpost = R - D * O
-    # obj.ξpost .+= R
 
     # Update the cost J: J = λ * J + ξpre' .* ξpost
     obj.J = obj.λ * obj.J + obj.ξpre * obj.ξpost'

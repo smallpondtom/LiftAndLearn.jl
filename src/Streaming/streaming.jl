@@ -152,17 +152,19 @@ function stream_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, R::
     end
     for i in 1:N
         if iszero(Q)
-            if i == N
-                D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], final_step=true)
-            else
-                D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i])
-            end
+            # if i == N
+            #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], final_step=true)
+            # else
+            #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i])
+            # end
+            D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i])
         else
-            if i == N
-                D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], Q=flag ? Q : Q[i], final_step=true)
-            else
-                D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], Q=flag ? Q : Q[i])
-            end
+            # if i == N
+            #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], Q=flag ? Q : Q[i], final_step=true)
+            # else
+            #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], Q=flag ? Q : Q[i])
+            # end
+            D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], Q=flag ? Q : Q[i])
         end
         if verbose
             next!(p)
@@ -188,11 +190,12 @@ function stream_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, X::AbstractArray{<:A
         p = Progress(N; desc="Streaming data...")
     end
     for i in 1:N
-        if i == N
-            D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], final_step=true)
-        else
-            D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i])
-        end
+        # if i == N
+        #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], final_step=true)
+        # else
+        #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i])
+        # end
+        D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i])
         if verbose
             next!(p)
         end
@@ -259,7 +262,7 @@ Terminate the streaming operator inference and return the operators.
 """
 function terminate_stream(obj::StreamingOpInf) 
     # Extract the operators
-    operators = Operators()
+    operators = Operators(O=obj.cache.O)
     unpack_operators!(
         operators, obj.cache.O',  # remember to transpose the operator matrix
         obj.termination_settings[:dims], obj.termination_settings[:syms])
@@ -274,7 +277,7 @@ Terminate the streaming operator inference and return the operators (dispatch)
 """
 function terminate_stream(state_obj::StreamingOpInf, output_obj::StreamingOpInf) 
     # Extract the operators
-    operators = Operators()
+    operators = Operators(O=obj.cache.O)
     unpack_operators!(
         operators, state_obj.cache.O',  # remember to transpose the operator matrix
         state_obj.termination_settings[:dims], state_obj.termination_settings[:syms])

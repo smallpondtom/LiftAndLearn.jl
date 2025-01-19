@@ -21,6 +21,9 @@ QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = 
     A::Array{T,2} = zeros(T,N+n+1,N+n+1)  # Temporary matrix for QR factorization ((N + n + 1) x (N + n + 1))
     temp_dO::Array{T,2} = zeros(T,1,n)    # Temporary vector for d * O (1 x n)
     temp_Kd::Array{T,2} = zeros(T,N,1)    # Temporary matrix for P * d' (N x 1)
+
+    # Update counter
+    counter::Int = 0
 end
 
 
@@ -80,6 +83,10 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
     mul!(obj.temp_Kd, obj.P, d', T(1), T(0))  # temp_Kd: N x 1
     denom = T(1) + dot(d, obj.temp_Kd) / obj.λ  # Scalar
 
+    # Update Kalman gain K: K = (P * d') * (C / λ)
+    obj.K .= obj.temp_Kd  # K = P * d'
+    obj.K .*= obj.C / obj.λ  # K = K * (C / λ)
+
     # Update P in-place
     BLAS.syr!('U', -1.0 / (obj.λ * denom), obj.temp_Kd[:,1], obj.P)
     obj.P ./= obj.λ  # P = P / λ
@@ -88,10 +95,6 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
     @inbounds for i in 1:N, j in i+1:N
         obj.P[j, i] = obj.P[i, j]
     end
-
-    # Update Kalman gain K: K = (P * d') * (C / λ)
-    obj.K .= obj.temp_Kd  # K = P * d'
-    obj.K .*= obj.C / obj.λ  # K = K * (C / λ)
 
     return nothing
 end
