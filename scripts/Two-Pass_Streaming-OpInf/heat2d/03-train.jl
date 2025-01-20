@@ -125,11 +125,11 @@ for (file_idx, data_file) in enumerate(training_data_files)
         qrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ)
 
         # Preallocate a dicdtionary to store the streaming results
-        error_factors = Dict{Symbol, Matrix{Float64}}(
-            :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d]), 
-            :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d]), 
-            :qrrls  => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d])
-        )
+        # error_factors = Dict{Symbol, Matrix{Float64}}(
+        #     :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d]), 
+        #     :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d]), 
+        #     :qrrls  => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d])
+        # )
         Eps_true = Dict{Symbol, Matrix{Float64}}(
             :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 
             :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 
@@ -145,14 +145,14 @@ for (file_idx, data_file) in enumerate(training_data_files)
             u_i    = U_stream[i]
 
             # Stream, update, and get data matrix for the state system
-            d = LnL.stream!(rls_stream, x_i, xdot_i; U=u_i)  # RLS
+            LnL.stream!(rls_stream, x_i, xdot_i; U=u_i)  # RLS
             LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i)   # iQRRLS
             LnL.stream!(qrrls_stream, x_i, xdot_i; U=u_i)    # QRRLS
 
             # Compute the error factor 
-            error_factors[:rls]    = 1.0I - rls_stream.cache.K * d
-            error_factors[:iqrrls] = 1.0I - iqrrls_stream.cache.K * d
-            error_factors[:qrrls]  = 1.0I - qrrls_stream.cache.K * d
+            # error_factors[:rls]    = 1.0I - rls_stream.cache.K * d
+            # error_factors[:iqrrls] = 1.0I - iqrrls_stream.cache.K * d
+            # error_factors[:qrrls]  = 1.0I - qrrls_stream.cache.K * d
 
             # Compute the true streaming error
             Eps_true[:rls]    .= Ostar - rls_stream.cache.O
@@ -165,9 +165,12 @@ for (file_idx, data_file) in enumerate(training_data_files)
                 Eps[:iqrrls] = copy(Eps_true[:iqrrls])
                 Eps[:qrrls]  = copy(Eps_true[:qrrls])
             else
-                Eps[:rls]    .= error_factors[:rls] * Eps[:rls]
-                Eps[:iqrrls] .= error_factors[:iqrrls] * Eps[:iqrrls]
-                Eps[:qrrls]  .= error_factors[:qrrls] * Eps[:qrrls]
+                # Eps[:rls]    .= error_factors[:rls] * Eps[:rls]
+                # Eps[:iqrrls] .= error_factors[:iqrrls] * Eps[:iqrrls]
+                # Eps[:qrrls]  .= error_factors[:qrrls] * Eps[:qrrls]
+                Eps[:rls]    .= Eps[:rls] - rls_stream.cache.K * rls_stream.cache.ξpre
+                Eps[:iqrrls] .= Eps[:iqrrls] - iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
+                Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
             end
 
             # Unpack operators
