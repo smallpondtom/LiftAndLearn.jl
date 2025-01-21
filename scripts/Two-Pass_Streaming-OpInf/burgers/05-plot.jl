@@ -76,6 +76,53 @@ with_theme(theme_latexfonts()) do
     save(joinpath(FILEPATH, "plots/relative_sval_error.pdf"), fig)
 end
 
+#============================================================#
+## Plot the error between the batch and iSVD singular values
+#============================================================#
+basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
+bases = load(basis_file)
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel=L"singular value index, $i$", ylabel="absolute error of singular values",
+        yscale=log10, xticks=1:rmax, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        # title="Relative error between batch and \n incremental singular values",
+    )
+    lines = []
+    labels = []
+    marker_styles = [:diamond, :cross, :circle, :rect]
+    line_styles = [:solid, :solid, :solid, :solid]
+    i = 1
+    for Algo in ["Baker", "Brand", "Sketchy", "MergingSketchy"]
+        algo = lowercase(Algo)
+        basis = bases[algo]
+        Σr = basis.iΣr
+        Σr_batch = bases["batch"].Σr
+        error = abs.(Σr - Σr_batch)
+        l = scatterlines!(
+            ax, 1:rmax, error, 
+            marker=marker_styles[i], markersize=(35-(i-1)*2),
+            linestyle=line_styles[i], linewidth=7,
+        )
+        i += 1
+        push!(lines, l)
+        push!(labels, Algo)
+    end
+    axislegend(ax, 
+        lines, labels,
+        position=:lt,
+        # orientation=:horizontal, 
+        # halign=:center, 
+        # tellwidth=false, 
+        # tellheight=true,
+        labelsize=30
+    )
+    # Label(fig[0, :], "Relative error between batch and incremental singular values", fontsize=35)
+    display(fig)
+    save(joinpath(FILEPATH, "plots/absolute_sval_error.pdf"), fig)
+end
+
 #=======================================================#
 ## Plot the runtime of the iSVD algorithms over streams
 #=======================================================#
@@ -239,11 +286,11 @@ with_theme(theme_latexfonts()) do
     # Standard RLS
     ax1 = Axis(fig[1, 1], 
         xlabel=L"$k$-th stream", 
-        ylabel="Relative state error", 
+        ylabel="mean relative state error", 
         title="RLS", 
         yscale=log10, xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-6, 1e1),
+        limits=(nothing, nothing, 1e-3, 3),
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
         scatterlines!(ax1, 1:num_of_streams, stream_res[:rls].rse[ri,:], color=line_colors[j])
@@ -251,11 +298,11 @@ with_theme(theme_latexfonts()) do
     # iQRRLS
     ax2 = Axis(fig[1, 2], 
         xlabel=L"$k$-th stream", 
-        ylabel="Relative state error", 
+        # ylabel="Relative state error", 
         title="iQRRLS", 
         yscale=log10, xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-6, 1e1),
+        limits=(nothing, nothing, 1e-3, 3),
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
         scatterlines!(ax2, 1:num_of_streams, stream_res[:iqrrls].rse[ri,:], color=line_colors[j])
@@ -263,11 +310,11 @@ with_theme(theme_latexfonts()) do
     # QRRLS
     ax3 = Axis(fig[1, 3], 
         xlabel=L"$k$-th stream", 
-        ylabel="Relative state error", 
+        # ylabel="Relative state error", 
         title="QRRLS", 
         yscale=log10, xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-6, 1e1),
+        limits=(nothing, nothing, 1e-3, 3),
     )
     lines = []
     labels = []
@@ -292,7 +339,7 @@ with_theme(theme_latexfonts()) do
     # Standard RLS
     ax1 = Axis(fig[1, 1], 
         xlabel=L"$k$-th stream", 
-        ylabel="Relative streaming errors", 
+        ylabel="mean relative streaming errors", 
         title="RLS", 
         yscale=log10, 
         xticks=xtick_vals, titlesize=30, 

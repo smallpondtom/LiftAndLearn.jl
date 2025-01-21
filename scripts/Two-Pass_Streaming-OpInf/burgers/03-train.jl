@@ -164,7 +164,7 @@ for (file_idx, data_file) in enumerate(training_data_files)
                 Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
             end
 
-            if (i-1) % 5 == 0 || i == num_of_streams
+            if (i-1) % 3 == 0 || i ∈ num_of_streams-10:num_of_streams
                 # Unpack operators
                 # RLS
                 op_rls = LnL.Operators()

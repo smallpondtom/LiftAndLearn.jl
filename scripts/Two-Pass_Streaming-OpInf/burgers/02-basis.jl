@@ -77,7 +77,7 @@ push!(time_sketchy, tmp)
 tmp = full_increment!(sketchy, data["X"], verbose=true, runtime=true)
 push!(time_sketchy, tmp.runtime)
 # mergingsketchy
-blk = 25
+blk = 10
 blksize = size(data["X"],2) ÷ blk
 tmp = @elapsed mergingsketchy = iSVD(algo=:mergingsketchy; m=burgers.spatial_dim, b=blksize, r=rmax, ReduxMap=:Sparse)
 push!(time_mergingsketchy, tmp)
