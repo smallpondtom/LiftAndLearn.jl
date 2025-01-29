@@ -70,26 +70,27 @@ RES = Dict{String, Any}()
 # Time lag
 lags = 0:DS:(kse.time_dim ÷ 2)
 
+##
 RES["AC_lags"] = lags
 RES["AC"] = Dict(
-    :pod     => Array{Float64}(undef, length(lags), length(rrange)),
-    :opinf   => Array{Float64}(undef, length(lags), length(rrange)),
-    :tropinf => Array{Float64}(undef, length(lags), length(rrange)),
-    :rls     => Array{Float64}(undef, length(lags), length(rrange)),
-    :iqrrls  => Array{Float64}(undef, length(lags), length(rrange)),
-    :qrrls   => Array{Float64}(undef, length(lags), length(rrange)),
-    :fom     => Array{Float64}(undef, length(lags))
+    :pod           => Array{Float64}(undef, length(lags), length(rrange)),
+    :opinf         => Array{Float64}(undef, length(lags), length(rrange)),
+    :tropinf       => Array{Float64}(undef, length(lags), length(rrange)),
+    :stream_rls    => Array{Float64}(undef, length(lags), length(rrange)),
+    :stream_iqrrls => Array{Float64}(undef, length(lags), length(rrange)),
+    :stream_qrrls  => Array{Float64}(undef, length(lags), length(rrange)),
+    :fom           => Array{Float64}(undef, length(lags))
 )
 RES["AC_ERR"] = Dict(
-    :pod     => Array{Float64}(undef, length(rrange)),
-    :opinf   => Array{Float64}(undef, length(rrange)),
-    :tropinf => Array{Float64}(undef, length(rrange)),
-    :rls     => Array{Float64}(undef, length(rrange)),
-    :iqrrls  => Array{Float64}(undef, length(rrange)),
-    :qrrls   => Array{Float64}(undef, length(rrange)),
+    :pod           => Array{Float64}(undef, length(rrange)),
+    :opinf         => Array{Float64}(undef, length(rrange)),
+    :tropinf       => Array{Float64}(undef, length(rrange)),
+    :stream_rls    => Array{Float64}(undef, length(rrange)),
+    :stream_iqrrls => Array{Float64}(undef, length(rrange)),
+    :stream_qrrls  => Array{Float64}(undef, length(rrange)),
 )
 
-# Compute autocorrelation functions
+## Compute autocorrelation functions
 ac_fom          = zeros(length(lags))
 ac_pod          = zeros(length(lags), length(rrange))
 ac_pod_err      = zeros(length(rrange))
@@ -144,7 +145,7 @@ num_of_training = length(training_data_files)
     end
 end
 
-# save the mean normalized autocorrelation
+## save the mean normalized autocorrelation
 RES["AC"][:fom] = ac_fom ./ num_of_training
 for r in eachindex(rrange)
     RES["AC"][:pod][:,r]           = ac_pod[:,r] ./ num_of_training
@@ -156,12 +157,12 @@ for r in eachindex(rrange)
 end
 
 # Reshape into column vector
-RES["AC_ERR"][:pod]           = reshape(ac_pod_err, length(ac_pod_err), 1) ./ num_of_training
-RES["AC_ERR"][:opinf]         = reshape(ac_opinf_err, length(ac_opinf_err), 1) ./ num_of_training
-RES["AC_ERR"][:tropinf]       = reshape(ac_tropinf_err, length(ac_tropinf_err), 1) ./ num_of_training
-RES["AC_ERR"][:stream_rls]    = reshape(ac_rls_err, length(ac_rls_err), 1) ./ num_of_training
-RES["AC_ERR"][:stream_iqrrls] = reshape(ac_iqrrls_err, length(ac_iqrrls_err), 1) ./ num_of_training
-RES["AC_ERR"][:stream_qrrls]  = reshape(ac_qrrls_err, length(ac_qrrls_err), 1) ./ num_of_training
+RES["AC_ERR"][:pod]           = ac_pod_err ./ num_of_training
+RES["AC_ERR"][:opinf]         = ac_opinf_err./ num_of_training
+RES["AC_ERR"][:tropinf]       = ac_tropinf_err ./ num_of_training
+RES["AC_ERR"][:stream_rls]    = ac_rls_err ./ num_of_training
+RES["AC_ERR"][:stream_iqrrls] = ac_iqrrls_err ./ num_of_training
+RES["AC_ERR"][:stream_qrrls]  = ac_qrrls_err ./ num_of_training
 
 #================================================#
 ## Lyapunov exponents and Kaplan-Yorke dimension
@@ -178,7 +179,7 @@ RES["LE"] = Dict(
     :tropinf       => Array{Float64}(undef, max_num_of_LE, length(rrange)),
     :stream_rls    => Array{Float64}(undef, max_num_of_LE, length(rrange)),
     :stream_iqrrls => Array{Float64}(undef, max_num_of_LE, length(rrange)),
-    :stream_qrrls  => Array{Float64}(undef, max_num_of_LE)
+    :stream_qrrls  => Array{Float64}(undef, max_num_of_LE, length(rrange)),
 )
 
 RES["KY"] = Dict(
@@ -186,7 +187,7 @@ RES["KY"] = Dict(
     :opinf         => Array{Float64}(undef, length(rrange)),
     :tropinf       => Array{Float64}(undef, length(rrange)),
     :stream_rls    => Array{Float64}(undef, length(rrange)),
-    :stream_iqqrls => Array{Float64}(undef, length(rrange)),
+    :stream_iqrrls => Array{Float64}(undef, length(rrange)),
     :stream_qrrls  => Array{Float64}(undef, length(rrange)),
 )
 
@@ -247,7 +248,7 @@ ky_qrrls   = zeros(length(rrange), num_of_training)
     end
 end
 
-# save the mean normalized autocorrelation
+## save the mean normalized autocorrelation
 RES["LE"][:pod]           .= nanmean(le_pod;     dims=3)
 RES["LE"][:opinf]         .= nanmean(le_opinf;   dims=3)
 RES["LE"][:tropinf]       .= nanmean(le_tropinf; dims=3)

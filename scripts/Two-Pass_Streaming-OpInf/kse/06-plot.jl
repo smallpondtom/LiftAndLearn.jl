@@ -24,6 +24,7 @@ setup_file = joinpath(FILEPATH, "data/setup.jld2")
 setup = load(setup_file)
 options = setup["options"]
 kse = setup["kse"]
+rrange = setup["rrange"]
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
@@ -38,7 +39,7 @@ with_theme(theme_latexfonts()) do
     fig = Figure(size=(800, 600))
     ax = Axis(
         fig[1, 1], xlabel=L"singular value index, $i$", ylabel="relative error of singular values",
-        yscale=log10, xticks=1:rmax, titlesize=30, 
+        yscale=log10, xticks=1:2:rmax, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         # title="Relative error between batch and \n incremental singular values",
     )
@@ -85,7 +86,7 @@ with_theme(theme_latexfonts()) do
     fig = Figure(size=(800, 600))
     ax = Axis(
         fig[1, 1], xlabel=L"singular value index, $i$", ylabel="absolute error of singular values",
-        yscale=log10, xticks=1:rmax, titlesize=30, 
+        yscale=log10, xticks=1:2:rmax, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         # title="Relative error between batch and \n incremental singular values",
     )
@@ -202,7 +203,7 @@ with_theme(theme_latexfonts()) do
     fig = Figure(size=(800, 600))
     ax = Axis(
         fig[1, 1], xlabel=L"reduced dimension, $r$", ylabel="projection error",
-        xticks=1:rmax, yscale=log10,
+        xticks=1:2:rmax, yscale=log10,
         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         # title="Projection error of the POD basis",
     )
@@ -242,7 +243,7 @@ with_theme(theme_latexfonts()) do
     fig = Figure(size=(800, 600))
     ax = Axis(
         fig[1, 1], xlabel="Algorithm", ylabel="relative state error",
-        xticks=1:rmax, yscale=log10,
+        xticks=1:2:rmax, yscale=log10,
         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         # limits=(nothing, nothing, 1e-5, 4e0),
         # title="Relative state error of the training data",
@@ -254,7 +255,7 @@ with_theme(theme_latexfonts()) do
     i = 1
     for method in labels
         l = scatterlines!(
-            ax, 1:rmax, vec(training_errors[method]),
+            ax, rrange, vec(training_errors[method]),
             marker=marker_styles[i], markersize=(35-(i-1)*2),
             linestyle=line_styles[i], linewidth=7,
         )
@@ -277,11 +278,12 @@ end
 #================================================#
 ## Plot the relative streaming errors per stream
 #================================================#
+stream_res = load(joinpath(FILEPATH, "data/streaming/stream_results.jld2"))["stream_res"]
 with_theme(theme_latexfonts()) do
     num_of_streams = size(stream_res[:rls].stream_err, 2)
-    line_colors = Makie.resample_cmap(:viridis, rmax)
+    line_colors = Makie.resample_cmap(:viridis, length(rrange))
     fig = Figure(size=(1800,700))
-    xtick_vals = 0:(num_of_streams ÷ 4):num_of_streams
+    xtick_vals = 0:(num_of_streams ÷ 3):num_of_streams
     # Standard RLS
     ax1 = Axis(fig[1, 1], 
         xlabel=L"$k$-th stream", 
@@ -291,8 +293,8 @@ with_theme(theme_latexfonts()) do
         xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
-    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(ax1, 1:num_of_streams, stream_res[:rls].stream_err[ri,:], color=line_colors[j])
+    for j in eachindex(rrange)  # over all reduced dimensions
+        scatterlines!(ax1, 1:num_of_streams, stream_res[:rls].true_stream_err[j,:], color=line_colors[j])
     end
     # iQRRLS
     ax2 = Axis(fig[1, 2], 
@@ -302,8 +304,8 @@ with_theme(theme_latexfonts()) do
         xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
-    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(ax2, 1:num_of_streams, stream_res[:iqrrls].stream_err[ri,:], color=line_colors[j])
+    for j in eachindex(rrange)  # over all reduced dimensions
+        scatterlines!(ax2, 1:num_of_streams, stream_res[:iqrrls].true_stream_err[j,:], color=line_colors[j])
     end
     # QRRLS
     ax3 = Axis(fig[1, 3], 
@@ -315,10 +317,10 @@ with_theme(theme_latexfonts()) do
     )
     lines = []
     labels = []
-    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        l = scatterlines!(ax3, 1:num_of_streams, stream_res[:qrrls].stream_err[ri,:], color=line_colors[j])
+    for (j,rj) in enumerate(rrange)  # over all reduced dimensions
+        l = scatterlines!(ax3, 1:num_of_streams, stream_res[:qrrls].true_stream_err[j,:], color=line_colors[j])
         push!(lines, l)
-        push!(labels, "r = $ri")
+        push!(labels, "r = $rj")
     end
     Legend(fig[1,4], lines, labels, labelsize=30)
     display(fig)
@@ -331,14 +333,14 @@ end
 with_theme(theme_latexfonts()) do 
     num_of_streams = length(stream_res[:rls].post_err)
     fig = Figure(size=(1000,600))
-    xtick_vals = 0:(num_of_streams ÷ 4):num_of_streams
+    xtick_vals = 0:(num_of_streams ÷ 2):num_of_streams
     algos = ["RLS", "iQRRLS", "QRRLS"]
     algos_lower = (Symbol ∘ lowercase).(algos)
     # A posteriori error norm
     ax1 = Axis(fig[1, 1],
         xlabel=L"$k$-th stream", 
         ylabel=L"a posteriori error norm, $\Vert\mathbf{\xi}_k^+\Vert_2$",
-        xticks=xtick_vals, 
+        # xticks=xtick_vals, 
         xlabelsize=30, ylabelsize=35, xticklabelsize=25, yticklabelsize=25,
         titlesize=30, yscale=log10
     )
@@ -353,7 +355,7 @@ with_theme(theme_latexfonts()) do
     # Conversion factor
     ax2 = Axis(fig[1, 2],
         xlabel=L"$k$-th stream", 
-        ylabel=L"conversion factor, $c_k$",
+        ylabel=L"conversion factor, $c_k$", yticks=0:5,
         xlabelsize=30, ylabelsize=35, xticklabelsize=25, yticklabelsize=25,
     )
     lines = []
@@ -364,9 +366,10 @@ with_theme(theme_latexfonts()) do
         )
         push!(lines, l)
     end
+    hlines!(ax2, [1.0], color=:red, linestyle=:dashdot, linewidth=3)
     axislegend(
         ax2, lines, algos, 
-        position=:rb,
+        position=:lt,
         labelsize=30
     )
     display(fig)
@@ -376,3 +379,231 @@ end
 #===========================================================================#
 ## Normalized autocorrelation function for training and test data for r_max
 #===========================================================================#
+training_stats = load(joinpath(FILEPATH, "data/training_statistics.jld2"))
+test_stats = load(joinpath(FILEPATH, "data/testing_statistics.jld2"))
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1400, 600), figure_padding=(1,30,1,1))
+    ax1 = Axis(
+        fig[1, 1], xlabel="Lag", ylabel="mean normalized \n autocorrelation", title=L"Training ($r = %$(rmax)$)",
+        titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25, 
+    )
+    ax2 = Axis(
+        fig[1, 2], xlabel="Lag", title=L"Test ($r = %$(rmax)$)", 
+        titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+
+    lines = []
+    labels = ["fom", "pod", "opinf", "tropinf", "stream_rls", "stream_iqrrls", "stream_qrrls"]
+    marker_styles = [:xcross, :diamond, :cross, :circle, :rect, :star5, :hexagon]
+    line_styles = [:solid, :dot, :dash, :solid, :dashdot, :dashdotdot, :dash]
+    colors = vcat(:black, Makie.wong_colors()[1:length(labels)-1])
+
+    for (i, algo) in enumerate(labels)
+        algo = Symbol(algo)
+        if algo == :fom
+            l = scatterlines!(
+                ax1, training_stats["AC_lags"], training_stats["AC"][algo][:],
+                marker=marker_styles[i], markersize=20-2*i, linestyle=line_styles[i], linewidth=20-2*i, color=colors[i]
+            )
+            scatterlines!(
+                ax2, test_stats["AC_lags"], test_stats["AC"][algo][:],
+                marker=marker_styles[i], markersize=20-2*i, linestyle=line_styles[i], linewidth=20-2*i, color=colors[i]
+            )
+        else
+            l = scatterlines!(
+                ax1, training_stats["AC_lags"], training_stats["AC"][algo][:,end],
+                marker=marker_styles[i], markersize=20-2*i, linestyle=line_styles[i], linewidth=20-2*i, color=colors[i]
+            )
+            scatterlines!(
+                ax2, test_stats["AC_lags"], test_stats["AC"][algo][:,end],
+                marker=marker_styles[i], markersize=20-2*i, linestyle=line_styles[i], linewidth=20-2*i, color=colors[i]
+            )
+        end
+        push!(lines, l)
+    end
+    Legend(
+        fig[2,1:2], lines, 
+        [
+            "Full", "POD", "OpInf", "TrOpInf", 
+            "Stream-RLS", "Stream-iQRRLS", "Stream-QRRLS"
+        ],
+        orientation=:horizontal, 
+        halign=:center, 
+        # tellwidth=false, 
+        # tellheight=true,
+        colgap=30,
+        labelsize=30,
+        nbanks=2,
+        framevisible=false,
+        patchsize=(80,20)
+    )
+    display(fig)
+    save(joinpath(FILEPATH, "plots/autocorr.pdf"), fig)
+end
+
+#===========================================================#
+## Normalized autocorrelation error over reduced dimensions
+#===========================================================#
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1400, 600))
+    ax1 = Axis(
+        fig[1, 1], xlabel="Lag", ylabel="mean normalized \n autocorrelation error",
+        title="Training", titlesize=30, xlabelsize=30, ylabelsize=30,
+        xticklabelsize=25, yticklabelsize=25, xticks=0:2:24,
+    )
+    ax2 = Axis(
+        fig[1, 2], xlabel="Lag", title="Test", xticks=0:2:24,
+        titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    lines = []
+    labels = ["pod", "opinf", "tropinf", "stream_rls", "stream_iqrrls", "stream_qrrls"]
+    marker_styles = [:diamond, :cross, :circle, :rect, :star5, :hexagon]
+    line_styles = [:dot, :dash, :solid, :dashdot, :dashdotdot, :dash]
+    colors = Makie.wong_colors()[1:length(labels)]
+    for (i, algo) in enumerate(labels)
+        algo = Symbol(algo)
+        l = scatterlines!(
+            ax1, rrange, training_stats["AC_ERR"][algo][:],
+            marker=marker_styles[i], markersize=30, linestyle=:solid, linewidth=10, color=colors[i]
+        )
+        scatterlines!(
+            ax2, rrange, test_stats["AC_ERR"][algo][:],
+            marker=marker_styles[i], markersize=30, linestyle=:solid, linewidth=10, color=colors[i]
+        )
+        push!(lines, l)
+    end
+    Legend(
+        fig[end+1,1:end], lines,
+        [
+            "POD", "OpInf", "TrOpInf", 
+            "Stream-RLS", "Stream-iQRRLS", "Stream-QRRLS"
+        ],
+        colgap = 30,
+        orientation=:horizontal, 
+        halign=:center, 
+        # tellwidth=false, 
+        # tellheight=true,
+        labelsize=30,
+        nbanks=2,
+        framevisible=false,
+        patchsize=(80,20)
+    )
+    display(fig)
+    save(joinpath(FILEPATH, "plots/autocorr_error.pdf"), fig)
+end
+
+#============================================#
+## Lyapunov Exponents over reduced dimensions
+#============================================#
+using ChaosGizmo: kaplan_yorke_dim
+# Reference values
+edson = [0.043, 0.003, 0.002, -0.004, -0.008, -0.185, -0.253, -0.296, -0.309, -1.965]
+cvitanovic = [0.048, 0, 0, -0.003, -0.189, -0.256, -0.290, -0.310, -1.963, -1.967]
+edson_ky = kaplan_yorke_dim(edson)
+cvitanovic_ky = kaplan_yorke_dim(cvitanovic)
+
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1400, 1400)) 
+    ax1 = Axis(
+        fig[1, 1], xlabel="Lyapunov exponent index", ylabel="mean Lyapunov exponent",
+        title=L"Training ($r = %$(rmax)$)", titlesize=30, xlabelsize=30, ylabelsize=30,
+        xticklabelsize=25, yticklabelsize=25, xticks=1:2:24,
+    )
+    ax2 = Axis(
+        fig[1, 2], xlabel="reduced dimension", ylabel="mean Kaplan-Yorke dimension",
+        title="Training", xticks=1:2:24,
+        titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    ax3 = Axis(
+        fig[2, 1], xlabel="Lyapunov exponent index", ylabel="mean Lyapunov exponent",
+        title=L"Test ($r = %$(rmax)$)", titlesize=30, xlabelsize=30, ylabelsize=30,
+        xticklabelsize=25, yticklabelsize=25, xticks=1:2:24,
+    )
+    ax4 = Axis(
+        fig[2, 2], xlabel="reduced dimension", ylabel="mean Kaplan-Yorke dimension",
+        title="Test", xticks=1:2:24,
+        titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+
+    lines = []
+    labels = ["pod", "opinf", "tropinf", "stream_rls", "stream_iqrrls", "stream_qrrls"]
+    marker_styles = [:diamond, :cross, :circle, :rect, :star5, :hexagon]
+    line_styles = [:dot, :dash, :solid, :dashdot, :dashdotdot, :dash]
+    colors = Makie.wong_colors()[1:length(labels)]
+
+    for (i, algo) in enumerate(labels)
+        algo = Symbol(algo)
+        l = scatterlines!(
+            ax1, 1:length(edson), training_stats["LE"][algo][:,end],
+            marker=marker_styles[i], markersize=30, linestyle=line_styles[i], linewidth=10, color=colors[i]
+        )
+        scatterlines!(
+            ax2, rrange, training_stats["KY"][algo][:],
+            marker=marker_styles[i], markersize=30, linestyle=line_styles[i], linewidth=10, color=colors[i]
+        )
+        scatterlines!(
+            ax3, 1:length(edson), test_stats["LE"][algo][:,end],
+            marker=marker_styles[i], markersize=30, linestyle=line_styles[i], linewidth=10, color=colors[i]
+        )
+        scatterlines!(
+            ax4, rrange, test_stats["KY"][algo][:],
+            marker=marker_styles[i], markersize=30, linestyle=line_styles[i], linewidth=10, color=colors[i]
+        )
+        push!(lines, l)
+    end
+
+    # Reference values
+    scatter!(ax1, 1:length(edson), edson, color=:black, markersize=30, marker=:star8)
+    scatter!(ax1, 1:length(edson), cvitanovic, color=:red, markersize=25)
+    scatter!(ax3, 1:length(edson), edson, color=:black, markersize=30, marker=:star8)
+    scatter!(ax3, 1:length(edson), cvitanovic, color=:red, markersize=25)
+    hlines!(ax2, [edson_ky], color=:black, linestyle=:dashdot, linewidth=3)
+    hlines!(ax2, [cvitanovic_ky], color=:red, linestyle=:dashdot, linewidth=3)
+    hlines!(ax4, [edson_ky], color=:black, linestyle=:dashdot, linewidth=3)
+    hlines!(ax4, [cvitanovic_ky], color=:red, linestyle=:dashdot, linewidth=3)
+
+    elem_1 = [
+        LineElement(
+            color=:black, linestyle=:dashdot, linewidth=3,
+            points=Point2f[(0, 0), (0, 1), (1, 1), (1, 0), (0, 0)]
+        ),
+        MarkerElement(
+            color=:black, marker=:star8, markersize=30,
+            strokecolor = :black
+        )
+    ]
+    elem_2 = [
+        LineElement(
+            color=:red, linestyle=:dashdot, linewidth=3,
+            points=Point2f[(0, 0), (0, 1), (1, 1), (1, 0), (0, 0)]
+        ),
+        MarkerElement(
+            color=:red, marker=:circle, markersize=25,
+            strokecolor = :black
+        )
+    ]
+    push!(lines, elem_1)
+    push!(lines, elem_2)
+
+    Legend(
+        fig[end+1,1:end], lines,
+        [
+            "POD", "OpInf", "TrOpInf", 
+            "Stream-RLS", "Stream-iQRRLS", "Stream-QRRLS",
+            "Edson", "Cvitanovic"
+        ],
+        colgap = 30,
+        rowgap = 20,
+        orientation=:horizontal, 
+        halign=:center, 
+        # tellwidth=false, 
+        # tellheight=true,
+        labelsize=30,
+        nbanks=2,
+        framevisible=false,
+        patchsize=(80,30),
+        patchlabelgap=10,
+    )
+    save(joinpath(FILEPATH, "plots/lyapunov_exponent_and_ky.pdf"), fig)
+    display(fig)
+end

@@ -352,125 +352,6 @@ end
 # end
 
 
-# function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
-#     # (0) setup
-#     n, K = size(X)
-#     m = size(U,1)
-
-#     # (1) Initialization 
-#     # Initial data
-#     x1 = X[:,1]  # n x 1
-#     xdot1 = Xdot[:,1]  # n x 1
-#     u1 = U[:,1]  # m x 1
-   
-#     # POD basis
-#     V = x1 / norm(x1)
-
-#     # Eigenvalue 
-#     Λ = dot(x1, x1)
-
-#     # Initialize the reduced dimensions
-#     r = 1      # state
-#     d = r + m  # data (state + input)
-
-#     # Input-state correlation matrix
-#     Φ = zeros(d, d)
-#     Φ[1,1] = dot(x1, x1)
-#     Φ[2:end,2:end] = u1 * u1'
-
-#     # State-derivative correlation matrix
-#     Ψ = zeros(d, r)
-#     Ψ[1,1] = norm(x1) * norm(xdot1)
-#     Ψ[2:end,1] = u1 * norm(xdot1)
-
-#     # Streaming process
-#     for i in 2:K 
-#         # (2) Receive new data
-#         xi = X[:,i] # n x 1
-#         xdoti = Xdot[:,i] # n x 1
-#         ui = U[:,i] # m x 1
-
-#         # (3) Compute the orthogonal component
-#         w1 = V' * xi
-#         xperp = xi - V * w1
-#         w2 = V' * xperp
-#         xperp = xperp - V * w2
-#         w = w1 + w2
-
-#         # (4) Augment the POD basis
-#         # V = hcat(V, xperp)
-
-#         # (5) Construct the core matrix
-#         C = zeros(r+1, r+1)
-#         for j in 1:r
-#             C[j,j] = Λ[j]
-#             C[j,end] = w[j]
-#             C[end,j] = w[j]
-#         end
-#         C[end,end] = 1.0
-
-#         # (6) Take the EVD of the core matrix
-#         Λc, Vc = eigen(C)
-#         # Sort in descending order
-#         Λc = reverse(Λc)
-#         Vc = reverse(Vc, dims=2) 
-
-#         # (7) Update the POD basis and Eigenvalue matrix
-#         if norm(xperp) < ϵ  # No increment
-#             V = V * Vc[1:r,1:r]
-#             Λ = Λc[1:r]
-#         else  # Increment
-#             V = hcat(V, xperp) * Vc
-#             Λ = Λc
-
-#             # Zero-pad the correlation matrices
-#             Φ = [Φ           zeros(d,1);
-#                  zeros(1,d)         0.0]
-#             Ψ = [Ψ           zeros(d,1);
-#                  zeros(1,r)         0.0]
-
-#             # Update the reduced dimensions
-#             r += 1
-#             d += 1
-#         end
-
-#         # (9) Compress matrices
-#         if r > rmax
-#             V = V[:,1:rmax]
-#             Λ = Λ[1:rmax]
-#             Vc = Vc[:,1:rmax]
-#             VVc = BlockDiagonal([Vc, 1.0I(m)])
-#             Φ = VVc' * Φ * VVc
-#             Ψ = VVc' * Ψ * Vc
-#             r = rmax
-#             d = r + m
-#         end
-
-#         # (10) Project onto basis
-#         xhat = V' * xi
-#         rvec = V' * xdoti
-        
-#         # (11) Form the data vector, d 
-#         dvec = vcat(xhat, ui)
-
-#         # (12) Update the covariance and correlation matrices
-#         @inbounds @fastmath for j in 1:d
-#             for k in 1:d
-#                 Φ[j, k] += dvec[j] * dvec[k]
-#             end
-#             for k in 1:r
-#                 Ψ[j, k] += dvec[j] * rvec[k]
-#             end
-#         end
-
-#         # (13) Reorthogonalize the basis
-#         @views reorthogonalize!(V, ϵ)
-#     end
-
-#     return V, Λ, Φ, Ψ
-# end
-
-
 function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
     # (0) setup
     n, K = size(X)
@@ -486,7 +367,7 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
     V = x1 / norm(x1)
 
     # Eigenvalue 
-    Λ = sqrt(dot(x1, x1))
+    Λ = dot(x1, x1)
 
     # Initialize the reduced dimensions
     r = 1      # state
@@ -511,36 +392,43 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
         ui = U[:,i] # m x 1
 
         # (3) Compute the orthogonal component
-        w = V' * xi
-        xperp = xi - V * w
+        w1 = V' * xi
+        xperp = xi - V * w1
+        w2 = V' * xperp
+        xperp = xperp - V * w2
+        w = w1 + w2
         xperp_mag = norm(xperp)
 
-        if xperp_mag < ϵ
-            xperp_mag = 0.0
-        else
-            xperp /= xperp_mag
-        end
-
-        # # (4) Augment the POD basis
+        # (4) Augment the POD basis
         # V = hcat(V, xperp)
 
         # (5) Construct the core matrix
         C = zeros(r+1, r+1)
         for j in 1:r
-            C[j,j] = Λ[j]
-            C[j,end] = w[j]
+            for k in 1:r
+                if j == k
+                    C[j,k] = Λ[j] + w[j] * w[k]
+                else
+                    C[j,k] = w[j] * w[k]
+                end
+            end
+            C[j,end] = w[j] * xperp_mag
+            C[end,j] = w[j] * xperp_mag
         end
-        C[end,end] = xperp_mag
+        C[end,end] = xperp_mag^2
 
-        # (6) Take the SVD of the core matrix
-        Vc, Λc, _ = svd(C)
+        # (6) Take the EVD of the core matrix
+        Λc, Vc = eigen(C)
+        # Sort in descending order
+        Λc = reverse(Λc)
+        Vc = reverse(Vc, dims=2) 
 
         # (7) Update the POD basis and Eigenvalue matrix
         if norm(xperp) < ϵ  # No increment
             V = V * Vc[1:r,1:r]
             Λ = Λc[1:r]
         else  # Increment
-            V = hcat(V, xperp) * Vc
+            V = hcat(V, xperp ./ xperp_mag) * Vc
             Λ = Λc
 
             # Zero-pad the correlation matrices
@@ -558,16 +446,11 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
         if r > rmax
             V = V[:,1:rmax]
             Λ = Λ[1:rmax]
-
             Vc = Vc[:,1:rmax]
             VVc = BlockDiagonal([Vc, 1.0I(m)])
             Φ = VVc' * Φ * VVc
+            # Φ = (Matrix ∘ Diagonal)(svdvals(Φ)[1:dmax])
             Ψ = VVc' * Ψ * Vc
-
-            # Vϕ, Λϕ, _ = svd(Φ)
-            # Φ = (Matrix ∘ Diagonal)(Λϕ[1:dmax])
-            # Ψ = Vϕ[:,1:dmax]' * Ψ * Vc[:,1:rmax]
-
             r = rmax
             d = r + m
         end
@@ -596,6 +479,132 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
     return V, Λ, Φ, Ψ
 end
 
+
+# function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
+#     # (0) setup
+#     n, K = size(X)
+#     m = size(U,1)
+
+#     # (1) Initialization 
+#     # Initial data
+#     x1 = X[:,1]  # n x 1
+#     xdot1 = Xdot[:,1]  # n x 1
+#     u1 = U[:,1]  # m x 1
+   
+#     # POD basis
+#     V = x1 / norm(x1)
+
+#     # Eigenvalue 
+#     Λ = sqrt(dot(x1, x1))
+
+#     # Initialize the reduced dimensions
+#     r = 1      # state
+#     d = r + m  # data (state + input)
+#     dmax = rmax + m
+
+#     # Input-state correlation matrix
+#     Φ = zeros(d, d)
+#     Φ[1,1] = dot(x1, x1)
+#     Φ[2:end,2:end] = u1 * u1'
+
+#     # State-derivative correlation matrix
+#     Ψ = zeros(d, r)
+#     Ψ[1,1] = norm(x1) * norm(xdot1)
+#     Ψ[2:end,1] = u1 * norm(xdot1)
+
+#     # Streaming process
+#     for i in 2:K 
+#         # (2) Receive new data
+#         xi = X[:,i] # n x 1
+#         xdoti = Xdot[:,i] # n x 1
+#         ui = U[:,i] # m x 1
+
+#         # (3) Compute the orthogonal component
+#         w = V' * xi
+#         xperp = xi - V * w
+#         xperp_mag = norm(xperp)
+
+#         if xperp_mag < ϵ
+#             xperp_mag = 0.0
+#         else
+#             xperp /= xperp_mag
+#         end
+
+#         # # (4) Augment the POD basis
+#         # V = hcat(V, xperp)
+
+#         # (5) Construct the core matrix
+#         C = zeros(r+1, r+1)
+#         for j in 1:r
+#             C[j,j] = Λ[j]
+#             C[j,end] = w[j]
+#         end
+#         C[end,end] = xperp_mag
+
+#         # (6) Take the SVD of the core matrix
+#         Vc, Λc, _ = svd(C)
+
+#         # (7) Update the POD basis and Eigenvalue matrix
+#         if norm(xperp) < ϵ  # No increment
+#             V = V * Vc[1:r,1:r]
+#             Λ = Λc[1:r]
+#         else  # Increment
+#             V = hcat(V, xperp) * Vc
+#             Λ = Λc
+
+#             # Zero-pad the correlation matrices
+#             Φ = [Φ           zeros(d,1);
+#                  zeros(1,d)         0.0]
+#             Ψ = [Ψ           zeros(d,1);
+#                  zeros(1,r)         0.0]
+
+#             # Update the reduced dimensions
+#             r += 1
+#             d += 1
+#         end
+
+#         # (9) Compress matrices
+#         if r > rmax
+#             V = V[:,1:rmax]
+#             Λ = Λ[1:rmax]
+
+#             Vc = Vc[:,1:rmax]
+#             VVc = BlockDiagonal([Vc, 1.0I(m)])
+#             Φ = VVc' * Φ * VVc
+#             Ψ = VVc' * Ψ * Vc
+
+#             # Vϕ, Λϕ, _ = svd(Φ)
+#             # Φ = (Matrix ∘ Diagonal)(Λϕ[1:dmax])
+#             # Ψ = Vϕ[:,1:dmax]' * Ψ * Vc[:,1:rmax]
+
+#             r = rmax
+#             d = r + m
+#         end
+
+#         # (10) Project onto basis
+#         xhat = V' * xi
+#         rvec = V' * xdoti
+        
+#         # (11) Form the data vector, d 
+#         dvec = vcat(xhat, ui)
+
+#         # (12) Update the covariance and correlation matrices
+#         @inbounds @fastmath for j in 1:d
+#             for k in 1:d
+#                 Φ[j, k] += dvec[j] * dvec[k]
+#             end
+#             for k in 1:r
+#                 Ψ[j, k] += dvec[j] * rvec[k]
+#             end
+#         end
+
+#         # (13) Reorthogonalize the basis
+#         @views reorthogonalize!(V, ϵ)
+#     end
+
+#     return V, Λ, Φ, Ψ
+# end
+
 #====================#
 ## Generate operators
 #====================#
@@ -615,7 +624,7 @@ rextra = 0
 Vstream, Λ, Φ, Ψ = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, 1e-12)
 Vsream = Vstream[:,1:rmax]
 Λ = Λ[1:rmax]
-Ostream = (Φ + 1e-9I) \ Ψ
+Ostream = (Φ + 1e-12I) \ Ψ
 Astream = Ostream[1:rmax,1:rmax]'
 Bstream = Ostream[rmax+rextra+1:end,1:rmax]'
 
@@ -684,7 +693,7 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     scatterlines!(ax, 1:rmax, Σrmax, label="batch", linewidth=8, markersize=30)
-    scatterlines!(ax, 1:rmax, Λ, label="stream", linewidth=5, linestyle=:dash, markersize=20)
+    scatterlines!(ax, 1:rmax, sqrt.(Λ), label="stream", linewidth=5, linestyle=:dash, markersize=20)
     axislegend(ax, position = :lb, labelsize=30)
     display(fig)
 end
@@ -708,6 +717,7 @@ with_theme(theme_latexfonts()) do
         fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative state error",
         yscale=log10, xticks=1:rmax, titlesize=30,
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 1e-6, 1e+1),
     )
     scatterlines!(ax, 1:rmax, intru_state_err, label = "intrusive", linewidth=8, markersize=30)
     scatterlines!(ax, 1:rmax, opinf_state_err, label = "opinf", linewidth=5, markersize=20, linestyle=:dash)
