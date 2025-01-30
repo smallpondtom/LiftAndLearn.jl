@@ -16,7 +16,7 @@ using Statistics
 using UniqueKronecker
 using PolynomialModelReductionDataset: KuramotoSivashinskyModel, AbstractModel
 using LiftAndLearn
-const LnL = LiftAndLearn
+# const LnL = LiftAndLearn
 
 #================================#
 ## Configure filepath for saving
@@ -252,8 +252,8 @@ RES["LE"][:pod]           .= nanmean(le_pod;     dims=3)
 RES["LE"][:opinf]         .= nanmean(le_opinf;   dims=3)
 RES["LE"][:tropinf]       .= nanmean(le_tropinf; dims=3)
 RES["LE"][:stream_rls]    .= nanmean(le_rls;     dims=3)
-RES["LE"][:stream_rls]    .= nanmean(le_iqrrls;  dims=3)
-RES["LE"][:stream_iqrrls] .= nanmean(le_qrrls;   dims=3)
+RES["LE"][:stream_iqrrls] .= nanmean(le_iqrrls;  dims=3)
+RES["LE"][:stream_qrrls]  .= nanmean(le_qrrls;   dims=3)
 
 RES["KY"][:pod]           .= nanmean(ky_pod;     dims=2)
 RES["KY"][:opinf]         .= nanmean(ky_opinf;   dims=2)
