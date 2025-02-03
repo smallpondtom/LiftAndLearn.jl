@@ -166,6 +166,7 @@ RES["AC_ERR"][:stream_qrrls]  = ac_qrrls_err ./ num_of_testing
 #================================================#
 ## Lyapunov exponents and Kaplan-Yorke dimension
 #================================================#
+RES = load(joinpath(FILEPATH, "data/testing_statistics.jld2"))
 # Lyapunov exponent Settings
 max_num_of_LE = 10
 LEOption = ChaosGizmo.LyapunovExponentOptions(
