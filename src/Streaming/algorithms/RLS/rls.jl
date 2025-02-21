@@ -60,25 +60,29 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
         # or D[1, :]' could be just D[:]
         mul!(obj.u, obj.P, D[:], 1.0, 0.0)  # obj.u: N x 1
 
-        # Compute denominator: denom = Q + D * u / λ
-        denom = Q + dot(D, obj.u) / obj.λ  # scalar
+        # Compute denominator: denom = Q + D * u / λ or λ * Q + D * u
+        # denom = Q + dot(D, obj.u) / obj.λ  # scalar
+        denom = Q*obj.λ + dot(D, obj.u)  # scalar
 
         # Compute conversion factor: C = 1 / denom
         obj.C .= 1 / denom  # obj.C is 1 x 1 in rank-1 case
 
-        # Compute Kalman gain: K = P(i-1) * Dᵗ * C / Q / λ
+        # Compute Kalman gain: K = P(i-1) * Dᵗ * C / Q / λ or P(i-1) * Dᵗ * C
         if isa(Q, Number)
             Q_inv = 1 / Q
-            mul!(obj.K, obj.P, D[:], obj.C[1,1] * (Q_inv / obj.λ), 0.0)  # K: N x 1
+            # mul!(obj.K, obj.P, D[:], obj.C[1,1] * (Q_inv / obj.λ), 0.0)  # K: N x 1
+            mul!(obj.K, obj.P, D[:], obj.C[1,1] * Q_inv, 0.0)  # K: N x 1
         else
             Q_inv = Q \ I
-            mul!(obj.K, obj.P, D[:], obj.C[1,1] / obj.λ, 0.0)
+            # mul!(obj.K, obj.P, D[:], obj.C[1,1] / obj.λ, 0.0)
+            mul!(obj.K, obj.P, D[:], obj.C[1,1], 0.0)
             obj.K .= Q_inv * obj.K
         end
 
         # Update P: P = (P - (u * uᵗ) / denom / λ) / λ
         # NOTE: syr only updates the upper triangular part of the matrix
-        BLAS.syr!('U', -1.0 / denom / obj.λ, obj.u, obj.P)
+        # BLAS.syr!('U', -1.0 / denom / obj.λ, obj.u, obj.P)
+        BLAS.syr!('U', -1.0 / denom, obj.u, obj.P)
         obj.P ./= obj.λ
 
         # Ensure symmetry of P
@@ -96,7 +100,7 @@ function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T},
         #     mul!(obj.K, Q_inv, obj.K)
         # end
     else  # Block (rank-M) update
-        # Compute temp_DP = D * P / λ
+        # Compute temp_DP = D * P / λ or 
         mul!(obj.temp_DP, D, obj.P, 1 / obj.λ, 0.0)  # temp_DP: M x N
 
         # Compute S = Q + (D * P * Dᵗ) / λ

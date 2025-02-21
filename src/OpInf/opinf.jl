@@ -137,4 +137,3 @@ function opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options:
         return op
     end
 end
-

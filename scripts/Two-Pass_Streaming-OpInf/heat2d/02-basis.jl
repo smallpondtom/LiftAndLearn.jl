@@ -1,5 +1,5 @@
 """
-2D heat equation: generate data
+2D heat equation: Compute basis
 """
 
 #================#
