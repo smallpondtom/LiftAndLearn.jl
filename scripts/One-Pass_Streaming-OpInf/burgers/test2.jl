@@ -1,5 +1,5 @@
 """
-One-Pass Streaming-OpInf prototype for 1D heat equation
+One-Pass Streaming-OpInf prototype for the Viscous Burgers Equation
 """
 
 #=================#
@@ -10,51 +10,62 @@ using BlockDiagonals
 using CairoMakie
 using ProgressMeter
 using Random
-using SparseArrays
-import PolynomialModelReductionDataset: Heat1DModel
+import PolynomialModelReductionDataset: BurgersModel
 import LiftAndLearn as LnL
+using Kronecker
+using UniqueKronecker
+using SparseArrays
 
 #=================#
 ## Generate data
 #=================#
 Ω = (0.0, 1.0)
-Nx = 2^7; dt = 1e-3
-heat1d = Heat1DModel(
-    spatial_domain=Ω, time_domain=(0.0, 1.0), 
-    Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt, 
-    diffusion_coeffs=0.2, BC=:periodic,
+Nx = 2^7; dt = 1e-4
+burgers = BurgersModel(
+    spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
+    diffusion_coeffs=0.1, BC=:dirichlet,
 )
-heat1d.IC = cos.(2π * heat1d.xspan)
-
-# Some options for operator inference
+burgers.IC = 0.1*cos.(π*burgers.xspan)
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        state=1,
+        state=[1,2],
+        control=1,
     ),
     vars=LnL.VariableStructure(
         N=1,
     ),
     data=LnL.DataStructure(
         Δt=dt,
-        deriv_type="BE"
+        deriv_type="SI",
+        DS=2,  # downsampling factor
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
 )
 
-μ = heat1d.diffusion_coeffs[1]
-A = heat1d.finite_diff_model(heat1d, μ)
-op_heat = LnL.Operators(A=A)
+μ = burgers.diffusion_coeffs[1]
+A, F, B = burgers.finite_diff_model(burgers, μ)
+op_burgers = LnL.Operators(A=A, B=B, A2u=F)
 
-# Compute the states with backward Euler
-state = heat1d.integrate_model(heat1d.tspan, heat1d.IC; linear_matrix=A,
-                            system_input=false, integrator_type=:BackwardEuler)
-Xref = copy(state)
-Xdot = (state[:, 2:end] - state[:, 1:end-1]) / dt
-X = state[:, 2:end]
+# Compute the reference data with the reference input
+Uref = ones(burgers.time_dim, 1);  # Reference input/boundary condition for OpInf testing 
+Xref = burgers.integrate_model(
+    burgers.tspan, burgers.IC, Uref; linear_matrix=A,
+    control_matrix=B, quadratic_matrix=F, system_input=true
+)
 
-rmax = 10
+Xdot = (Xref[:,2:end] - Xref[:,1:end-1]) / dt
+X = Xref[:,2:end]
+U = Uref[2:end]
+
+# Down sample the training data
+X = X[:, 1:options.data.DS:end]
+Xdot = Xdot[:, 1:options.data.DS:end]
+U = U[1:options.data.DS:end]
+
+# Compute the SVD
+rmax = 15
 tmp = svd(X)
 Vrmax = tmp.U[:, 1:rmax]
 Σrmax = tmp.S[1:rmax]
@@ -65,11 +76,11 @@ Vrmax = tmp.U[:, 1:rmax]
 with_theme(theme_latexfonts()) do
     fig = Figure(size=(800, 600))
     ax = Axis3(
-        fig[1, 1], xlabel=L"t", ylabel=L"\omega", zlabel=L"x(\omega,t)",
+        fig[1, 1], xlabel=L"\omega", ylabel=L"t", zlabel=L"x(\omega,t)",
         titlesize=30, xlabelsize=30, ylabelsize=30, zlabelsize=30,
         xticklabelsize=25, yticklabelsize=25, zticklabelsize=25,
     )
-    surface!(ax, heat1d.xspan, heat1d.tspan, Xref, colormap=:plasma)
+    surface!(ax, burgers.xspan, burgers.tspan, Xref, colormap=:plasma)
     display(fig)
 end
 
@@ -149,15 +160,20 @@ function reorthogonalize!(V::AbstractMatrix{T}, tol::Real) where {T<:Number}
     end
 end
 
-function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
+function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ, λ)
     # (0) setup
     n, K = size(X)
-    m = 0
+    m = size(U, 1)
 
     # (1) Initialization 
     # Initial data
     x1 = X[:,1]  # n x 1
+    # xx1 = kron(x1, x1) # n^2 x 1
+    xx1 = x1 ⊘ x1 # n(n+1)/2 x 1
     xdot1 = Xdot[:,1]  # n x 1
+    u1 = U[:,1]  # m x 1
+    d1 = vcat(x1, u1)
+    d1 = vcat(d1, xx1)
    
     # POD basis
     V = x1 / norm(x1)
@@ -166,15 +182,15 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
     Λ = dot(x1, x1)
 
     # Initialize the reduced dimensions
-    r = 1      # state
-    d = r + m  # data (state + input)
-    dmax = rmax + m
+    r = 1                       # state
+    d = r + m + Int(r*(r+1)/2)  # data (state + input + state-square)
+    dmax = Int(rmax + m + rmax*(rmax+1)/2)
 
     # Input-state correlation matrix
-    Φ = x1 * x1'
+    Φ = d1 * d1'
 
     # State-derivative correlation matrix
-    Ψ = x1 * xdot1'
+    Ψ = d1 * xdot1'
 
     reached_r = false
 
@@ -187,7 +203,7 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
         # (2) Receive new data
         xi = X[:,i] # n x 1
         xdoti = Xdot[:,i] # n x 1
-        # ui = U[:,i] # m x 1
+        ui = U[:,i] # m x 1
 
         # (3) Compute the orthogonal component
         w1 = V' * xi
@@ -229,40 +245,120 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
             V = hcat(V, xperp) * Vc
             Λ = Λc
 
+            # Update the reduced dimensions
+            dold = copy(d)
+            r += 1
+            d = r + m + Int(r*(r+1)/2)
+            ddiff = d - dold
+
             if reached_r
                 # Zero-pad the correlation matrices
-                Φ = [Φ           zeros(d,1);
-                    zeros(1,d)         0.0]
-                Ψ = [Ψ           zeros(d,1);
-                    zeros(1,r)         0.0]
+                Φ = [Φ                 zeros(dold,ddiff);
+                    zeros(ddiff,dold)  zeros(ddiff,ddiff)]
+                Ψ = [Ψ                 zeros(dold,1);
+                    zeros(ddiff,r-1)   zeros(ddiff,1)]
             end
-
-            # Update the reduced dimensions
-            r += 1
-            d += 1
         end
 
         # (9) Compress matrices
         if r > rmax 
             V = V[:,1:rmax]
             Λ = Λ[1:rmax]
-
             Vc = Vc[:,1:rmax]
-            VVc = Vc
-            
-            Φ = spdiagm(Λ)
+
+            # Φ = spzeros(dmax, dmax)
+            # Λ_quad_red = Λ ⊘ Λ
+            # for j in 1:dmax
+            #     for k in 1:dmax
+            #         if j == k
+            #             if j <= rmax
+            #                 Φ[j, k] = Λ[j]
+            #             elseif rmax+1 <= j <= rmax+m
+            #                 Φ[j, k] = 1.0
+            #             else
+            #                 Φ[j, k] = Λ_quad_red[j-rmax-m]
+            #             end
+            #         end
+            #     end
+            # end
+
+            # Φold = copy(Φ)
+            # Φ = zeros(dmax, dmax)
+            # # Fill the diagonal of Φ
+            # Λ_quad_red = Λ ⊘ Λ
+            # for j in 1:dmax
+            #     if j <= rmax
+            #         Φ[j, j] = Λ[j]
+            #     elseif rmax+1 <= j <= rmax+m
+            #         continue
+            #     else
+            #         Φ[j, j] = Λ_quad_red[j-rmax-m]
+            #     end
+            # end
 
             if reached_r 
-                Ψ = VVc' * Ψ * Vc
+                Lr = UniqueKronecker.elimat(r,2)
+                Drmax = UniqueKronecker.dupmat(rmax,2)
+                Γ = Lr * (Vc ⊗ Vc) * Drmax
+
+                VVc = (sparse ∘ BlockDiagonal)([Vc, 1.0I(m), Γ])
+                Φ = VVc' * Φ * VVc
+
+                # # Fill other blocks of Φ
+                # Φ[1:rmax, rmax+1:rmax+m] = Vc' * Φold[1:r, r+1:r+m] 
+                # Φ[1:rmax, rmax+m+1:end] = Vc' * Φold[1:r, r+m+1:end] * Γ
+                # Φ[rmax+1:rmax+m, rmax+1:rmax+m] = Φold[r+1:r+m, r+1:r+m]
+                # Φ[rmax+1:rmax+m, rmax+m+1:end] = Φold[r+1:r+m, r+m+1:end] * Γ
+                # Φ[rmax+m+1:end, rmax+m+1:end] = Γ' * Φold[r+m+1:end, r+m+1:end] * Γ
+                # # Fill the lower triangle of Φ
+                # for j in 2:dmax
+                #     for k in 1:j-1
+                #         Φ[k, j] = Φ[j, k]
+                #     end
+                # end
+
+                # VVc = (sparse ∘ BlockDiagonal)([Vc, 1.0I(m), Lr*(Vc ⊗ Vc)*Drmax])
+                # Ψ = VVc' * Ψ * Vc
+
+                Ψ1 = @view Ψ[1:r, :]
+                Ψ2 = @view Ψ[r+1:r+m, :]
+                Ψ3 = @view Ψ[r+m+1:end, :]
+                Ψ = vcat(Vc' * Ψ1, Ψ2, Γ' * Ψ3) * Vc
                 push!(compressed, i)
             else
-                Ψ = V' * Ψ * V
+                Ln = UniqueKronecker.elimat(n,2)
+                Drmax = UniqueKronecker.dupmat(rmax,2)
+                Γ = Ln * (V ⊗ V) * Drmax
+
+                VVc = (sparse ∘ BlockDiagonal)([V, 1.0I(m), Γ])
+                Φ = VVc' * Φ * VVc
+
+                # # Fill other blocks of Φ
+                # Φ[1:rmax, rmax+1:rmax+m] = V' * Φold[1:n, n+1:n+m] 
+                # Φ[1:rmax, rmax+m+1:end] = V' * Φold[1:n, n+m+1:end] * Γ
+                # Φ[rmax+1:rmax+m, rmax+1:rmax+m] = Φold[n+1:n+m, n+1:n+m]
+                # Φ[rmax+1:rmax+m, rmax+m+1:end] = Φold[n+1:n+m, n+m+1:end] * Γ
+                # Φ[rmax+m+1:end, rmax+m+1:end] = Γ' * Φold[n+m+1:end, n+m+1:end] * Γ
+                # # Fill the lower triangle of Φ
+                # for j in 2:dmax
+                #     for k in 1:j-1
+                #         Φ[k, j] = Φ[j, k]
+                #     end
+                # end
+
+                # Vtilde = (sparse ∘ BlockDiagonal)([V, 1.0I(m), Ln*(V ⊗ V)*Drmax])
+                # Ψ = Vtilde' * Ψ * V
+
+                Ψ1 = @view Ψ[1:n, :]
+                Ψ2 = @view Ψ[n+1:n+m, :]
+                Ψ3 = @view Ψ[n+m+1:end, :]
+                Ψ = vcat(V' * Ψ1, Ψ2, Γ' * Ψ3) * V
             end
 
             reached_r = true
 
             r = rmax
-            d = r + m
+            d = r + m + Int(r*(r+1)/2)
         end
 
         if reached_r
@@ -271,8 +367,9 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
             rvec = V' * xdoti
             
             # (11) Form the data vector, d 
-            # dvec = vcat(xhat, ui)
-            dvec = xhat
+            dvec = vcat(xhat, ui)
+            # dvec = vcat(dvec, kron(xhat, xhat))
+            dvec = vcat(dvec, xhat ⊘ xhat)
 
             # (12) Update the covariance and correlation matrices
             Φ *= λ
@@ -287,8 +384,12 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
             end
 
         else
-            Φ += xi * xi'
-            Ψ += xi * xdoti'
+            # xxi = kron(xi, xi)
+            xxi = xi ⊘ xi
+            di = vcat(xi, ui)
+            di = vcat(di, xxi)
+            Φ += di * di'
+            Ψ += di * xdoti'
         end
 
         # (13) Reorthogonalize the basis
@@ -300,223 +401,34 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
     return V, Λ, Φ, Ψ, proj_err, compressed
 end
 
-# function two_step_ortho_component(V::AbstractArray{T}, x::AbstractVector{T}, ϵ::Real) where {T<:Number}
-#     w1 = V' * x
-#     xperp = x - V * w1
-#     w2 = V' * xperp
-#     xperp = xperp - V * w2
-#     w = w1 + w2
-#     xperp_mag = norm(xperp)
-
-#     if xperp_mag < ϵ
-#         xperp_mag = 0.0
-#     else
-#         xperp /= xperp_mag
-#     end
-
-#     return w, xperp, xperp_mag
-# end
-
-# function construct_core_matrix!(C::AbstractMatrix{T}, Λ::Union{AbstractVector{T},T}, 
-#                                 w::Union{AbstractVector{T},T}, xperp_mag::T) where {T<:Number}
-#     for j in eachindex(w)
-#         for k in eachindex(w)
-#             if j == k
-#                 C[j,k] = Λ[j] + w[j] * w[k]
-#             else
-#                 C[j,k] = w[j] * w[k]
-#             end
-#         end
-#         C[j,end] = w[j] * xperp_mag
-#         C[end,j] = w[j] * xperp_mag
-#     end
-#     C[end,end] = xperp_mag^2
-# end
-
-# function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
-#     # (0) setup
-#     n, K = size(X)
-#     m = 0
-
-#     # Initialization 
-#     x1 = X[:,1]  # n x 1
-#     xdot1 = Xdot[:,1]  # n x 1
-   
-#     # POD basis (state)
-#     Vx = x1 / norm(x1)
-
-#     # POD basis (derivative)
-#     Vxdot = xdot1 / norm(xdot1)
-
-#     # Eigenvalue (state)
-#     Λx = dot(x1, x1)
-
-#     # Eigenvalue (derivative)
-#     Λxdot = dot(xdot1, xdot1)
-
-#     # Initialize the reduced dimensions
-#     rx = 1     
-#     rxdot = 1
-#     d = rx + m  # data (state + input)
-#     dmax = rmax + m
-
-#     # Input-state correlation matrix
-#     Φ = x1 * x1'
-
-#     # State-derivative correlation matrix
-#     Ψ = x1 * xdot1'
-
-#     # Flags for reaching the maximum reduced dimensions
-#     rx_reached_rmax    = false
-#     rxdot_reached_rmax = false
-
-#     # Streaming process
-#     for i in 2:K 
-#         # Receive new data
-#         xi = X[:,i] # n x 1
-#         xdoti = Xdot[:,i] # n x 1
-
-#         # Compute the orthogonal component (state)
-#         wx, xperp, xperp_mag = two_step_ortho_component(Vx, xi, ϵ)
-
-#         # Compute the orthogonal component (derivative)
-#         wxdot, xperpdot, xperpdot_mag = two_step_ortho_component(Vxdot, xdoti, ϵ)
-
-#         C = zeros(rx+1, rx+1)
-#         construct_core_matrix!(C, Λx, wx, xperp_mag)
-
-#         Ctilde = zeros(rxdot+1, rxdot+1)
-#         construct_core_matrix!(Ctilde, Λxdot, wxdot, xperpdot_mag)
-
-#         # Take the SVD of the core matrix (state)
-#         Vc, Λc, _ = svd(C)
-
-#         # Take the SVD of the core matrix (derivative)
-#         Vctilde, Λctilde, _ = svd(Ctilde)
-
-#         # Update the POD basis and Eigenvalue matrix (state)
-#         if xperp_mag < ϵ  # No increment
-#             Vx = Vx * Vc[1:rx,1:rx]
-#             Λx = Λc[1:rx]
-#         else  # Increment
-#             Vx = hcat(Vx, xperp) * Vc
-#             Λx = Λc
-
-#             if rx_reached_rmax
-#                 # Zero-pad the correlation matrices
-#                 Φ = [Φ           zeros(d,1);
-#                     zeros(1,d)         0.0]
-#                 Ψ = vcat(Ψ, zeros(1,rxdot))
-#             end
-
-#             # Update the reduced dimensions
-#             rx += 1
-#             d += 1
-#         end
-
-#         # Update the POD basis and Eigenvalue matrix (derivative)
-#         if xperpdot_mag < ϵ  # No increment
-#             Vxdot = Vxdot * Vctilde[1:rxdot,1:rxdot]
-#             Λxdot = Λctilde[1:rxdot]
-#         else  # Increment
-#             Vxdot = hcat(Vxdot, xperpdot) * Vctilde
-#             Λxdot = Λctilde
-
-#             if rxdot_reached_rmax
-#                 # Zero-pad the correlation matrices
-#                 Ψ = hcat(Ψ, zeros(d,1))
-#             end
-
-#             # Update the reduced dimensions
-#             rxdot += 1
-#         end
-
-#         # Compress matrices
-#         if rx > rmax 
-#             Vx = Vx[:,1:rmax]
-#             Λx = Λx[1:rmax]
-#             Vc = Vc[:,1:rmax]
-#             Φ = (Matrix ∘ Diagonal)(Λx)
-
-#             if rx_reached_rmax
-#                 Ψ = Vc' * Ψ
-#             else
-#                 Ψ = Vx' * Ψ
-#             end
-
-#             rx_reached_rmax = true
-#             rx = rmax
-#             d = rx + m
-#         end
-
-#         if rxdot > rmax 
-#             Vxdot = Vxdot[:,1:rmax]
-#             Λxdot = Λxdot[1:rmax]
-#             Vctilde = Vctilde[:,1:rmax]
-
-#             if rxdot_reached_rmax
-#                 Ψ = Ψ * Vctilde
-#             else
-#                 Ψ = Ψ * Vxdot
-#             end
-
-#             rxdot_reached_rmax = true
-#             rxdot = rmax
-#         end
-
-#         if rx_reached_rmax
-#             xhat = Vx' * xi
-#             dvec = xhat
-#         else
-#             dvec = xi
-#         end
-
-#         if rxdot_reached_rmax
-#             rvec = Vxdot' * xdoti
-#         else
-#             rvec = xdoti
-#         end
-
-#         # Update the correlation and cross-correlation matrices
-#         Φ *= λ
-#         Ψ *= λ
-#         @inbounds @simd for j in eachindex(dvec)
-#             for k in eachindex(dvec)
-#                 Φ[j, k] += dvec[j] * dvec[k]
-#             end
-#             for k in eachindex(rvec)
-#                 Ψ[j, k] += dvec[j] * rvec[k]
-#             end
-#         end
-
-#         # Reorthogonalize the basis
-#         @views reorthogonalize!(Vx, ϵ)
-#         @views reorthogonalize!(Vxdot, ϵ)
-#     end
-
-#     return Vx, Λx, Φ, Ψ, Vxdot, Λxdot
-# end
-
 #====================#
 ## Generate operators
 #====================#
 # Compute the values for the intrusive model
-op_heat = LnL.Operators(A=A)
+op_heat = LnL.Operators(A=A, B=B, A2u=F)
 op_heat_new = LnL.pod(op_heat, Vrmax, options.system)
 Aint = op_heat_new.A
+Bint = op_heat_new.B 
+Fint = op_heat_new.A2u
 
 ## Compute OpInf
-op_infer = LnL.opinf(X, Vrmax, options; Xdot=Xdot)
+op_infer = LnL.opinf(X, Vrmax, options; U=U, Xdot=Xdot)
 Ainf = op_infer.A
+Binf = op_infer.B 
+Finf = op_infer.A2u
 
 ## Compute One-Pass Streaming-OpInf
 rextra = 0
-Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 1e-12, 1.0)
-# Vstream, Λ, Φ, Ψ, Vxdot, Λxdot = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 1e-12, 1.0)
-Vsream = Vstream[:,1:rmax]
+Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, reshape(U, 1, :), rmax+rextra, 1e-12, 1.0)
+Vstream = Vstream[:,1:rmax]
 Λ = Λ[1:rmax]
-Ostream = (Φ + 1e-9I) \ Ψ
-Astream = Ostream'
+##
+Ostream = (Φ + 1e-10I) \ Ψ
+Astream = Ostream[1:rmax,:]'
+Bstream = Ostream[rmax+1,:]
+Fstream = Ostream[rmax+2:end,:]'
+# Hstream = Ostream[rmax+2:end,:]'
+# Fstream = UniqueKronecker.eliminate(Hstream, 2)
 
 #=========#
 ## Analyze
@@ -535,24 +447,27 @@ proj_err_stream = zeros(rmax)
     Vr_stream = Vstream[:,1:i]
 
     # Integrate the intrusive model
-    Xint = heat1d.integrate_model(
-        heat1d.tspan, Vr' * heat1d.IC,
-        linear_matrix=Aint[1:i, 1:i], 
-        system_input=false, integrator_type=:BackwardEuler
+    Xint = burgers.integrate_model(
+        burgers.tspan, Vr' * burgers.IC, Uref,
+        linear_matrix=Aint[1:i, 1:i], control_matrix=Bint[1:i,:], 
+        quadratic_matrix=UniqueKronecker.extractF(Fint, i), 
+        system_input=true,
     )
 
     # Integrate the inferred model
-    Xinf = heat1d.integrate_model(
-        heat1d.tspan, Vr' * heat1d.IC,
-        linear_matrix=Ainf[1:i, 1:i],
-        system_input=false, integrator_type=:BackwardEuler
+    Xinf = burgers.integrate_model(
+        burgers.tspan, Vr' * burgers.IC, Uref,
+        linear_matrix=Ainf[1:i, 1:i], control_matrix=Binf[1:i,:],
+        quadratic_matrix=UniqueKronecker.extractF(Finf, i), 
+        system_input=true, 
     )
 
     # Integrate the streaming model
-    Xstream = heat1d.integrate_model(
-        heat1d.tspan, Vr_stream' * heat1d.IC,
-        linear_matrix=Astream[1:i, 1:i],
-        system_input=false, integrator_type=:BackwardEuler
+    Xstream = burgers.integrate_model(
+        burgers.tspan, Vr_stream' * burgers.IC, Uref,
+        linear_matrix=Astream[1:i, 1:i], control_matrix=Bstream[1:i,:],
+        quadratic_matrix=UniqueKronecker.extractF(Fstream, i),
+        system_input=true, 
     )
 
     # Compute errors
@@ -565,11 +480,11 @@ proj_err_stream = zeros(rmax)
     SE_stream = LnL.rel_state_error(Xref, Xstream, Vr_stream)
 
     # Sum of error values
-    proj_err[i] = PE / heat1d.param_dim
-    proj_err_stream[i] = PE_stream / heat1d.param_dim
-    intru_state_err[i] = SE_int / heat1d.param_dim
-    opinf_state_err[i] = SE_inf / heat1d.param_dim
-    stream_state_err[i] = SE_stream / heat1d.param_dim
+    proj_err[i] = PE / burgers.param_dim
+    proj_err_stream[i] = PE_stream / burgers.param_dim
+    intru_state_err[i] = SE_int / burgers.param_dim
+    opinf_state_err[i] = SE_inf / burgers.param_dim
+    stream_state_err[i] = SE_stream / burgers.param_dim
 end
 
 #=================#
@@ -622,8 +537,8 @@ with_theme(theme_latexfonts()) do
         yscale=log10, titlesize=30, xlabelsize=30, ylabelsize=30,
         xticklabelsize=25, yticklabelsize=25,
     )
-    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="no data")
-    lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="start learning")
+    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="full data")
+    lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="compressed")
     axislegend(ax, position = :rt, labelsize=30)
     display(fig) 
 end
