@@ -9,13 +9,14 @@ using CairoMakie
 using FileIO
 using JLD2
 using LinearAlgebra
-using PolynomialModelReductionDataset: Heat2DModel
 import LiftAndLearn as LnL
 
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
+FILEPATH = occursin("scripts", pwd()) ? 
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
 
 #===================#
 ## Load the options
@@ -46,8 +47,9 @@ with_theme(theme_latexfonts()) do
     labels = []
     marker_styles = [:diamond, :cross, :circle, :rect]
     line_styles = [:solid, :solid, :solid, :solid]
+    Algorithms = ["Baker", "Brand", "Sketchy"]
     i = 1
-    for Algo in ["Baker", "Brand", "Sketchy", "MergingSketchy"]
+    for Algo in Algorithms
         algo = lowercase(Algo)
         basis = bases[algo]
         Σr = basis.iΣr
@@ -74,6 +76,69 @@ with_theme(theme_latexfonts()) do
     # Label(fig[0, :], "Relative error between batch and incremental singular values", fontsize=35)
     display(fig)
     save(joinpath(FILEPATH, "plots/absolute_sval_error.pdf"), fig)
+end
+
+#====================================================#
+## Plot the subspace angle errors between the bases ##
+#====================================================#
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(800, 600))      
+    ax = Axis(
+        fig[1, 1], xlabel=L"singular value index, $i$", ylabel=L"subspace angle error, $|\cos(\theta_i)-1|$",
+        yscale=log10, xticks=1:rmax, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        # title="2D Heat", limits=(nothing, nothing, 1e-18, 1e-1)
+    )
+    lines = []
+    labels = []
+    marker_styles = [:diamond, :cross, :circle, :rect]
+    line_styles = [:solid, :solid, :solid, :dash]
+    Algorithms = ["Baker", "Brand", "Sketchy" ]
+    i = 1
+    for Algo in Algorithms
+        algo = lowercase(Algo)
+        if algo == "mergingsketchy"
+            for blk in blksizes
+                basis = bases[algo][blk]
+                angle_errs = abs.(svdvals(basis.Q[:,1:r]' * bases["batch"].U[:,1:r]) .- 1)
+                l = scatterlines!(
+                    ax, 1:rmax, angle_errs, 
+                    marker=marker_styles[i], markersize=(35-(i-1)*2),
+                    linestyle=line_styles[i], linewidth=7,
+                )
+                push!(lines, l)
+                B = n ÷ blk
+                push!(labels, L"MergingSketchy ($B=%$B$)")
+            end
+        else
+            basis = bases[algo]
+            angle_errs = abs.(svdvals(basis.iVr[:,1:rmax]' * bases["batch"].Vr[:,1:rmax]) .- 1)
+            l = scatterlines!(
+                ax, 1:rmax, angle_errs, 
+                marker=marker_styles[i], markersize=(35-(i-1)*2),
+                linestyle=line_styles[i], linewidth=7,
+            )
+            i += 1
+            push!(lines, l)
+            push!(labels, Algo)
+        end
+    end
+    # Legend(
+    #     fig[2,1], lines, labels,
+    #     position=:rb, orientation=:horizontal, labelsize=30,
+    #     patchsize=(60,20), nbanks=1, framevisible=false
+    # )
+    axislegend(ax, 
+        lines, labels,
+        position=:lt,
+        # orientation=:horizontal, 
+        # halign=:center, 
+        # tellwidth=false, 
+        # tellheight=true,
+        labelsize=30
+    )
+    display(fig)
+    save(joinpath(FILEPATH, "plots/subspace_angle_error.pdf"), fig)
 end
 
 #=======================================================#
@@ -150,7 +215,7 @@ end
 #=============================#
 ## Plot the projection errors
 #=============================#
-proj_error = load(joinpath(FILEPATH, "data/projection_errors.jld2"))
+# proj_error = load(joinpath(FILEPATH, "data/projection_errors.jld2"))
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(800, 600))
     ax = Axis(
@@ -160,7 +225,7 @@ with_theme(theme_latexfonts()) do
         # title="Projection error of the POD basis",
     )
     lines = []
-    algos = ["batch", "baker", "brand", "sketchy", "mergingsketchy"]
+    algos = ["batch", "baker", "brand", "sketchy"]
     marker_styles = [:rect, :diamond, :cross, :circle, :rect]
     line_styles = [:solid, :dot, :dash, :dashdot, :dashdotdot]
     colors = vcat(:black, Makie.wong_colors()[1:4])
