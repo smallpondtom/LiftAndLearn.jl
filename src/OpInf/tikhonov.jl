@@ -104,10 +104,12 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::R
         catch e 
             if isa(e, OutOfMemoryError)
                 @warn "OutOfMemory with backslash least squares solve. Switching to LinearSolve.jl approach."
-                @assert !use_gpu "Disable `use_gpu` to switch to LinearSolve.jl approach."
+            elseif isa(e,  SparseArrays.CHOLMOD.CHOLMODException)
+                @warn "Sparse array CHOLMOD encountered out of memory. Switching to LinearSolve.jl approach."
             else
                 rethrow(e)
             end
+            @assert !use_gpu "Disable `use_gpu` to switch to LinearSolve.jl approach."
         end
     end
 
@@ -130,7 +132,7 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::R
             O[:,i] .= sol.u
         end
     catch e
-        if isa(e, OutOfMemoryError) 
+        if isa(e, OutOfMemoryError) || isa(e,  SparseArrays.CHOLMOD.CHOLMODException)
             @warn "OutOfMemory in direct least squares solve. Switching to memory-efficient vector version."
             # Solve normal equations: (D' * D + Γ) x = D' * Rt.
             n = size(A, 2)

@@ -12,6 +12,7 @@ using LinearAlgebra
 using ProgressMeter
 using Printf
 using Random
+using UniqueKronecker
 import LiftAndLearn as LnL
 
 #================================#
@@ -77,8 +78,8 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
 #=================#
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
-Vrmax = basis_data["batch"].Vr
-iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
+Vrmax = basis_data["batch"].Vr[:,1:200]  # choose the POD basis
+iVrmax = basis_data["baker"].iVr[:,1:200]  # choose Baker's iSVD basis
 rmax = size(iVrmax,2)
 
 #=======================#
@@ -91,11 +92,14 @@ include(joinpath(FILEPATH, "../utilities/extract_operators.jl"))
 #===================================#
 Γ = 1e-9  # Regularization parameter
 
+# The reduced dimensions to evaluate on
+rspan = vcat(1, 10:10:rmax)
+
 num_of_streams = n  
 tmp_res = (
-    true_stream_err = zeros(rmax, num_of_streams),
-    stream_err      = zeros(rmax, num_of_streams),
-    rse             = zeros(rmax, num_of_streams),
+    true_stream_err = zeros(length(rspan), num_of_streams),
+    stream_err      = zeros(length(rspan), num_of_streams),
+    rse             = zeros(length(rspan), num_of_streams),
     post_err        = zeros(num_of_streams),
     conv_factor     = zeros(num_of_streams),
     cost            = zeros(num_of_streams),
@@ -107,9 +111,6 @@ stream_res = Dict(
     :iqrrls => deepcopy(tmp_res),
     :qrrls  => deepcopy(tmp_res),
 )
-
-# The reduced dimensions to evaluate on
-rspan = vcat(1, 10:10:rmax)
 
 ## Obtain the reduced data
 Xhat = iVrmax' * X
@@ -124,6 +125,9 @@ op_inf = LnL.opinf(X, iVrmax, options; Xdot=Xdot)
 ops = Dict("opinf" => op_inf)
 save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
 
+## 
+ops = load(joinpath(FILEPATH, "data/models", "operators.jld2"))
+
 ## Tikhonov Regularized OpInf
 options.with_reg = true
 options.λ = LnL.TikhonovParameter(A=Γ, A2=Γ)
@@ -132,15 +136,13 @@ ops["tropinf"] = op_trinf
 save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
 
 ## Keep the reference batch model to compare with the streaming models
-Ostar = op_trinf.O'
+# Ostar = op_trinf.O'
+Ostar = ops["tropinf"].O'
 
-"""
-Train and analyze the streaming models
-"""
-## Streamify the data based on the selected streamsizes
+## Train and analyze the streaming models
+# Streamify the data based on the selected streamsizes
 streamsize = 1
 X_stream = LnL.streamify(Xhat, streamsize)
-U_stream = LnL.streamify(U, streamsize)
 Xdot_stream = LnL.streamify(Xhatdot, streamsize)
 foo = length(X_stream)
 @assert foo == num_of_streams "Wrong number of streams"
@@ -163,12 +165,11 @@ Eps = deepcopy(Eps_true)  # Initialize the error factor
     # The stream of data
     x_i    = X_stream[i]
     xdot_i = Xdot_stream[i]
-    u_i    = U_stream[i]
 
     # Stream, update, and get data matrix for the state system
-    LnL.stream!(rls_stream, x_i, xdot_i; U=u_i)  # RLS
-    LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i)   # iQRRLS
-    LnL.stream!(qrrls_stream, x_i, xdot_i; U=u_i)    # QRRLS
+    LnL.stream!(rls_stream, x_i, xdot_i)  # RLS
+    LnL.stream!(iqrrls_stream, x_i, xdot_i)   # iQRRLS
+    LnL.stream!(qrrls_stream, x_i, xdot_i)    # QRRLS
 
     # Compute the true streaming error
     Eps_true[:rls]    .= Ostar - rls_stream.cache.O
@@ -186,7 +187,7 @@ Eps = deepcopy(Eps_true)  # Initialize the error factor
         Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
     end
 
-    if (i-1) % 3 == 0 || i ∈ num_of_streams-10:num_of_streams
+    if (i-1) % 10 == 0 || i ∈ num_of_streams-10:num_of_streams
         # Unpack operators
         # RLS
         op_rls = LnL.Operators()
@@ -281,6 +282,13 @@ ops = Dict(
 )
 filename = joinpath(FILEPATH, "data/models", "operators.jld2")
 save(filename, ops)
+
+## Interpolate some of the results
+for key in keys(stream_res)
+    interpolate_zero_columns!(stream_res[key].rse)
+    interpolate_zero_columns!(stream_res[key].true_stream_err)
+    interpolate_zero_columns!(stream_res[key].stream_err)
+end
 
 ## Save the streaming results
 filename = joinpath(FILEPATH, "data/streaming", "stream_results.jld2")

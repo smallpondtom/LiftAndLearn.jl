@@ -1,13 +1,10 @@
-using Kronecker
-
 # Define the ODE right-hand side function
-function f(x, A, H)
-    # Computes A*x + H * kron(x, x)
-    return A * x + H * x ⊗ x
+function f(x, A, A2u)
+    return A * x + A2u * (x ⊘ x)
 end
 
 # RK4 integrator function: returns the state at each time step
-function rk4_integrate(x0, tspan, A, H)
+function rk4_integrate(x0, tspan, A, A2u)
     N = length(tspan)         # number of time points
     n = length(x0)            # dimension of the state
     xs = zeros(n, N)
@@ -15,29 +12,29 @@ function rk4_integrate(x0, tspan, A, H)
     @inbounds for i in 1:(N-1)
         x = view(xs, :, i)
         dt = tspan[i+1] - tspan[i]
-        k1 = f(x, A, H)
-        k2 = f(x + (dt/2)*k1, A, H)
-        k3 = f(x + (dt/2)*k2, A, H)
-        k4 = f(x + dt*k3, A, H)
+        k1 = f(x, A, A2u)
+        k2 = f(x + (dt/2)*k1, A, A2u)
+        k3 = f(x + (dt/2)*k2, A, A2u)
+        k4 = f(x + dt*k3, A, A2u)
         xs[:, i+1] .= x + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
     end
     return xs
 end
 
 # RK4 derivative approximation function: returns a matrix of approximated time derivatives.
-function rk4_time_derivatives(x0, tspan, A, H)
+function rk4_time_derivatives(x0, tspan, A, A2u)
     N = length(tspan)         # number of time points
     n = length(x0)            # dimension of the state
     dX = zeros(n, N)          # to store the derivative approximations
     x = x0
     # Optionally, store the derivative at the initial condition.
-    dX[:, 1] = f(x, A, H)
+    dX[:, 1] = f(x, A, A2u)
     for i in 1:(N-1)
         dt = tspan[i+1] - tspan[i]
-        k1 = f(x, A, H)
-        k2 = f(x + (dt/2)*k1, A, H)
-        k3 = f(x + (dt/2)*k2, A, H)
-        k4 = f(x + dt*k3, A, H)
+        k1 = f(x, A, A2u)
+        k2 = f(x + (dt/2)*k1, A, A2u)
+        k3 = f(x + (dt/2)*k2, A, A2u)
+        k4 = f(x + dt*k3, A, A2u)
         # RK4 derivative estimate (weighted average of slopes)
         d_est = (k1 + 2*k2 + 2*k3 + k4) / 6
         dX[:, i] = d_est
@@ -45,7 +42,7 @@ function rk4_time_derivatives(x0, tspan, A, H)
         x = x + dt * d_est
     end
     # Compute derivative at the final state
-    dX[:, N] = f(x, A, H)
+    dX[:, N] = f(x, A, A2u)
     return dX
 end
 
