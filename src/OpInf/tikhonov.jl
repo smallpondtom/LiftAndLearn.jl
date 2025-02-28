@@ -61,6 +61,10 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::R
         end
     end
 
+    # Tikhonov regularization with augumented matrix
+    # [A; Γ^(1/2)] * O = [b; 0]
+    # O = ([A; Γ^(1/2)]^⊤ [A; Γ^(1/2)])^(-1) [A; Γ^(1/2)] [b; 0]
+    Γsq = sqrt.(Γ)
     if use_gpu  # GPU
         if Sys.isapple()
             @info "GPU computation requested on macOS. Using Metal.jl."
@@ -69,22 +73,22 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::R
             has_compatible = any(dev -> occursin("Apple M", string(dev)), metal_devs)
             @assert has_compatible "Metal.jl is only available for Apple M series GPUs."
             # Construct the augmented matrix with the Tikhonov matrix
-            Atilde = Metal.CuArray(vcat(A, Γ))
-            btilde = Metal.CuArray(vcat(b, zeros(size(Γ, 1), size(b, 2))))
+            Atilde = Metal.CuArray(vcat(A, Γsq))
+            btilde = Metal.CuArray(vcat(b, zeros(size(Γsq, 1), size(b, 2))))
         else
             if CUDA.has_cuda()
                 @info "GPU computation requested. Using CUDA.jl."
                 # Construct the augmented matrix with the Tikhonov matrix
-                Atilde = CUDA.CuArray(vcat(A, Γ))
-                btilde = CUDA.CuArray(vcat(b, zeros(size(Γ, 1), size(b, 2))))
+                Atilde = CUDA.CuArray(vcat(A, Γsq))
+                btilde = CUDA.CuArray(vcat(b, zeros(size(Γsq, 1), size(b, 2))))
             else
                 @warn "CUDA GPU not available on this machine. Falling back to CPU"
                 use_gpu = false
             end
         end
     else  # CPU
-        Atilde = vcat(A, Γ)
-        btilde = vcat(b, zeros(size(Γ, 1), size(b, 2)))
+        Atilde = vcat(A, Γsq)
+        btilde = vcat(b, zeros(size(Γsq, 1), size(b, 2)))
     end
 
     # Solve using the backslash operator
@@ -155,7 +159,7 @@ end
 
 
 """
-    tikhonovk_matrix!(Γ::AbstractArray, dims::Dict, options::AbstractOption)
+    tikhonov_matrix!(Γ::AbstractArray, dims::Dict, options::AbstractOption)
 
 Construct the Tikhonov matrix
 

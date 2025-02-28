@@ -54,8 +54,6 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
-    # with_tol=true,
-    # pinv_tol=1e-6,
 )
 Utest = ones(burger.time_dim, 1);  # Reference input/boundary condition for OpInf testing 
 
