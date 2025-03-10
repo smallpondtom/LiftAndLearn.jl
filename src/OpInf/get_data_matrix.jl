@@ -19,7 +19,8 @@ function get_data_matrix(Xhat::AbstractArray, Xhat_t::AbstractArray, Ut::Abstrac
                          verbose::Bool=true)
     dims = []
     operator_symbols = []
-    K, m = checksize(Ut)
+    _, K = checksize(Xhat)
+    _, m = checksize(Ut)
     state_struct = copy(options.system.state)
     flag = false
 
@@ -101,11 +102,10 @@ function get_data_matrix(Xhat::AbstractArray, Xhat_t::AbstractArray, Ut::Abstrac
 
     # Constant term
     if !iszero(options.system.constant)
-        I = ones(K,1)
         if flag
-            D = hcat(D, I)
+            D = hcat(D, ones(K,1))
         else
-            D = I
+            D = ones(K,1)
             flag = true
         end
         push!(dims, 1)

@@ -58,7 +58,7 @@ include("LnL/learn.jl")
 include("EP-OpInf/epopinf.jl")
 
 # Streaming-OpInf
-include("streaming/streamify.jl")
-include("streaming/streaming.jl")
+include("Streaming/streamify.jl")
+include("Streaming/streaming.jl")
 
 end # module LiftAndLearn
