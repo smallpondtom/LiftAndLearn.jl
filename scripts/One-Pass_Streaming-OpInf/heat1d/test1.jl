@@ -347,17 +347,16 @@ end
 #         # (13) Reorthogonalize the basis
 #         @views reorthogonalize!(V[:,1:r], 1e-12)
 #     end
-# 
+
 #     return V[:,1:rmax], Ξ[1:rmax,1:rmax], Φ[1:dmax,1:dmax], Ψ[1:dmax,1:rmax]
 # end
 
-
 function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
-    # (0) setup
+    # setup
     n, K = size(X)
     m = size(U,1)
 
-    # (1) Initialization 
+    # Initialization 
     # Initial data
     x1 = X[:,1]  # n x 1
     xdot1 = Xdot[:,1]  # n x 1
@@ -386,12 +385,12 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
 
     # Streaming process
     for i in 2:K 
-        # (2) Receive new data
+        # Receive new data
         xi = X[:,i] # n x 1
         xdoti = Xdot[:,i] # n x 1
         ui = U[:,i] # m x 1
 
-        # (3) Compute the orthogonal component
+        # Compute the orthogonal component
         w1 = V' * xi
         xperp = xi - V * w1
         w2 = V' * xperp
@@ -399,12 +398,9 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
         w = w1 + w2
         xperp_mag = norm(xperp)
 
-        # (4) Augment the POD basis
-        # V = hcat(V, xperp)
-
-        # (5) Construct the core matrix
+        # Construct the core matrix
         C = zeros(r+1, r+1)
-        for j in 1:r
+        @simd for j in 1:r
             for k in 1:r
                 if j == k
                     C[j,k] = Λ[j] + w[j] * w[k]
@@ -417,13 +413,13 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
         end
         C[end,end] = xperp_mag^2
 
-        # (6) Take the EVD of the core matrix
+        # Take the EVD of the core matrix
         Λc, Vc = eigen(C)
         # Sort in descending order
         Λc = reverse(Λc)
         Vc = reverse(Vc, dims=2) 
 
-        # (7) Update the POD basis and Eigenvalue matrix
+        # Update the POD basis and Eigenvalue matrix
         if norm(xperp) < ϵ  # No increment
             V = V * Vc[1:r,1:r]
             Λ = Λc[1:r]
@@ -442,27 +438,26 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
             d += 1
         end
 
-        # (9) Compress matrices
+        # Compress matrices
         if r > rmax
             V = V[:,1:rmax]
             Λ = Λ[1:rmax]
             Vc = Vc[:,1:rmax]
             VVc = BlockDiagonal([Vc, 1.0I(m)])
             Φ = VVc' * Φ * VVc
-            # Φ = (Matrix ∘ Diagonal)(svdvals(Φ)[1:dmax])
             Ψ = VVc' * Ψ * Vc
             r = rmax
             d = r + m
         end
 
-        # (10) Project onto basis
+        # Project onto basis
         xhat = V' * xi
         rvec = V' * xdoti
         
-        # (11) Form the data vector, d 
+        # Form the data vector, d 
         dvec = vcat(xhat, ui)
 
-        # (12) Update the covariance and correlation matrices
+        # Update the covariance and correlation matrices
         @inbounds @fastmath for j in 1:d
             for k in 1:d
                 Φ[j, k] += dvec[j] * dvec[k]
@@ -472,13 +467,12 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
             end
         end
 
-        # (13) Reorthogonalize the basis
+        # Reorthogonalize the basis
         @views reorthogonalize!(V, ϵ)
     end
 
     return V, Λ, Φ, Ψ
 end
-
 
 # function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ)
 #     # (0) setup
@@ -605,6 +599,172 @@ end
 #     return V, Λ, Φ, Ψ
 # end
 
+# function OnePassStreamingOpInf(X, Xdot, U, rmax)
+#     # (0) setup
+#     n, K = size(X)
+#     m = size(U,1)
+
+#     # Initial data
+#     x1 = X[:,1]  # n x 1
+#     xdot1 = Xdot[:,1]  # n x 1
+#     u1 = U[:,1]  # m x 1
+   
+#     # POD basis
+#     V = x1 / norm(x1)
+
+#     # Eigenvalue 
+#     Λ = dot(x1, x1)
+
+#     # Initialize the reduced dimensions
+#     r = 1      # state
+#     d = r + m  # data (state + input)
+#     dmax = rmax + m
+
+#     Λϕ = zeros(d)
+#     Λϕ[1] = dot(x1, x1)
+#     Λϕ[1+m:end] = u1 * u1'
+
+#     dvec1 = vcat(x1, u1)
+#     Σψ = zeros(d,d)
+#     Σψ[1] = dot(dvec1, dvec1)
+#     Σψ[1+m:end,1+m:end] = u1 * u1'
+#     Wψ = 1.0I(n)[:,1:d]
+
+#     Vc = nothing
+
+#     # Streaming process
+#     for i in 2:K 
+#         # (1) Receive new data
+#         xi = X[:,i] # n x 1
+#         xdoti = Xdot[:,i] # n x 1
+#         ui = U[:,i] # m x 1
+
+#         # (2) Compute the orthogonal component
+#         q = V' * xi
+#         xperp = xi - V * q
+#         q2 = V' * xperp
+#         xperp = xperp - V * q2
+#         q += q2
+
+#         # (3) Take the QR decomposition
+#         p = [0.0]
+#         xperp = reshape(xperp, n, 1)
+#         qrf!(xperp, p)  # vperp = xperp 
+#         p = p[1]
+
+#         # (4) Construct the core matrix
+#         C = zeros(r+1, r+1)
+#         for j in 1:r
+#             for k in 1:r
+#                 if j == k
+#                     C[j,k] = Λ[j] + q[j] * q[k]
+#                 else
+#                     C[j,k] = q[j] * q[k]
+#                 end
+#             end
+#             C[j,end] = q[j] * p
+#             C[end,j] = q[j] * p
+#         end
+#         C[end,end] = p^2
+
+#         # (5) Construct the augmented and derivative vectors
+#         dvec = vcat(xi, ui)
+#         rvec = xdoti
+
+#         # (6) Construct the augmented basis
+#         if isa(V, Vector)
+#             V = reshape(V, n, 1)
+#         end
+#         VV = BlockDiagonal([V, 1.0I(m)])
+
+#         # (7) Compute the orthogonal component of the augmented vector
+#         qd = VV' * dvec
+#         dperp = dvec - VV * qd
+#         qd2 = VV' * dperp
+#         dperp = dperp - VV * qd2
+#         qd += qd2
+
+#         # (8) Take the QR of the augmented vector's orthogonal component
+#         pd = [0.0]
+#         dperp = reshape(dperp, :, 1)
+#         qrf!(dperp, pd)  
+#         pd = pd[1]
+
+#         # (9) compute the orthogonal component of the derivative vector
+#         qr = Wψ' * rvec
+#         rperp = rvec - Wψ * qr
+#         qr2 = Wψ' * rperp
+#         rperp = rperp - Wψ * qr2
+#         qr += qr2
+
+#         # (10) Take the QR of the derivative vector's orthogonal component
+#         pr = [0.0]
+#         rperp = reshape(rperp, n, 1)
+#         qrf!(rperp, pr)
+#         pr = pr[1]
+
+#         # (11) Update the core of the cross-correlation matrix
+#         Cψ = zeros(d+1, d+1)
+#         if isa(Σψ, Vector)
+#             for j in 1:d
+#                 for k in 1:d
+#                     if j == k
+#                         Cψ[j,k] = Σψ[j] + qd[j] * qr[k]
+#                     else
+#                         Cψ[j,k] = qd[j] * qr[k]
+#                     end
+#                 end
+#                 Cψ[j,end] = qd[j] * pr
+#                 Cψ[end,j] = qr[j] * pd
+#             end
+#         else  # Matrix case (initial step)
+#             for j in 1:d
+#                 for k in 1:d
+#                     Cψ[j,k] = Σψ[j,k] + qd[j] * qr[k]
+#                 end
+#                 Cψ[j,end] = qd[j] * pr
+#                 Cψ[end,j] = qr[j] * pd
+#             end
+#         end
+#         Cψ[end,end] = pr * pd
+
+#         # (6) Take the EVD/SVD of the core matrix
+#         Λc, Vc = eigen(C)
+#         Λc = reverse(Λc)
+#         Vc = reverse(Vc, dims=2)
+#         _, Σs, Ws = svd(Cψ)
+
+#         # (7) Update the POD basis and Eigenvalue matrix
+#         V = hcat(V, xperp) * Vc
+#         Λ = Λc
+#         Σψ = Σs
+#         Wψ = hcat(Wψ, rperp) * Ws
+
+#         tmp = Λϕ[r+1:r+m]
+#         Λϕ = Λc
+#         Λϕ = vcat(Λϕ, tmp + ui * ui')
+
+#         r += 1
+#         d += 1
+
+#         # (9) Compress matrices
+#         if r > rmax
+#             V = V[:,1:rmax]
+#             Λ = Λ[1:rmax]
+            
+#             # idx = vcat(1:rmax, r+1:r+m)
+#             Σψ = Σψ[1:dmax]
+#             Wψ = Wψ[:,1:dmax]
+#             Λϕ = Λϕ[1:dmax]
+
+#             r = rmax
+#             d = r + m
+#         end
+#     end
+
+#     return Λϕ, V, Σψ, Wψ, Vc
+# end
+
 #====================#
 ## Generate operators
 #====================#
@@ -621,10 +781,11 @@ Binf = op_infer.B
 
 ## Compute One-Pass Streaming-OpInf
 rextra = 0
+# Λ, Vstream, Σψ, Wψ, Vc = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra)
 Vstream, Λ, Φ, Ψ = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, 1e-12)
-Vsream = Vstream[:,1:rmax]
-Λ = Λ[1:rmax]
+Vstream = Vstream[:,1:rmax]
 Ostream = (Φ + 1e-12I) \ Ψ
+# Ostream = Vc * Diagonal(1 ./ (sqrt.(Λ) .+ 1e-8)) * Diagonal(Σψ) * Wψ' * Vstream
 Astream = Ostream[1:rmax,1:rmax]'
 Bstream = Ostream[rmax+rextra+1:end,1:rmax]'
 
@@ -693,7 +854,7 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     scatterlines!(ax, 1:rmax, Σrmax, label="batch", linewidth=8, markersize=30)
-    scatterlines!(ax, 1:rmax, sqrt.(Λ), label="stream", linewidth=5, linestyle=:dash, markersize=20)
+    scatterlines!(ax, 1:rmax, sqrt.(Λ[1:rmax]), label="stream", linewidth=5, linestyle=:dash, markersize=20)
     axislegend(ax, position = :lb, labelsize=30)
     display(fig)
 end
@@ -717,7 +878,7 @@ with_theme(theme_latexfonts()) do
         fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative state error",
         yscale=log10, xticks=1:rmax, titlesize=30,
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-6, 1e+1),
+        limits=(nothing, nothing, 1e-6, 1e+0),
     )
     scatterlines!(ax, 1:rmax, intru_state_err, label = "intrusive", linewidth=8, markersize=30)
     scatterlines!(ax, 1:rmax, opinf_state_err, label = "opinf", linewidth=5, markersize=20, linestyle=:dash)

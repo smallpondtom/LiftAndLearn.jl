@@ -149,12 +149,10 @@ function reorthogonalize!(V::AbstractMatrix{T}, tol::Real) where {T<:Number}
     end
 end
 
-function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
-    # (0) setup
+function OnePassStreamingOpInf(X, Xdot, rmax, basis_tol, ϵ, λ)
     n, K = size(X)
     m = 0
 
-    # (1) Initialization 
     # Initial data
     x1 = X[:,1]  # n x 1
     xdot1 = Xdot[:,1]  # n x 1
@@ -176,7 +174,8 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
     # State-derivative correlation matrix
     Ψ = x1 * xdot1'
 
-    reached_r = false
+    compression = false
+    not_initial_compression = false
 
     proj_err = zeros(K)
     proj_err[1] = norm(X - V * (V' * X)) / norm(X)
@@ -184,12 +183,10 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
 
     # Streaming process
     for i in 2:K 
-        # (2) Receive new data
         xi = X[:,i] # n x 1
         xdoti = Xdot[:,i] # n x 1
         # ui = U[:,i] # m x 1
 
-        # (3) Compute the orthogonal component
         w1 = V' * xi
         xperp = xi - V * w1
         w2 = V' * xperp
@@ -203,9 +200,8 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
             xperp /= xperp_mag
         end
 
-        # (5) Construct the core matrix
         C = zeros(r+1, r+1)
-        for j in 1:r
+        @simd for j in 1:r
             for k in 1:r
                 if j == k
                     C[j,k] = Λ[j] + w[j] * w[k]
@@ -218,10 +214,8 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
         end
         C[end,end] = xperp_mag^2
 
-        # (6) Take the SVD of the core matrix
         Vc, Λc, _ = svd(C)
 
-        # (7) Update the POD basis and Eigenvalue matrix
         if xperp_mag < ϵ  # No increment
             V = V * Vc[1:r,1:r]
             Λ = Λc[1:r]
@@ -229,7 +223,7 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
             V = hcat(V, xperp) * Vc
             Λ = Λc
 
-            if reached_r
+            if compression
                 # Zero-pad the correlation matrices
                 Φ = [Φ           zeros(d,1);
                     zeros(1,d)         0.0]
@@ -242,7 +236,6 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
             d += 1
         end
 
-        # (9) Compress matrices
         if r > rmax 
             V = V[:,1:rmax]
             Λ = Λ[1:rmax]
@@ -250,31 +243,23 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
             Vc = Vc[:,1:rmax]
             VVc = Vc
             
-            Φ = spdiagm(Λ)
-
-            if reached_r 
-                Ψ = VVc' * Ψ * Vc
-                push!(compressed, i)
-            else
-                Ψ = V' * Ψ * V
-            end
-
-            reached_r = true
-
             r = rmax
             d = r + m
         end
 
-        if reached_r
-            # (10) Project onto basis
+        @views reorthogonalize!(V, ϵ)
+        PE = norm(X - V * (V' * X)) / norm(X)
+        proj_err[i] = PE
+
+        if PE < basis_tol
+            compression = true
+        end
+
+        if compression && not_initial_compression
             xhat = V' * xi
             rvec = V' * xdoti
-            
-            # (11) Form the data vector, d 
-            # dvec = vcat(xhat, ui)
             dvec = xhat
 
-            # (12) Update the covariance and correlation matrices
             Φ *= λ
             Ψ *= λ
             @inbounds @fastmath for j in 1:d
@@ -286,19 +271,174 @@ function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
                 end
             end
 
+            Φ = VVc' * Φ * VVc
+            Ψ = VVc' * Ψ * Vc
+            push!(compressed, i)
+        elseif compression
+            Φ += xi * xi'
+            Ψ += xi * xdoti'
+            Φ = V' * Φ * V
+            Ψ = V' * Ψ * V
+            not_initial_compression = true
         else
             Φ += xi * xi'
             Ψ += xi * xdoti'
         end
-
-        # (13) Reorthogonalize the basis
-        @views reorthogonalize!(V, ϵ)
-
-        proj_err[i] = norm(X - V * (V' * X)) / norm(X)
     end
 
     return V, Λ, Φ, Ψ, proj_err, compressed
 end
+
+# function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, λ)
+#     # (0) setup
+#     n, K = size(X)
+#     m = 0
+
+#     # (1) Initialization 
+#     # Initial data
+#     x1 = X[:,1]  # n x 1
+#     xdot1 = Xdot[:,1]  # n x 1
+   
+#     # POD basis
+#     V = x1 / norm(x1)
+
+#     # Eigenvalue 
+#     Λ = dot(x1, x1)
+
+#     # Initialize the reduced dimensions
+#     r = 1      # state
+#     d = r + m  # data (state + input)
+#     dmax = rmax + m
+
+#     # Input-state correlation matrix
+#     Φ = x1 * x1'
+
+#     # State-derivative correlation matrix
+#     Ψ = x1 * xdot1'
+
+#     compression = false
+
+#     proj_err = zeros(K)
+#     proj_err[1] = norm(X - V * (V' * X)) / norm(X)
+#     compressed = []
+
+#     # Streaming process
+#     for i in 2:K 
+#         # (2) Receive new data
+#         xi = X[:,i] # n x 1
+#         xdoti = Xdot[:,i] # n x 1
+#         # ui = U[:,i] # m x 1
+
+#         # (3) Compute the orthogonal component
+#         w1 = V' * xi
+#         xperp = xi - V * w1
+#         w2 = V' * xperp
+#         xperp = xperp - V * w2
+#         w = w1 + w2
+#         xperp_mag = norm(xperp)
+
+#         if xperp_mag < ϵ
+#             xperp_mag = 0.0
+#         else
+#             xperp /= xperp_mag
+#         end
+
+#         # (5) Construct the core matrix
+#         C = zeros(r+1, r+1)
+#         @simd for j in 1:r
+#             for k in 1:r
+#                 if j == k
+#                     C[j,k] = Λ[j] + w[j] * w[k]
+#                 else
+#                     C[j,k] = w[j] * w[k]
+#                 end
+#             end
+#             C[j,end] = w[j] * xperp_mag
+#             C[end,j] = w[j] * xperp_mag
+#         end
+#         C[end,end] = xperp_mag^2
+
+#         # (6) Take the SVD of the core matrix
+#         Vc, Λc, _ = svd(C)
+
+#         # (7) Update the POD basis and Eigenvalue matrix
+#         if xperp_mag < ϵ  # No increment
+#             V = V * Vc[1:r,1:r]
+#             Λ = Λc[1:r]
+#         else  # Increment
+#             V = hcat(V, xperp) * Vc
+#             Λ = Λc
+
+#             if compression
+#                 # Zero-pad the correlation matrices
+#                 Φ = [Φ           zeros(d,1);
+#                     zeros(1,d)         0.0]
+#                 Ψ = [Ψ           zeros(d,1);
+#                     zeros(1,r)         0.0]
+#             end
+
+#             # Update the reduced dimensions
+#             r += 1
+#             d += 1
+#         end
+
+#         # (9) Compress matrices
+#         if r > rmax 
+#             V = V[:,1:rmax]
+#             Λ = Λ[1:rmax]
+
+#             Vc = Vc[:,1:rmax]
+#             VVc = Vc
+            
+#             Φ = spdiagm(Λ)
+
+#             if compression
+#                 Ψ = VVc' * Ψ * Vc
+#                 push!(compressed, i)
+#             else
+#                 Ψ = V' * Ψ * V
+#             end
+
+#             compression = true
+
+#             r = rmax
+#             d = r + m
+#         end
+
+#         if compression
+#             # (10) Project onto basis
+#             xhat = V' * xi
+#             rvec = V' * xdoti
+            
+#             # (11) Form the data vector, d 
+#             # dvec = vcat(xhat, ui)
+#             dvec = xhat
+
+#             # (12) Update the covariance and correlation matrices
+#             Φ *= λ
+#             Ψ *= λ
+#             @inbounds @fastmath for j in 1:d
+#                 for k in 1:d
+#                     Φ[j, k] += dvec[j] * dvec[k]
+#                 end
+#                 for k in 1:r
+#                     Ψ[j, k] += dvec[j] * rvec[k]
+#                 end
+#             end
+
+#         else
+#             Φ += xi * xi'
+#             Ψ += xi * xdoti'
+#         end
+
+#         # (13) Reorthogonalize the basis
+#         @views reorthogonalize!(V, ϵ)
+
+#         proj_err[i] = norm(X - V * (V' * X)) / norm(X)
+#     end
+
+#     return V, Λ, Φ, Ψ, proj_err, compressed
+# end
 
 # function two_step_ortho_component(V::AbstractArray{T}, x::AbstractVector{T}, ϵ::Real) where {T<:Number}
 #     w1 = V' * x
@@ -511,11 +651,11 @@ Ainf = op_infer.A
 
 ## Compute One-Pass Streaming-OpInf
 rextra = 0
-Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 1e-12, 1.0)
+Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 5e-10, 1e-12, 1.0)
 # Vstream, Λ, Φ, Ψ, Vxdot, Λxdot = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 1e-12, 1.0)
 Vsream = Vstream[:,1:rmax]
 Λ = Λ[1:rmax]
-Ostream = (Φ + 1e-9I) \ Ψ
+Ostream = (Φ + 1e-12I) \ Ψ
 Astream = Ostream'
 
 #=========#
@@ -622,8 +762,8 @@ with_theme(theme_latexfonts()) do
         yscale=log10, titlesize=30, xlabelsize=30, ylabelsize=30,
         xticklabelsize=25, yticklabelsize=25,
     )
-    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="no data")
-    lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="start learning")
+    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="full")
+    lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="compressed")
     axislegend(ax, position = :rt, labelsize=30)
     display(fig) 
 end

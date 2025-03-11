@@ -1,6 +1,6 @@
 function quad_indices(N, r)
-    xsq_idx = [1 + (N + 1) * (n - 1) - n * (n - 1) / 2 for n in 1:N]
-    extract_idx = [collect(x:x+(r-j)) for (j, x) in enumerate(xsq_idx[1:r])]
+    xsq_idx = [1 + (N + 1) * (n - 1) - n * (n - 1) / 2 for n in 1:r]
+    extract_idx = [collect(x:x+(r-j)) for (j, x) in enumerate(xsq_idx)]
     return Int.(reduce(vcat, extract_idx))
 end
 

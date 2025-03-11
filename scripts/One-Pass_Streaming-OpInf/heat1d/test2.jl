@@ -20,7 +20,7 @@ Nx = 2^7; dt = 1e-3
 heat1d = Heat1DModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), 
     Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt, 
-    diffusion_coeffs=range(0.1, 10, 10),
+    diffusion_coeffs=0.3,
 )
 heat1d.IC = cos.(2π * heat1d.xspan)
 
@@ -42,180 +42,417 @@ options = LnL.LSOpInfOption(
     ),
 )
 
-# Store the training data and reference data
-Xfull = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-Xdotfull = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-Ufull = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-Xref = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-Yref = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-
-# Store the operators 
-A_full = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-B_full = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-
-A_intru = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-B_intru = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-
-A_opinf = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-B_opinf = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-
-A_stream = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-B_stream = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-V_stream = Vector{Matrix{Float64}}(undef, heat1d.param_dim)
-
 # Input from the boundary condition
 Ubc = ones(heat1d.time_dim)
 
-@info "Generate the data"
-@showprogress for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
-    A, B = heat1d.finite_diff_model(heat1d, μ)
-    C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
-    op_heat = LnL.Operators(A=A, B=B, C=C)
-    A_full[idx] = A
-    B_full[idx] = B
+μ = heat1d.diffusion_coeffs[1]
+A, B = heat1d.finite_diff_model(heat1d, μ)
+op_heat = LnL.Operators(A=A, B=B)
 
-    # Compute the states with backward Euler
-    state = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
-                               system_input=true, integrator_type=:BackwardEuler)
-    Xref[idx] = state
-    Xdotfull[idx] = (state[:, 2:end] - state[:, 1:end-1]) / dt
-    Xfull[idx] = state[:, 2:end]
-    Ufull[idx] = Ubc[2:end]'
-end
+# Compute the states with backward Euler
+state = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
+                            system_input=true, integrator_type=:BackwardEuler)
+Xref = copy(state)
+Xdot = (state[:, 2:end] - state[:, 1:end-1]) / dt
+X = state[:, 2:end]
+U = Ubc[2:end]'
 
-X = reduce(hcat, Xfull)
-Xdot = reduce(hcat, Xdotfull)
-U = reduce(hcat, Ufull)
+# Another set of data with different initial condition
+heat1d.IC = cos.(4π * heat1d.xspan)
+state = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
+                            system_input=true, integrator_type=:BackwardEuler)
+Xdot = hcat(Xdot, (state[:, 2:end] - state[:, 1:end-1]) / dt)
+X = hcat(X, state[:, 2:end])
+U = hcat(U, Ubc[2:end]')
 
-rmax = 10
+rmax = 12
 tmp = svd(X)
 Vrmax = tmp.U[:, 1:rmax]
+Σrmax = tmp.S[1:rmax]
+
+# Use same initial condition as reference data 
+heat1d.IC = cos.(2π * heat1d.xspan)
 
 #====================================#
 ## One-Pass Streaming-OpInf function
 #====================================#
-function OnePassStreamingOpInf(X, Xdot, U, rmax)
-    # (1) Initialization 
+"""
+Faster QR factorization that returns Q without processing the Householder vectors.
+
+Reference:
+https://github.com/JuliaLinearAlgebra/IncrementalSVD.jl/blob/da75cd435ed3f57bc56afab3d2faec7155a9b913/src/IncrementalSVD.jl#L207C1-L217C4
+"""
+function qrf!(P::AbstractArray{T}, R::AbstractArray{T}) where {T<:Number}
+    m, b = checksize(P)
+    m >= b || throw(DimensionMismatch("Works only for m > b"))
+    P, tau = LAPACK.geqrf!(P)
+    fill!(R, zero(T))
+    @inbounds for j = 1:b, i = 1:j
+        R[i,j] = P[i,j]
+    end
+    LAPACK.orgqr!(P, tau)
+    return R
+end
+
+"""
+    checksize(A::AbstractArray)
+
+Check the size of the input matrix and return the number of rows and columns.
+
+# Arguments
+- `A::AbstractArray`: input matrix
+
+# Returns
+- `m::Int`: number of rows
+- `n::Int`: number of columns
+"""
+function checksize(A::AbstractArray)
+    m, n = nothing, nothing
+    try
+        m, n = size(A)
+    catch e
+        if isa(e, BoundsError)
+            m, n = length(A), 1
+        else
+            rethrow(e)
+        end
+    end
+    return m, n
+end
+
+function reorthogonalize!(V::AbstractMatrix{T}, tol::Real) where {T<:Number}
+    # Dimension
+    r = size(V, 2)
+    R = zeros(T, r, r)
+    if abs(dot(V[:, end], V[:, 1])) > tol
+        @views for k in 1:r
+            for _ = 1:2  # do this twice (from p307 algo 6.11 in [GanderGK2014])
+                for i = 1:k-1
+                    E = dot(V[:, i], V[:, k])
+                    V[:, k] .-= E * V[:, i]
+                    R[i, k] += E
+                end
+            end
+            R[k, k] = sqrt(dot(V[:, k], V[:, k]))
+            V[:, k] ./= R[k, k]
+        end
+    end
+end
+
+function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ)
     n, K = size(X)
-    m = size(U,2)
+    m = size(U,1)
+
+    # Initial data
     x1 = X[:,1]  # n x 1
-    xdot1 = Xdot[:,1]  # n x 1
     u1 = U[:,1]  # m x 1
-    d1 = vcat(x1, u1)  # (n+m) x 1
+    xdot1 = Xdot[:,1]  # n x 1
    
     # POD basis
-    V = zeros(n, rmax)
-    V[:,1] .= x1 / norm(x1)
+    V = x1 / norm(x1)
 
-    # State covariance matrix
-    Ξ = zeros(rmax, rmax)
-    Ξ[1,1] = dot(x1,x1) 
+    # Eigenvalue 
+    Λ = dot(x1, x1)
+
+    # Initialize the reduced dimensions
+    r = 1      # state
+    d = r + m  # data (state + input)
+    dmax = rmax + m
 
     # Input-state correlation matrix
-    dmax = rmax + m
-    Φ = zeros(dmax, dmax)
-    Φ[1,1] = dot(d1, d1)
+    dvec1 = vcat(x1, u1)
+    Φ = dvec1 * dvec1'
 
     # State-derivative correlation matrix
-    Ψ = zeros(dmax, rmax)
-    Ψ[1,1] = norm(d1) * norm(xdot1)
+    Ψ = dvec1 * xdot1'
 
-    # Initialize the reduced dimension
-    r = 1
+    compression = false
+    not_initial_compression = false
+
+    proj_err = zeros(K)
+    proj_err[1] = norm(X - V * (V' * X)) / norm(X)
+    compressed = []
 
     # Streaming process
     for i in 2:K 
-        # (2) Receive new data
         xi = X[:,i] # n x 1
         xdoti = Xdot[:,i] # n x 1
         ui = U[:,i] # m x 1
 
-        Vr = @view V[:,1:r] # n x r
+        w1 = V' * xi
+        xperp = xi - V * w1
+        w2 = V' * xperp
+        xperp = xperp - V * w2
+        w = w1 + w2
+        xperp_mag = norm(xperp)
 
-        # (3) Compute the orthogonal component
-        xperp1 = xi - Vr * Vr' * xi
-        xperp = xperp1 - Vr * Vr' * xperp1
-
-        # (4) Take the QR decomposition
-        q, xperp_mag = qr(xperp)
-
-        # (5) Augment the POD basis
-        V[:,r+1] = q
-
-        # (6) Augment the state covariance matrix
-        Ξ[1:r,r+1] = Vr' * q
-        Ξ[r+1,r+1] = xperp_mag
-
-        # (7) Zero-pad the correlation matrices 
-        # Which is unnecessary in this case since we already preallocated the matrix
-        
-        # (8) Update the reduced dimension
-        r += 1
-
-        # (9) Compress matrices
-        if r > rmax
-            Λ, Θ = eigen(Ξ)
-            Λ = reverse(Λ) # Sort in descending order
-            Θ = reverse(Θ, dims=2)  # Sort in descending order
-
-            Λ = Λ[1:rmax]  # rmax x 1
-            Θ = Θ[:,1:rmax]  # n x rmax
-
-            V = V * Θ  # n x rmax
-            @inbounds for j in 1:rmax
-                Ξ[j,j] = S[j]
-            end
-            Γ = BlockDiagonal([V, kron(V,V), 1.0I(m)])  
-            Φ[1:rmax,1:rmax] .= BlockDiagonal([Λ, kron(Λ,Λ), Φ[end-m+1:end,end-m+1:end]])
-            Ψ[1:dmax,1:rmax] .= Γ' * Ψ * Θ
-            r = rmax
+        if xperp_mag < ϵ
+            xperp_mag = 0.0
+        else
+            xperp /= xperp_mag
         end
 
-        # (10) Project onto basis
-        xhat = Vr' * xi
-        rvec = Vr' * xdoti
-        
-        # (11) Form the data vector, d 
-        dvec = vcat(xhat, ui)
+        C = zeros(r+1, r+1)
+        @simd for j in 1:r
+            for k in 1:r
+                if j == k
+                    C[j,k] = Λ[j] + w[j] * w[k]
+                else
+                    C[j,k] = w[j] * w[k]
+                end
+            end
+            C[j,end] = w[j] * xperp_mag
+            C[end,j] = w[j] * xperp_mag
+        end
+        C[end,end] = xperp_mag^2
 
-        # (12) Update the covariance and correlation matrices
-        Ξ[1:r,1:r] += xhat * xhat'
-        Φ[1:dmax,1:dmax] += dvec * dvec'
-        Ψ[1:dmax,1:r] += dvec * rvec'
+        Vc, Λc, _ = svd(C)
+
+        if xperp_mag < ϵ  # No increment
+            V = V * Vc[1:r,1:r]
+            Λ = Λc[1:r]
+        else  # Increment
+            V = hcat(V, xperp) * Vc
+            Λ = Λc
+
+            if compression
+                # Zero-pad the correlation matrices
+                Φ = [Φ           zeros(d,1);
+                    zeros(1,d)         0.0]
+                Ψ = [Ψ           zeros(d,1);
+                    zeros(1,r)         0.0]
+            end
+
+            # Update the reduced dimensions
+            r += 1
+            d += 1
+        end
+
+        if r > rmax 
+            V = V[:,1:rmax]
+            Λ = Λ[1:rmax]
+
+            Vc = Vc[:,1:rmax]
+            VVc = BlockDiagonal([Vc, 1.0I(m)])
+            
+            r = rmax
+            d = r + m
+        end
+
+        @views reorthogonalize!(V, ϵ)
+        PE = norm(X - V * (V' * X)) / norm(X)
+        proj_err[i] = PE
+
+        if PE < basis_tol
+            compression = true
+        end
+
+        if compression && not_initial_compression
+            Φ = VVc' * Φ * VVc
+            Ψ = VVc' * Ψ * Vc
+
+            xhat = V' * xi
+            rvec = V' * xdoti
+            dvec = vcat(xhat, ui)
+
+            Φ *= λ
+            Ψ *= λ
+            @inbounds @fastmath for j in 1:d
+                for k in 1:d
+                    Φ[j, k] += dvec[j] * dvec[k]
+                end
+                for k in 1:r
+                    Ψ[j, k] += dvec[j] * rvec[k]
+                end
+            end
+
+            push!(compressed, i)
+        elseif compression
+            VV = BlockDiagonal([V, 1.0I(m)])
+            Φ = VV' * Φ * VV
+            Ψ = VV' * Ψ * V
+
+            xhat = V' * xi
+            rvec = V' * xdoti
+            dvec = vcat(xhat, ui)
+
+            Φ += dvec * dvec'
+            Ψ += dvec * rvec'
+            not_initial_compression = true
+        else
+            dvec = vcat(xi, ui)
+            Φ += dvec * dvec'
+            Ψ += dvec * xdoti'
+        end
     end
 
-    return V, Ξ, Φ, Ψ
+    return V, Λ, Φ, Ψ, proj_err, compressed
 end
+
+# function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ)
+#     n, K = size(X)
+#     m = size(U,1)
+
+#     # Initial data
+#     x1 = X[:,1]  # n x 1
+#     u1 = U[:,1]  # m x 1
+#     xdot1 = Xdot[:,1]  # n x 1
+   
+#     # POD basis
+#     V = x1 / norm(x1)
+
+#     # Eigenvalue 
+#     Σ = dot(x1, x1)
+
+#     # Initialize the reduced dimensions
+#     r = 1      # state
+#     d = r + m  # data (state + input)
+
+#     # Input-state correlation matrix
+#     dvec1 = vcat(x1, u1)
+#     Φ = dvec1 * dvec1'
+
+#     # State-derivative correlation matrix
+#     Ψ = dvec1 * xdot1'
+
+#     compression = false
+#     not_initial_compression = false
+
+#     proj_err = zeros(K)
+#     proj_err[1] = norm(X - V * (V' * X)) / norm(X)
+#     compressed = []
+
+#     # Streaming process
+#     for i in 2:K 
+#         xi = X[:,i] # n x 1
+#         xdoti = Xdot[:,i] # n x 1
+#         ui = U[:,i] # m x 1
+
+#         w1 = V' * xi
+#         xperp = xi - V * w1
+#         w2 = V' * xperp
+#         xperp = xperp - V * w2
+#         w = w1 + w2
+#         xperp_mag = norm(xperp)
+
+#         if xperp_mag < ϵ
+#             xperp_mag = 0.0
+#         else
+#             xperp /= xperp_mag
+#         end
+
+#         C = zeros(r+1, r+1)
+#         @simd for j in 1:r
+#             C[j,j] = Σ[j]
+#             C[j,r+1] = w[j]
+#         end
+#         C[r+1,r+1] = xperp_mag
+
+#         Vc, Σc, _ = svd(C)
+
+#         if xperp_mag < ϵ  # No increment
+#             V = V * Vc[1:r,1:r]
+#             Σ = Σc[1:r]
+#         else  # Increment
+#             V = hcat(V, xperp) * Vc
+#             Σ = Σc
+
+#             if compression
+#                 # Zero-pad the correlation matrices
+#                 Φ = [Φ           zeros(d,1);
+#                     zeros(1,d)         0.0]
+#                 Ψ = [Ψ           zeros(d,1);
+#                     zeros(1,r)         0.0]
+#             end
+
+#             # Update the reduced dimensions
+#             r += 1
+#             d += 1
+#         end
+
+#         if r > rmax 
+#             V = V[:,1:rmax]
+#             Σ = Σ[1:rmax]
+
+#             Vc = Vc[:,1:rmax]
+#             VVc = BlockDiagonal([Vc, 1.0I(m)])
+            
+#             r = rmax
+#             d = r + m
+#         end
+
+#         @views reorthogonalize!(V, ϵ)
+#         PE = norm(X - V * (V' * X)) / norm(X)
+#         proj_err[i] = PE
+
+#         if PE < basis_tol
+#             compression = true
+#         end
+
+#         if compression && not_initial_compression
+#             Φ = VVc' * Φ * VVc
+#             Ψ = VVc' * Ψ * Vc
+
+#             xhat = V' * xi
+#             rvec = V' * xdoti
+#             dvec = vcat(xhat, ui)
+
+#             Φ *= λ
+#             Ψ *= λ
+#             @inbounds @fastmath for j in 1:d
+#                 for k in 1:d
+#                     Φ[j, k] += dvec[j] * dvec[k]
+#                 end
+#                 for k in 1:r
+#                     Ψ[j, k] += dvec[j] * rvec[k]
+#                 end
+#             end
+
+#             push!(compressed, i)
+#         elseif compression
+#             VV = BlockDiagonal([V, 1.0I(m)])
+#             Φ = VV' * Φ * VV
+#             Ψ = VV' * Ψ * V
+
+#             xhat = V' * xi
+#             rvec = V' * xdoti
+#             dvec = vcat(xhat, ui)
+
+#             Φ += dvec * dvec'
+#             Ψ += dvec * rvec'
+#             not_initial_compression = true
+#         else
+#             dvec = vcat(xi, ui)
+#             Φ += dvec * dvec'
+#             Ψ += dvec * xdoti'
+#         end
+#     end
+
+#     return V, Σ, Φ, Ψ, proj_err, compressed
+# end
 
 #====================#
 ## Generate operators
 #====================#
-rmax = 10
-@showprogress for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
-    A = A_full[idx]
-    B = B_full[idx]
-    X = Xfull[idx]
-    Xdot = Xdotfull[idx]
-    U = Ufull[idx]
+# Compute the values for the intrusive model
+op_heat = LnL.Operators(A=A, B=B)
+op_heat_new = LnL.pod(op_heat, Vrmax, options.system)
+Aint = op_heat_new.A
+Bint = op_heat_new.B
 
-    # Compute the values for the intrusive model
-    op_heat = LnL.Operators(A=A, B=B)
-    op_heat_new = LnL.pod(op_heat, Vrmax, options.system)
-    A_intru[idx] = op_heat_new.A
-    B_intru[idx] = op_heat_new.B
+## Compute OpInf
+op_infer = LnL.opinf(X, Vrmax, options; U=U, Xdot=Xdot)
+Ainf = op_infer.A
+Binf = op_infer.B
 
-    # Compute OpInf
-    op_infer = LnL.opinf(X, Vrmax, options; U=U, Xdot=Xdot)
-    A_opinf[idx] = op_infer.A
-    B_opinf[idx] = op_infer.B
-    
-    # Compute One-Pass Streaming-OpInf
-    V, Ξ, Φ, Ψ = OnePassStreamingOpInf(X, Xdot, U, rmax)
-    Ostream = Φ \ Ψ
-    A_stream[idx] = Ostream[1:rmax,1:rmax]'
-    B_stream[idx] = Ostream[rmax+1:end,1:rmax]'
-    V_stream[idx] = V
-end
+## Compute One-Pass Streaming-OpInf
+rextra = 0
+Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, 1e-4, 1e-12, 1.0)
+Vsream = Vstream[:,1:rmax]
+Λ = Λ[1:rmax]
+Ostream = (Φ + 1e-12I) \ Ψ
+Astream = Ostream[1:rmax,1:rmax]'
+Bstream = Ostream[rmax+rextra+1:end,1:rmax]'
 
 #=========#
 ## Analyze
@@ -223,85 +460,134 @@ end
 @info "Compute errors"
 
 # Error analysis 
-intru_state_err = zeros(r, 1)
-opinf_state_err = zeros(r, 1)
-stream_state_err = zeros(r, 1)
-proj_err = zeros(r, 1)
+intru_state_err = zeros(rmax)
+opinf_state_err = zeros(rmax)
+stream_state_err = zeros(rmax)
+stream_op_err = zeros(rmax)
+proj_err = zeros(rmax)
+proj_err_stream = zeros(rmax)
 
-@showprogress for i = 1:r, j = 1:heat1d.param_dim
-    X = Xref[j]  # full order model states
-    U = Uref[j]
-    Vr = Vrmax[:, 1:i]
-
-    # Unpack intrusive operators
-    Aint = A_intru[j]
-    Bint = B_intru[j]
-
-    # Unpack inferred operators
-    Ainf = A_opinf[j]
-    Binf = B_opinf[j]
-
-    # Unpack the streaming operators
-    Astream = A_stream[j]
-    Bstream = B_stream[j]
-    Vr_stream = V_stream[j][:,1:i]
+@showprogress for i = 1:rmax
+    Vr = Vrmax[:,1:i]
+    Vr_stream = Vstream[:,1:i]
 
     # Integrate the intrusive model
     Xint = heat1d.integrate_model(
-        heat1d.tspan, Vr' * heat1d.IC, U,
+        heat1d.tspan, Vr' * heat1d.IC, Ubc,
         linear_matrix=Aint[1:i, 1:i], control_matrix=Bint[1:i,:],
         system_input=true, integrator_type=:BackwardEuler
     )
 
     # Integrate the inferred model
     Xinf = heat1d.integrate_model(
-        heat1d.tspan, Vr' * heat1d.IC, U,
+        heat1d.tspan, Vr' * heat1d.IC, Ubc,
         linear_matrix=Ainf[1:i, 1:i], control_matrix=Binf[1:i,:],
         system_input=true, integrator_type=:BackwardEuler
     )
 
     # Integrate the streaming model
     Xstream = heat1d.integrate_model(
-        heat1d.tspan, Vr_stream' * heat1d.IC, U,
+        heat1d.tspan, Vr_stream' * heat1d.IC, Ubc,
         linear_matrix=Astream[1:i, 1:i], control_matrix=Bstream[1:i,:],
         system_input=true, integrator_type=:BackwardEuler
     )
 
     # Compute errors
-    PE = LnL.proj_error(X, Vr)
-    PE_stream = LnL.proj_error(X, Vr_stream)
+    PE = LnL.proj_error(Xref, Vr)
+    PE_stream = LnL.proj_error(Xref, Vr_stream)
 
     # Relative state errors
-    SE_int = LnL.rel_state_error(X, Xint, Vr)
-    SE_inf = LnL.rel_state_error(X, Xinf, Vr)
-    SE_stream = LnL.rel_state_error(X, Xstream, Vr_stream)
+    SE_int = LnL.rel_state_error(Xref, Xint, Vr)
+    SE_inf = LnL.rel_state_error(Xref, Xinf, Vr)
+    SE_stream = LnL.rel_state_error(Xref, Xstream, Vr_stream)
 
     # Sum of error values
-    proj_err[i] += PE / heat1d.param_dim
-    proj_err_stream[i] += PE_stream / heat1d.param_dim
-    intru_state_err[i] += SE_int / heat1d.param_dim
-    opinf_state_err[i] += SE_inf / heat1d.param_dim
-    stream_state_err[i] += SE_stream / heat1d.param_dim
+    proj_err[i] = PE / heat1d.param_dim
+    proj_err_stream[i] = PE_stream / heat1d.param_dim
+    intru_state_err[i] = SE_int / heat1d.param_dim
+    opinf_state_err[i] = SE_inf / heat1d.param_dim
+    stream_state_err[i] = SE_stream / heat1d.param_dim
+
+    # Operator errors
+    ind = vcat(1:i, rmax+1)
+    Ostar = vcat(Aint', Bint')
+    stream_op_err[i] = norm(Ostream[ind,:] - Ostar[ind,:]) / norm(Ostar[ind,:])
 end
 
 #=================#
 ## Plot the errors
 #=================#
 with_theme(theme_latexfonts()) do
-    fig = Figure(resolution = (800, 600))
-    ax = Axis(fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative projection error")
-    scatterlines!(ax, 1:r, proj_err, label = "batch")
-    scatterlines!(ax, 1:r, proj_err_stream, label = "stream")
-    axislegend(ax, position = :rt)
+    fig = Figure(size = (800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel = "Reduced dimension", ylabel = "Singular Values",
+        yscale=log10, xticks=1:rmax, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    scatterlines!(ax, 1:rmax, Σrmax, label="batch", linewidth=8, markersize=30)
+    scatterlines!(ax, 1:rmax, sqrt.(Λ), label="stream", linewidth=5, linestyle=:dash, markersize=20)
+    axislegend(ax, position = :lb, labelsize=30)
     display(fig)
 end
 
 with_theme(theme_latexfonts()) do
-    fig = Figure(resolution = (800, 600))
-    ax = Axis(fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative state error")
-    scatterlines!(ax, 1:r, intru_state_err, label = "intrusive")
-    scatterlines!(ax, 1:r, opinf_state_err, label = "opinf")
-    scatterlines!(ax, 1:r, stream_state_err, label = "stream")
-    axislegend(ax, position = :rt)
+    fig = Figure(size = (800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel = "Reduced dimension", ylabel = "Singular Value Errors",
+        yscale=log10, xticks=1:rmax, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    scatterlines!(ax, 1:rmax, abs.(Σrmax - sqrt.(Λ)) ./ Σrmax, linewidth=8, markersize=30)
     display(fig)
+end
+
+with_theme(theme_latexfonts()) do
+    fig = Figure(size = (800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative projection error",
+        yscale=log10, xticks=1:rmax, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    scatterlines!(ax, 1:rmax, proj_err, label="batch", linewidth=8, markersize=30)
+    scatterlines!(ax, 1:rmax, proj_err_stream, label="stream", linewidth=5, linestyle=:dash, markersize=20)
+    axislegend(ax, position = :lb, labelsize=30)
+    display(fig)
+end
+
+with_theme(theme_latexfonts()) do
+    fig = Figure(size = (800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel = "Reduced dimension", ylabel = "Streaming Operator Errors",
+        xticks=1:rmax, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    scatterlines!(ax, 1:rmax, stream_op_err, linewidth=8, markersize=30)
+    display(fig)
+end
+
+with_theme(theme_latexfonts()) do
+    fig = Figure(size = (800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative state error",
+        yscale=log10, xticks=1:rmax, titlesize=30,
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    scatterlines!(ax, 1:rmax, intru_state_err, label = "intrusive", linewidth=8, markersize=30)
+    scatterlines!(ax, 1:rmax, opinf_state_err, label = "opinf", linewidth=5, markersize=20, linestyle=:dash)
+    scatterlines!(ax, 1:rmax, stream_state_err, label = "stream", linewidth=3, markersize=15, linestyle=:dashdot)
+    axislegend(ax, position = :lb, labelsize=30)
+    display(fig)
+end
+
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size = (800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel = "stream", ylabel = "relative rojection error",
+        yscale=log10, titlesize=30, xlabelsize=30, ylabelsize=30,
+        xticklabelsize=25, yticklabelsize=25,
+    )
+    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="full")
+    lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="compressed")
+    axislegend(ax, position = :rt, labelsize=30)
+    display(fig) 
 end
