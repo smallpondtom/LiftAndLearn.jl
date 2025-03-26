@@ -139,156 +139,7 @@ function reorthogonalize!(V::AbstractMatrix{T}, tol::Real) where {T<:Number}
     end
 end
 
-function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ)
-    n, K = size(X)
-    m = size(U,1)
-
-    # Initial data
-    x1 = X[:,1]  # n x 1
-    u1 = U[:,1]  # m x 1
-    xdot1 = Xdot[:,1]  # n x 1
-   
-    # POD basis
-    V = x1 / norm(x1)
-
-    # Eigenvalue 
-    Λ = dot(x1, x1)
-
-    # Initialize the reduced dimensions
-    r = 1      # state
-    d = r + m  # data (state + input)
-    dmax = rmax + m
-
-    # Input-state correlation matrix
-    dvec1 = vcat(x1, u1)
-    Φ = dvec1 * dvec1'
-
-    # State-derivative correlation matrix
-    Ψ = dvec1 * xdot1'
-
-    compression = false
-    not_initial_compression = false
-
-    proj_err = zeros(K)
-    proj_err[1] = norm(X - V * (V' * X)) / norm(X)
-    compressed = []
-
-    # Streaming process
-    for i in 2:K 
-        xi = X[:,i] # n x 1
-        xdoti = Xdot[:,i] # n x 1
-        ui = U[:,i] # m x 1
-
-        w1 = V' * xi
-        xperp = xi - V * w1
-        w2 = V' * xperp
-        xperp = xperp - V * w2
-        w = w1 + w2
-        xperp_mag = norm(xperp)
-
-        if xperp_mag < ϵ
-            xperp_mag = 0.0
-        else
-            xperp /= xperp_mag
-        end
-
-        C = zeros(r+1, r+1)
-        @simd for j in 1:r
-            for k in 1:r
-                if j == k
-                    C[j,k] = Λ[j] + w[j] * w[k]
-                else
-                    C[j,k] = w[j] * w[k]
-                end
-            end
-            C[j,end] = w[j] * xperp_mag
-            C[end,j] = w[j] * xperp_mag
-        end
-        C[end,end] = xperp_mag^2
-
-        Vc, Λc, _ = svd(C)
-
-        if xperp_mag < ϵ  # No increment
-            V = V * Vc[1:r,1:r]
-            Λ = Λc[1:r]
-        else  # Increment
-            V = hcat(V, xperp) * Vc
-            Λ = Λc
-
-            if compression
-                # Zero-pad the correlation matrices
-                Φ = [Φ           zeros(d,1);
-                    zeros(1,d)         0.0]
-                Ψ = [Ψ           zeros(d,1);
-                    zeros(1,r)         0.0]
-            end
-
-            # Update the reduced dimensions
-            r += 1
-            d += 1
-        end
-
-        if r > rmax 
-            V = V[:,1:rmax]
-            Λ = Λ[1:rmax]
-
-            Vc = Vc[:,1:rmax]
-            VVc = BlockDiagonal([Vc, 1.0I(m)])
-            
-            r = rmax
-            d = r + m
-        end
-
-        @views reorthogonalize!(V, ϵ)
-        PE = norm(X - V * (V' * X)) / norm(X)
-        proj_err[i] = PE
-
-        if PE < basis_tol
-            compression = true
-        end
-
-        if compression && not_initial_compression
-            Φ = VVc' * Φ * VVc
-            Ψ = VVc' * Ψ * Vc
-
-            xhat = V' * xi
-            rvec = V' * xdoti
-            dvec = vcat(xhat, ui)
-
-            Φ *= λ
-            Ψ *= λ
-            @inbounds @fastmath for j in 1:d
-                for k in 1:d
-                    Φ[j, k] += dvec[j] * dvec[k]
-                end
-                for k in 1:r
-                    Ψ[j, k] += dvec[j] * rvec[k]
-                end
-            end
-
-            push!(compressed, i)
-        elseif compression
-            VV = BlockDiagonal([V, 1.0I(m)])
-            Φ = VV' * Φ * VV
-            Ψ = VV' * Ψ * V
-
-            xhat = V' * xi
-            rvec = V' * xdoti
-            dvec = vcat(xhat, ui)
-
-            Φ += dvec * dvec'
-            Ψ += dvec * rvec'
-            not_initial_compression = true
-        else
-            dvec = vcat(xi, ui)
-            Φ += dvec * dvec'
-            Ψ += dvec * xdoti'
-        end
-    end
-
-    return V, Λ, Φ, Ψ, proj_err, compressed
-end
-
+# Prototype 4
 # function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ)
 #     n, K = size(X)
 #     m = size(U,1)
@@ -302,7 +153,163 @@ end
 #     V = x1 / norm(x1)
 
 #     # Eigenvalue 
-#     Σ = dot(x1, x1)
+#     Λ = dot(x1, x1)
+
+#     # Initialize the reduced dimensions
+#     r = 1      # state
+#     d = r + m  # data (state + input)
+#     dmax = rmax + m
+
+#     # Input-state correlation matrix
+#     dvec1 = vcat(x1, u1)
+#     Φ = dvec1 * dvec1'
+
+#     # State-derivative correlation matrix
+#     Ψ = dvec1 * xdot1'
+
+#     compression = false
+#     not_initial_compression = false
+
+#     proj_err = zeros(K)
+#     proj_err[1] = norm(X - V * (V' * X)) / norm(X)
+#     compressed = []
+
+#     # Streaming process
+#     for i in 2:K 
+#         xi = X[:,i] # n x 1
+#         xdoti = Xdot[:,i] # n x 1
+#         ui = U[:,i] # m x 1
+
+#         w1 = V' * xi
+#         xperp = xi - V * w1
+#         w2 = V' * xperp
+#         xperp = xperp - V * w2
+#         w = w1 + w2
+#         xperp_mag = norm(xperp)
+
+#         if xperp_mag < ϵ
+#             xperp_mag = 0.0
+#         else
+#             xperp /= xperp_mag
+#         end
+
+#         C = zeros(r+1, r+1)
+#         @simd for j in 1:r
+#             for k in 1:r
+#                 if j == k
+#                     C[j,k] = Λ[j] + w[j] * w[k]
+#                 else
+#                     C[j,k] = w[j] * w[k]
+#                 end
+#             end
+#             C[j,end] = w[j] * xperp_mag
+#             C[end,j] = w[j] * xperp_mag
+#         end
+#         C[end,end] = xperp_mag^2
+
+#         Vc, Λc, _ = svd(C)
+
+#         if xperp_mag < ϵ  # No increment
+#             V = V * Vc[1:r,1:r]
+#             Λ = Λc[1:r]
+#         else  # Increment
+#             V = hcat(V, xperp) * Vc
+#             Λ = Λc
+
+#             if compression
+#                 # Zero-pad the correlation matrices
+#                 Φ = [Φ           zeros(d,1);
+#                     zeros(1,d)         0.0]
+#                 Ψ = [Ψ           zeros(d,1);
+#                     zeros(1,r)         0.0]
+#             end
+
+#             # Update the reduced dimensions
+#             r += 1
+#             d += 1
+#         end
+
+#         if r > rmax 
+#             V = V[:,1:rmax]
+#             Λ = Λ[1:rmax]
+
+#             Vc = Vc[:,1:rmax]
+#             VVc = BlockDiagonal([Vc, 1.0I(m)])
+            
+#             r = rmax
+#             d = r + m
+#         end
+
+#         @views reorthogonalize!(V, ϵ)
+#         PE = norm(X - V * (V' * X)) / norm(X)
+#         proj_err[i] = PE
+
+#         if PE < basis_tol
+#             compression = true
+#         end
+
+#         if compression && not_initial_compression
+#             Φ = VVc' * Φ * VVc
+#             Ψ = VVc' * Ψ * Vc
+
+#             xhat = V' * xi
+#             rvec = V' * xdoti
+#             dvec = vcat(xhat, ui)
+
+#             Φ *= λ
+#             Ψ *= λ
+#             @inbounds @fastmath for j in 1:d
+#                 for k in 1:d
+#                     Φ[j, k] += dvec[j] * dvec[k]
+#                 end
+#                 for k in 1:r
+#                     Ψ[j, k] += dvec[j] * rvec[k]
+#                 end
+#             end
+
+#             push!(compressed, i)
+#         elseif compression
+#             VV = BlockDiagonal([V, 1.0I(m)])
+#             Φ = VV' * Φ * VV
+#             Ψ = VV' * Ψ * V
+
+#             xhat = V' * xi
+#             rvec = V' * xdoti
+#             dvec = vcat(xhat, ui)
+
+#             Φ += dvec * dvec'
+#             Ψ += dvec * rvec'
+#             not_initial_compression = true
+#         else
+#             dvec = vcat(xi, ui)
+#             Φ += dvec * dvec'
+#             Ψ += dvec * xdoti'
+#         end
+#     end
+
+#     return V, Λ, Φ, Ψ, proj_err, compressed
+# end
+
+# function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ)
+#     n, K = size(X)
+#     m = size(U,1)
+
+#     # # Randomly shuffle data
+#     # idx = randperm(K)
+#     # X = X[:,idx]
+#     # Xdot = Xdot[:,idx]
+#     # U = U[:,idx]
+
+#     # Initial data
+#     x1 = X[:,1]  # n x 1
+#     u1 = U[:,1]  # m x 1
+#     xdot1 = Xdot[:,1]  # n x 1
+   
+#     # POD basis
+#     V = x1 / norm(x1)
+
+#     # Eigenvalue 
+#     Σ = norm(x1)
 
 #     # Initialize the reduced dimensions
 #     r = 1      # state
@@ -360,9 +367,9 @@ end
 #             if compression
 #                 # Zero-pad the correlation matrices
 #                 Φ = [Φ           zeros(d,1);
-#                     zeros(1,d)         0.0]
+#                     zeros(1,d)         1e-12]
 #                 Ψ = [Ψ           zeros(d,1);
-#                     zeros(1,r)         0.0]
+#                     zeros(1,r)         1e-12]
 #             end
 
 #             # Update the reduced dimensions
@@ -381,7 +388,7 @@ end
 #             d = r + m
 #         end
 
-#         @views reorthogonalize!(V, ϵ)
+#         reorthogonalize!(V, ϵ)
 #         PE = norm(X - V * (V' * X)) / norm(X)
 #         proj_err[i] = PE
 
@@ -447,10 +454,10 @@ Binf = op_infer.B
 
 ## Compute One-Pass Streaming-OpInf
 rextra = 0
-Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, 1e-4, 1e-12, 1.0)
+Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, 2.563e-8, 1e-12, 1.0)
 Vsream = Vstream[:,1:rmax]
 Λ = Λ[1:rmax]
-Ostream = (Φ + 1e-12I) \ Ψ
+Ostream = (Φ) \ Ψ
 Astream = Ostream[1:rmax,1:rmax]'
 Bstream = Ostream[rmax+rextra+1:end,1:rmax]'
 
@@ -525,7 +532,7 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     scatterlines!(ax, 1:rmax, Σrmax, label="batch", linewidth=8, markersize=30)
-    scatterlines!(ax, 1:rmax, sqrt.(Λ), label="stream", linewidth=5, linestyle=:dash, markersize=20)
+    scatterlines!(ax, 1:rmax, Λ, label="stream", linewidth=5, linestyle=:dash, markersize=20)
     axislegend(ax, position = :lb, labelsize=30)
     display(fig)
 end
@@ -537,7 +544,7 @@ with_theme(theme_latexfonts()) do
         yscale=log10, xticks=1:rmax, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
-    scatterlines!(ax, 1:rmax, abs.(Σrmax - sqrt.(Λ)) ./ Σrmax, linewidth=8, markersize=30)
+    scatterlines!(ax, 1:rmax, abs.(Σrmax - Λ) ./ Σrmax, linewidth=8, markersize=30)
     display(fig)
 end
 
@@ -586,8 +593,8 @@ with_theme(theme_latexfonts()) do
         yscale=log10, titlesize=30, xlabelsize=30, ylabelsize=30,
         xticklabelsize=25, yticklabelsize=25,
     )
-    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="full")
-    lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="compressed")
+    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=8, label="full")
+    lines!(ax, minimum(compress_idx):length(stream_proj_err), stream_proj_err[minimum(compress_idx):end], linewidth=8, label="compressed")
     axislegend(ax, position = :rt, labelsize=30)
     display(fig) 
 end

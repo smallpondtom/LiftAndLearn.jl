@@ -47,6 +47,7 @@ for i in 1:n
     Xfold[:,i] = reshape(X[i,:,:], :, 1)
 end
 X = Xfold
+U = - 0.001722 * ones(1,n)  # input data
 
 #====================================#
 ## Compute the time derivative data ##
@@ -59,7 +60,8 @@ Xdot = finite_difference_derivative(X, tspan)
 # Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        state=[1,2]
+        state=[1,2],
+        control=1,
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
@@ -78,8 +80,8 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
 #=================#
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
-Vrmax = basis_data["batch"].Vr[:,1:50]  # choose the POD basis
-iVrmax = basis_data["sketchy"].iVr[:,1:50]  # choose Baker's iSVD basis
+Vrmax = basis_data["batch"].Vr[:,1:100]  # choose the POD basis
+iVrmax = basis_data["baker"].iVr[:,1:100]  # choose Baker's iSVD basis
 rmax = size(iVrmax,2)
 
 #=======================#
@@ -120,22 +122,20 @@ Xhatdot = iVrmax' * Xdot
 ## Train the batch models 
 # OpInf
 options.with_reg = false
-op_inf = LnL.opinf(X, iVrmax, options; Xdot=Xdot)
+op_inf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
 
 ##
-ops = Dict("opinf" => op_inf)
-save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
-
-## 
+# ops = Dict("opinf" => op_inf)
+# save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
 # ops = load(joinpath(FILEPATH, "data/models", "operators.jld2"))
 
 ## Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=Γ, A2=Γ)
-op_trinf = LnL.opinf(X, iVrmax, options; Xdot=Xdot)
-##
-ops["tropinf"] = op_trinf
-save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
+options.λ = LnL.TikhonovParameter(A=Γ, A2=Γ, B=Γ)
+op_trinf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
+
+# ops["tropinf"] = op_trinf
+# save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
 
 ## Keep the reference batch model to compare with the streaming models
 Ostar = op_trinf.O'
@@ -150,9 +150,9 @@ foo = length(X_stream)
 @assert foo == num_of_streams "Wrong number of streams"
 
 ## Initialize the streaming OpInfs
-rls_stream  = LnL.StreamingOpInf(options=options, n=rmax, algorithm=:RLS, Γs=Γ) 
-iqrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, algorithm=:iQRRLS, Γs=Γ)
-qrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, algorithm=:QRRLS, Γs=Γ)
+rls_stream  = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS, Γs=Γ) 
+iqrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γ)
+qrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γ)
 
 ## Preallocate a dicdtionary to store the streaming results
 Eps = Dict{Symbol, Matrix{Float64}}(
@@ -352,9 +352,9 @@ save(joinpath(FILEPATH, "data/training_errors.jld2"),
 ##
 r=50
 Vr = iVrmax[:, 1:50]
-tspan_rk4 = 0:0.00001:tspan[end]
-F_extract = UniqueKronecker.extractF(ops[string("opinf")].A2u, 50)
+tspan_rk4 = 0:0.001:tspan[end]
+F_extract = UniqueKronecker.extractF(op_inf.A2u, 50)
+##
 Xrecon = rk4_integrate(
-    Vr' * X[:,1], tspan_rk4, ops[string("opinf")].A[1:r, 1:r], F_extract,
-    op_inf.K
+    Vr' * X[:,1], U, tspan_rk4, op_inf.A[1:r, 1:r], F_extract, op_inf.B[1:r,:]
 )
