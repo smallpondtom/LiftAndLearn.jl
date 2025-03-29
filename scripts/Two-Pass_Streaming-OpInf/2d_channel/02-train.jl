@@ -62,6 +62,7 @@ options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=[1,2],
         control=1,
+        coupled_input=1
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
@@ -131,7 +132,7 @@ op_inf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
 
 ## Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=Γ, A2=Γ, B=Γ)
+options.λ = LnL.TikhonovParameter(A=0.0, A2=1000.0, B=0.0, N=1000.0)
 op_trinf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
 
 # ops["tropinf"] = op_trinf

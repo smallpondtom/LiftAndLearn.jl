@@ -637,6 +637,123 @@ end
 #     return Vx, Λx, Φ, Ψ, Vxdot, Λxdot
 # end
 
+# Prototype 2
+function OnePassStreamingOpInf(X, Xdot, rmax, ϵ)
+    # (0) setup
+    n, K = size(X)
+
+    # (1) Initialization 
+    # Initial data
+    x1 = X[:,1]  # n x 1
+    xdot1 = Xdot[:,1]  # n x 1
+   
+    # POD basis
+    V = x1 / norm(x1)
+
+    # Singular value 
+    Λ = dot(x1,x1)
+
+    # Initialize the reduced dimensions
+    r = 1      # state
+
+    # Input-state correlation matrix
+    Φ = zeros(r, r)
+    Φ[1,1] = dot(x1, x1)
+
+    # State-derivative correlation matrix
+    Ψ = zeros(r, r)
+    Ψ[1,1] = norm(x1) * norm(xdot1)
+
+    # Streaming process
+    for i in 2:K 
+        # (2) Receive new data
+        xi = X[:,i] # n x 1
+        xdoti = Xdot[:,i] # n x 1
+
+        # (3) Compute the orthogonal component
+        q = V' * xi
+        xperp = xi - V * q
+        q2 = V' * xperp
+        xperp = xperp - V * q2
+        q += q2
+        p = norm(xperp)
+
+        if p < ϵ
+            p = 0.0
+        else
+            xperp /= p
+        end
+
+        # (5) Construct the core matrix
+        C = zeros(r+1, r+1)
+        for j in 1:r
+            for k in 1:r
+                if j == k
+                    C[j,k] = Λ[j] + q[j] * q[k]
+                else
+                    C[j,k] = q[j] * q[k]
+                end
+            end
+            C[j,end] = q[j] * p
+            C[end,j] = q[j] * p
+        end
+        C[end,end] = p^2
+
+        # (6) Take the EVD of the core matrix
+        Vc, Λc, _ = svd(C)
+
+        # (7) Update the POD basis and Eigenvalue matrix
+        if norm(xperp) < ϵ  # No increment
+            V = V * Vc[1:r,1:r]
+            Λ = Λc[1:r]
+        else  # Increment
+            V = hcat(V, xperp) * Vc
+            Λ = Λc
+
+            # Zero-pad the correlation matrices (perhaps wrong zero-padding)
+            Φ = [Φ           zeros(r,1);
+                zeros(1,r)         0.0]
+            Ψ = [Ψ           zeros(r,1);
+                zeros(1,r)         0.0]
+
+            # Update the reduced dimensions
+            r += 1
+        end
+
+        xhat = V' * xi
+        rvec = V' * xdoti
+        
+        dvec = copy(xhat)
+
+        @inbounds @fastmath for j in 1:r
+            for k in 1:r
+                Φ[j, k] += dvec[j] * dvec[k]
+            end
+            for k in 1:r
+                Ψ[j, k] += dvec[j] * rvec[k]
+            end
+        end
+
+        # (9) Compress matrices
+        if r > rmax
+            V = V[:,1:rmax]
+            Λ = Λ[1:rmax]
+
+            Vc = Vc[:,1:rmax]
+            VVc = copy(Vc)
+            Φ = VVc' * Φ * VVc
+            Ψ = VVc' * Ψ * Vc
+
+            r = rmax
+        end
+
+        @views reorthogonalize!(V, ϵ)
+
+    end
+
+    return V, sqrt.(Λ), Φ, Ψ
+end
+
 #====================#
 ## Generate operators
 #====================#
@@ -651,11 +768,11 @@ Ainf = op_infer.A
 
 ## Compute One-Pass Streaming-OpInf
 rextra = 0
-Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 5e-10, 1e-12, 1.0)
-# Vstream, Λ, Φ, Ψ, Vxdot, Λxdot = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 1e-12, 1.0)
+# Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 5e-10, 1e-12, 1.0)
+Vstream, Λ, Φ, Ψ = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 1e-12)
 Vsream = Vstream[:,1:rmax]
 Λ = Λ[1:rmax]
-Ostream = (Φ + 1e-12I) \ Ψ
+Ostream = (Φ + 1e-15I) \ Ψ
 Astream = Ostream'
 
 #=========#
@@ -755,15 +872,15 @@ with_theme(theme_latexfonts()) do
     display(fig)
 end
 
-with_theme(theme_latexfonts()) do 
-    fig = Figure(size = (800, 600))
-    ax = Axis(
-        fig[1, 1], xlabel = "stream", ylabel = "relative rojection error",
-        yscale=log10, titlesize=30, xlabelsize=30, ylabelsize=30,
-        xticklabelsize=25, yticklabelsize=25,
-    )
-    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="full")
-    lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="compressed")
-    axislegend(ax, position = :rt, labelsize=30)
-    display(fig) 
-end
+# with_theme(theme_latexfonts()) do 
+#     fig = Figure(size = (800, 600))
+#     ax = Axis(
+#         fig[1, 1], xlabel = "stream", ylabel = "relative rojection error",
+#         yscale=log10, titlesize=30, xlabelsize=30, ylabelsize=30,
+#         xticklabelsize=25, yticklabelsize=25,
+#     )
+#     lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="full")
+#     lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="compressed")
+#     axislegend(ax, position = :rt, labelsize=30)
+#     display(fig) 
+# end

@@ -20,7 +20,7 @@ Nx = 2^7; dt = 1e-3
 heat1d = Heat1DModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), 
     Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt, 
-    diffusion_coeffs=0.3,
+    diffusion_coeffs=0.7,
 )
 heat1d.IC = cos.(2π * heat1d.xspan)
 
@@ -58,12 +58,12 @@ X = state[:, 2:end]
 U = Ubc[2:end]'
 
 # Another set of data with different initial condition
-heat1d.IC = cos.(4π * heat1d.xspan)
-state = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
-                            system_input=true, integrator_type=:BackwardEuler)
-Xdot = hcat(Xdot, (state[:, 2:end] - state[:, 1:end-1]) / dt)
-X = hcat(X, state[:, 2:end])
-U = hcat(U, Ubc[2:end]')
+# heat1d.IC = cos.(4π * heat1d.xspan)
+# state = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
+#                             system_input=true, integrator_type=:BackwardEuler)
+# Xdot = hcat(Xdot, (state[:, 2:end] - state[:, 1:end-1]) / dt)
+# X = hcat(X, state[:, 2:end])
+# U = hcat(U, Ubc[2:end]')
 
 rmax = 12
 tmp = svd(X)
@@ -140,155 +140,185 @@ function reorthogonalize!(V::AbstractMatrix{T}, tol::Real) where {T<:Number}
 end
 
 # Prototype 4
-# function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ)
-#     n, K = size(X)
-#     m = size(U,1)
+function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ, no_full=false)
+    n, K = size(X)
+    m = size(U,1)
 
-#     # Initial data
-#     x1 = X[:,1]  # n x 1
-#     u1 = U[:,1]  # m x 1
-#     xdot1 = Xdot[:,1]  # n x 1
+    # Initial data
+    x1 = X[:,1]  # n x 1
+    u1 = U[:,1]  # m x 1
+    xdot1 = Xdot[:,1]  # n x 1
    
-#     # POD basis
-#     V = x1 / norm(x1)
+    # POD basis
+    V = x1 / norm(x1)
 
-#     # Eigenvalue 
-#     Λ = dot(x1, x1)
+    # Eigenvalue 
+    Λ = dot(x1, x1)
 
-#     # Initialize the reduced dimensions
-#     r = 1      # state
-#     d = r + m  # data (state + input)
-#     dmax = rmax + m
+    # Initialize the reduced dimensions
+    r = 1      # state
+    d = r + m  # data (state + input)
+    dmax = rmax + m
 
-#     # Input-state correlation matrix
-#     dvec1 = vcat(x1, u1)
-#     Φ = dvec1 * dvec1'
+    # Input-state correlation matrix
+    dvec1 = vcat(x1, u1)
+    Φ = dvec1 * dvec1'
 
-#     # State-derivative correlation matrix
-#     Ψ = dvec1 * xdot1'
+    # State-derivative correlation matrix
+    Ψ = dvec1 * xdot1'
 
-#     compression = false
-#     not_initial_compression = false
+    compression = no_full ? true : false
+    not_initial_compression = no_full ? true : false
 
-#     proj_err = zeros(K)
-#     proj_err[1] = norm(X - V * (V' * X)) / norm(X)
-#     compressed = []
+    proj_err = zeros(K)
+    proj_err[1] = norm(X - V * (V' * X)) / norm(X)
+    compressed = []
 
-#     # Streaming process
-#     for i in 2:K 
-#         xi = X[:,i] # n x 1
-#         xdoti = Xdot[:,i] # n x 1
-#         ui = U[:,i] # m x 1
+    # Streaming process
+    for i in 2:K 
+        xi = X[:,i] # n x 1
+        xdoti = Xdot[:,i] # n x 1
+        ui = U[:,i] # m x 1
 
-#         w1 = V' * xi
-#         xperp = xi - V * w1
-#         w2 = V' * xperp
-#         xperp = xperp - V * w2
-#         w = w1 + w2
-#         xperp_mag = norm(xperp)
+        w1 = V' * xi
+        xperp = xi - V * w1
+        w2 = V' * xperp
+        xperp = xperp - V * w2
+        w = w1 + w2
+        xperp_mag = norm(xperp)
 
-#         if xperp_mag < ϵ
-#             xperp_mag = 0.0
-#         else
-#             xperp /= xperp_mag
-#         end
+        if xperp_mag < ϵ
+            xperp_mag = 0.0
+        else
+            xperp /= xperp_mag
+        end
 
-#         C = zeros(r+1, r+1)
-#         @simd for j in 1:r
-#             for k in 1:r
-#                 if j == k
-#                     C[j,k] = Λ[j] + w[j] * w[k]
-#                 else
-#                     C[j,k] = w[j] * w[k]
-#                 end
-#             end
-#             C[j,end] = w[j] * xperp_mag
-#             C[end,j] = w[j] * xperp_mag
-#         end
-#         C[end,end] = xperp_mag^2
+        C = zeros(r+1, r+1)
+        @simd for j in 1:r
+            for k in 1:r
+                if j == k
+                    C[j,k] = Λ[j] + w[j] * w[k]
+                else
+                    C[j,k] = w[j] * w[k]
+                end
+            end
+            C[j,end] = w[j] * xperp_mag
+            C[end,j] = w[j] * xperp_mag
+        end
+        C[end,end] = xperp_mag^2
 
-#         Vc, Λc, _ = svd(C)
+        Vc, Λc, _ = svd(C)
 
-#         if xperp_mag < ϵ  # No increment
-#             V = V * Vc[1:r,1:r]
-#             Λ = Λc[1:r]
-#         else  # Increment
-#             V = hcat(V, xperp) * Vc
-#             Λ = Λc
+        if xperp_mag < ϵ  # No increment
+            V = V * Vc[1:r,1:r]
+            Λ = Λc[1:r]
+        else  # Increment
+            V = hcat(V, xperp) * Vc
+            Λ = Λc
 
-#             if compression
-#                 # Zero-pad the correlation matrices
-#                 Φ = [Φ           zeros(d,1);
-#                     zeros(1,d)         0.0]
-#                 Ψ = [Ψ           zeros(d,1);
-#                     zeros(1,r)         0.0]
-#             end
+            if compression
+                # # Zero-pad the correlation matrices
+                # Φ = [Φ           zeros(d,1);
+                #     zeros(1,d)         0.0]
+                # Ψ = [Ψ           zeros(d,1);
+                #     zeros(1,r)         0.0]
 
-#             # Update the reduced dimensions
-#             r += 1
-#             d += 1
-#         end
+                # (perhaps correct zero-padding)
+                Φx = zeros(r+1, r+1)
+                Φx[1:r, 1:r] .= Φ[1:r, 1:r]
+                Φux = zeros(m, r+1)
+                Φux[:, 1:r] .= Φ[r+1:r+m, 1:r]
+                Φxu = zeros(r+1, m)
+                Φxu[1:r, :] .= Φ[1:r, r+1:r+m]
+                Φu = Φ[r+1:r+m, r+1:r+m]
+                Φ = [Φx Φxu;
+                     Φux Φu]
 
-#         if r > rmax 
-#             V = V[:,1:rmax]
-#             Λ = Λ[1:rmax]
+                Ψx = zeros(r+1, r+1)
+                Ψx[1:r, 1:r] .= Ψ[1:r, 1:r]
+                Ψux = zeros(m, r+1)
+                Ψux[:, 1:r] .= Ψ[r+1:r+m, 1:r]
+                Ψ = vcat(Ψx, Ψux)
+            end
 
-#             Vc = Vc[:,1:rmax]
-#             VVc = BlockDiagonal([Vc, 1.0I(m)])
+            # Update the reduced dimensions
+            r += 1
+            d += 1
+        end
+
+        if r > rmax 
+            V = V[:,1:rmax]
+            Λ = Λ[1:rmax]
+
+            Vc = Vc[:,1:rmax]
+            VVc = BlockDiagonal([Vc, 1.0I(m)])
+
+            if no_full
+                Φ = VVc' * Φ * VVc
+                Ψ = VVc' * Ψ * Vc
+            end
             
-#             r = rmax
-#             d = r + m
-#         end
+            r = rmax
+            d = r + m
+        end
 
-#         @views reorthogonalize!(V, ϵ)
-#         PE = norm(X - V * (V' * X)) / norm(X)
-#         proj_err[i] = PE
+        @views reorthogonalize!(V, ϵ)
+        PE = norm(X - V * (V' * X)) / norm(X)
+        proj_err[i] = PE
 
-#         if PE < basis_tol
-#             compression = true
-#         end
+        if PE < basis_tol
+            compression = true
+        end
 
-#         if compression && not_initial_compression
-#             Φ = VVc' * Φ * VVc
-#             Ψ = VVc' * Ψ * Vc
+        if compression && not_initial_compression
+            if !no_full
+                Φ = VVc' * Φ * VVc
+                Ψ = VVc' * Ψ * Vc
+            end
 
-#             xhat = V' * xi
-#             rvec = V' * xdoti
-#             dvec = vcat(xhat, ui)
+            xhat = V' * xi
+            rvec = V' * xdoti
+            dvec = vcat(xhat, ui)
 
-#             Φ *= λ
-#             Ψ *= λ
-#             @inbounds @fastmath for j in 1:d
-#                 for k in 1:d
-#                     Φ[j, k] += dvec[j] * dvec[k]
-#                 end
-#                 for k in 1:r
-#                     Ψ[j, k] += dvec[j] * rvec[k]
-#                 end
-#             end
+            Φ *= λ
+            Ψ *= λ
+            @inbounds @fastmath for j in 1:d
+                for k in 1:d
+                    Φ[j, k] += dvec[j] * dvec[k]
+                end
+                for k in 1:r
+                    Ψ[j, k] += dvec[j] * rvec[k]
+                end
+            end
 
-#             push!(compressed, i)
-#         elseif compression
-#             VV = BlockDiagonal([V, 1.0I(m)])
-#             Φ = VV' * Φ * VV
-#             Ψ = VV' * Ψ * V
+            if no_full
+                if r >= rmax
+                    push!(compressed, i)
+                end
+            else
+                push!(compressed, i)
+            end
+        elseif compression
+            VV = BlockDiagonal([V, 1.0I(m)])
+            Φ = VV' * Φ * VV
+            Ψ = VV' * Ψ * V
 
-#             xhat = V' * xi
-#             rvec = V' * xdoti
-#             dvec = vcat(xhat, ui)
+            xhat = V' * xi
+            rvec = V' * xdoti
+            dvec = vcat(xhat, ui)
 
-#             Φ += dvec * dvec'
-#             Ψ += dvec * rvec'
-#             not_initial_compression = true
-#         else
-#             dvec = vcat(xi, ui)
-#             Φ += dvec * dvec'
-#             Ψ += dvec * xdoti'
-#         end
-#     end
+            Φ += dvec * dvec'
+            Ψ += dvec * rvec'
+            not_initial_compression = true
+        else
+            dvec = vcat(xi, ui)
+            Φ += dvec * dvec'
+            Ψ += dvec * xdoti'
+        end
+    end
 
-#     return V, Λ, Φ, Ψ, proj_err, compressed
-# end
+    return V, Λ, Φ, Ψ, proj_err, compressed
+end
 
 # function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ)
 #     n, K = size(X)
@@ -454,9 +484,10 @@ Binf = op_infer.B
 
 ## Compute One-Pass Streaming-OpInf
 rextra = 0
-Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, 2.563e-8, 1e-12, 1.0)
+Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, 1e-5, 1e-12, 1.0)
 Vsream = Vstream[:,1:rmax]
 Λ = Λ[1:rmax]
+Λ = sqrt.(Λ)
 Ostream = (Φ) \ Ψ
 Astream = Ostream[1:rmax,1:rmax]'
 Bstream = Ostream[rmax+rextra+1:end,1:rmax]'
@@ -578,6 +609,7 @@ with_theme(theme_latexfonts()) do
         fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative state error",
         yscale=log10, xticks=1:rmax, titlesize=30,
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 1e-7, 1e+0),
     )
     scatterlines!(ax, 1:rmax, intru_state_err, label = "intrusive", linewidth=8, markersize=30)
     scatterlines!(ax, 1:rmax, opinf_state_err, label = "opinf", linewidth=5, markersize=20, linestyle=:dash)
