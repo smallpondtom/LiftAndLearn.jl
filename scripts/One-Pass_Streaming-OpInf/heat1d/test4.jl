@@ -21,14 +21,14 @@ Nx = 2^7; dt = 1e-3
 heat1d = Heat1DModel(
     spatial_domain=Ω, time_domain=(0.0, 1.0), 
     Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt, 
-    diffusion_coeffs=0.2, BC=:periodic,
+    diffusion_coeffs=0.3,
 )
-heat1d.IC = cos.(2π * heat1d.xspan)
 
 # Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=1,
+        control=1,
     ),
     vars=LnL.VariableStructure(
         N=1,
@@ -42,86 +42,50 @@ options = LnL.LSOpInfOption(
     ),
 )
 
+# Input from the boundary condition
+Ubc = ones(heat1d.time_dim)
+
 μ = heat1d.diffusion_coeffs[1]
-A = heat1d.finite_diff_model(heat1d, μ)
-op_heat = LnL.Operators(A=A)
+A, B = heat1d.finite_diff_model(heat1d, μ)
+C = ones(1, heat1d.spatial_dim) / heat1d.spatial_dim
+op_heat = LnL.Operators(A=A, B=B, C=C)
+
+# Only one initial condition and input
+heat1d.IC = cos.(2π * heat1d.xspan)
 
 # Compute the states with backward Euler
-state = heat1d.integrate_model(heat1d.tspan, heat1d.IC; linear_matrix=A,
-                            system_input=false, integrator_type=:BackwardEuler)
+state = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
+                            system_input=true, integrator_type=:BackwardEuler)
 Xref = copy(state)
+Uref = Ubc
 Xdot = (state[:, 2:end] - state[:, 1:end-1]) / dt
+
+ICref = heat1d.IC
 X = state[:, 2:end]
+U = Ubc[2:end]'
+
+# Different initial conditions and inputs
+# rng = MersenneTwister(1234)
+# for i in 1:9
+#     heat1d.IC = randn(rng) * cos.(2π * heat1d.xspan) + randn(rng) * sin.(2π * heat1d.xspan) * 0.01
+#     # heat1d.IC[2:end-1] += randn(heat1d.spatial_dim-2) * 0.1
+#     Ubc = ones(heat1d.time_dim) * (rand(rng) * 2 - 1)
+
+#     state = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
+#                             system_input=true, integrator_type=:BackwardEuler)
+#     X = hcat(X, state[:, 2:end])
+#     Xdot = hcat(Xdot, (state[:, 2:end] - state[:, 1:end-1]) / dt)
+#     U = hcat(U, Ubc[2:end]')
+# end
 
 rmax = 10
 tmp = svd(X)
 Vrmax = tmp.U[:, 1:rmax]
 Σrmax = tmp.S[1:rmax]
 
-#=============================#
-## Plot the data just in case
-#=============================#
-fig, ax, sf = CairoMakie.surface(heat1d.xspan, heat1d.tspan, X)
-CairoMakie.Colorbar(fig[1, 2], sf)
-display(fig)
-
 #====================================#
 ## One-Pass Streaming-OpInf function
 #====================================#
-"""
-Faster QR factorization that returns Q without processing the Householder vectors.
-
-Reference:
-https://github.com/JuliaLinearAlgebra/IncrementalSVD.jl/blob/da75cd435ed3f57bc56afab3d2faec7155a9b913/src/IncrementalSVD.jl#L207C1-L217C4
-"""
-function qrf!(P::AbstractArray{T}, R::AbstractArray{T}) where {T<:Number}
-    m, b = checksize(P)
-    m >= b || throw(DimensionMismatch("Works only for m > b"))
-    P, tau = LAPACK.geqrf!(P)
-    fill!(R, zero(T))
-    @inbounds for j = 1:b, i = 1:j
-        R[i,j] = P[i,j]
-    end
-    LAPACK.orgqr!(P, tau)
-    return R
-end
-
-"""
-Dispatch
-"""
-function qrf!(P::AbstractArray{<:Number})
-    m, b = checksize(P)
-    m >= b || throw(DimensionMismatch("Works only for m > b"))
-    P, tau = LAPACK.geqrf!(P)
-    LAPACK.orgqr!(P, tau)
-end
-
-"""
-    checksize(A::AbstractArray)
-
-Check the size of the input matrix and return the number of rows and columns.
-
-# Arguments
-- `A::AbstractArray`: input matrix
-
-# Returns
-- `m::Int`: number of rows
-- `n::Int`: number of columns
-"""
-function checksize(A::AbstractArray)
-    m, n = nothing, nothing
-    try
-        m, n = size(A)
-    catch e
-        if isa(e, BoundsError)
-            m, n = length(A), 1
-        else
-            rethrow(e)
-        end
-    end
-    return m, n
-end
-
 function reorthogonalize!(V::AbstractMatrix{T}, tol::Real) where {T<:Number}
     # Dimension
     r = size(V, 2)
@@ -141,168 +105,176 @@ function reorthogonalize!(V::AbstractMatrix{T}, tol::Real) where {T<:Number}
     end
 end
 
-function rls!(d::Array{T}, r::Array{T}, P::Array{T}, K::Array{T}, u::Array{T}, c::T, ξpre::Array{T}, O::Array{T}) where {T<:Number}
+function past_algorithm(X::AbstractMatrix, d::Int, β::Real;
+                        W_init=nothing, P_init=nothing)
+    n, T = size(X)
+
+    # If no initial W or P is given, initialize them
+    if W_init === nothing
+        W = 1.0I(n)[:, 1:d]  # identity initialization
+    else
+        W = copy(W_init)
+    end
+
+    if P_init === nothing
+        P = 1.0I(d)  # small diagonal initialization
+    else
+        P = copy(P_init)
+    end
+
+    for t in 1:T
+        x = X[:, t]            # current sample
+        y = W' * x             # y(t) = W^H(t-1)*x(t)  (here W' is Hermitian transpose)
+        h = P * y              # h(t) = P(t-1)*y(t)
+        denom = β + y' * h
+        g = h / denom          # g(t) = h(t)/(β + y^H(t)*h(t))
+
+        # P(t) = (1/β)[ P(t-1) - g(t)*h(t)^H ]
+        P .= (1/β) .* (P .- g * h')
+
+        # e(t) = x(t) - W(t-1)*y(t)
+        e = x .- W * y
+
+        # W(t) = W(t-1) + e(t)*g(t)^H
+        W .+= e * g'
+    end
+
+    return W, P
+end
+
+function rls!(d::Array{T}, r::Array{T}, P::Array{T}, O::Array{T}) where {T<:Number}
     d = reshape(d, 1, :)
     N = length(d)
     r = reshape(r, 1, :)
 
-    mul!(u, P, d[:], 1.0, 0.0)
-    # u .= P * d'
+    u = (P * d')[:]
     denom = 1 + dot(d, u)
     c = 1 / denom 
-    mul!(K, P, d[:], c, 0.0)
+    K = c * u
     BLAS.syr!('U', -1.0 / denom, u, P)
     @inbounds for i in 1:N, j in i+1:N
         P[j, i] = P[i, j]
     end
 
-    ξpre .= r
+    ξpre = r
     mul!(ξpre, d, O, -1.0, 1.0)
     mul!(O, K, ξpre, 1.0, 1.0)
-    return c
 end
 
-function OnePassStreamingOpInf(X, Xdot, rmax, ϵ, γ)
+# function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ, γ, β=1.0)
+#     n, num_of_snapshots = size(X)
+#     m = size(U, 1)
+#     dmax = rmax + m
 
-    # (0) setup
-    n, Ksize = size(X)
-    m = 0
+#     # Initialization for RLS
+#     O = zeros(dmax, rmax)
+#     P = Matrix(1.0I(dmax) / γ)
 
+#     # Initialization for PAST
+#     P_past = Matrix(1.0I(rmax)) / 1e-14
+#     V = Matrix(1.0I(n)[:, 1:rmax])
 
-    # (1) Initialization 
-    # Initial data
-    x1 = X[:,1]  # n x 1
-    xdot1 = Xdot[:,1]  # n x 1
-    # u1 = U[:,1]  # m x 1
-   
-    # POD basis
-    V = x1 / norm(x1)
+#     for i in 1:num_of_snapshots
+#         x = X[:,i] # n x 1
+#         xdot = Xdot[:,i] # n x 1
+#         u = U[:,i] # m x 1
 
-    # Eigenvalue 
-    Λ = dot(x1, x1)
+#         # --- Run the PAST algorithm to compute the subspace/POD basis ---
+#         y = V' * x             # y(t) = W^H(t-1)*x(t)  (here W' is Hermitian transpose)
+#         h = P_past * y         # h(t) = P(t-1)*y(t)
+#         denom = β + y' * h
+#         g = h / denom          # g(t) = h(t)/(β + y^H(t)*h(t))
+#         P_past .= (1/β) .* triu(P_past .- g * h')
+#         @inbounds for j in 1:rmax, k in j+1:rmax
+#             P_past[k, j] = P_past[j, k]
+#         end
+#         e = x .- V * y
+#         V .+= e * g'
 
-    # Initialize the reduced dimensions
-    r = 1      # state
-    d = r + m  # data (state + input)
+#         @views reorthogonalize!(V, ϵ)
+
+#         # --- Run the RLS algorithm to compute the operator ---
+#         xhat = V' * x
+#         rvec = V' * xdot
+#         dvec = vcat(xhat, u)
+#         rls!(dvec, rvec, P, O)
+#     end
+
+#     return O, V
+# end
+
+function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ, γ, μbar=1e-4)
+    n, num_of_snapshots = size(X)
+    m = size(U, 1)
     dmax = rmax + m
 
+    # Initialization for RLS
     O = zeros(dmax, rmax)
     P = Matrix(1.0I(dmax) / γ)
-    K = zeros(dmax,1)
-    u = zeros(dmax)
-    c = 0.0
-    ξpre = zeros(1,rmax)
 
-    reached_r = false
+    # Initialization for PAST
+    V = Matrix(1.0I(n)[:, 1:rmax])
 
-    proj_err = zeros(Ksize)
-    proj_err[1] = norm(X - V * (V' * X)) / norm(X)
-    compressed = []
+    for i in 1:num_of_snapshots
+        x = X[:,i] # n x 1
+        xdot = Xdot[:,i] # n x 1
+        u = U[:,i] # m x 1
 
-    # Streaming process
-    for i in 2:Ksize
-        # (2) Receive new data
-        xi = X[:,i] # n x 1
-        xdoti = Xdot[:,i] # n x 1
-        # ui = U[:,i] # m x 1
-
-        # (3) Compute the orthogonal component
-        w1 = V' * xi
-        xperp = xi - V * w1
-        w2 = V' * xperp
-        xperp = xperp - V * w2
-        w = w1 + w2
-        xperp_mag = norm(xperp)
-
-        if xperp_mag < ϵ
-            xperp_mag = 0.0
-        else
-            xperp /= xperp_mag
-        end
-
-        # (5) Construct the core matrix
-        C = zeros(r+1, r+1)
-        for j in 1:r
-            for k in 1:r
-                if j == k
-                    C[j,k] = Λ[j] + w[j] * w[k]
-                else
-                    C[j,k] = w[j] * w[k]
-                end
-            end
-            C[j,end] = w[j] * xperp_mag
-            C[end,j] = w[j] * xperp_mag
-        end
-        C[end,end] = xperp_mag^2
-
-        # (6) Take the SVD of the core matrix
-        Vc, Λc, _ = svd(C)
-
-        # (7) Update the POD basis and Eigenvalue matrix
-        if xperp_mag < ϵ  # No increment
-            V = V * Vc[1:r,1:r]
-            Λ = Λc[1:r]
-        else  # Increment
-            V = hcat(V, xperp) * Vc
-            Λ = Λc
-
-            # Update the reduced dimensions
-            r += 1
-            d += 1
-        end
-
-        # (9) Compress matrices
-        if r > rmax
-            V = V[:,1:rmax]
-            Λ = Λ[1:rmax]
-
-            reached_r = true
-
-            r = rmax
-            d = r + m
-        end
-
-        if norm(X - V * V' * X) / norm(X) < 1e-7 && reached_r
-            # (10) Project onto basis
-            xhat = V' * xi
-            rvec = V' * xdoti
-            
-            # (11) Form the data vector, d 
-            # dvec = vcat(xhat, ui)
-            dvec = xhat
-
-            # (12) Update the covariance and correlation matrices
-            c = @views rls!(dvec, rvec, P, K, u, c, ξpre, O)
-        end
-
-        # (13) Reorthogonalize the basis
+        # --- Run the FDPM algorithm to compute the subspace/POD basis ---
+        μ = μbar / norm(x)
+        r = V' * x 
+        T = V + μ * x * r'
+        e1 = zeros(rmax)
+        e1[1] = 1.0
+        a = r - norm(r) * e1
+        V = T - 2 * (T * a) * a' / dot(a, a)
+        foreach(normalize!, eachcol(V))
         @views reorthogonalize!(V, ϵ)
 
-        proj_err[i] = norm(X - V * (V' * X)) / norm(X)
+        # --- Run the RLS algorithm to compute the operator ---
+        xhat = V' * x
+        rvec = V' * xdot
+        dvec = vcat(xhat, u)
+        rls!(dvec, rvec, P, O)
     end
 
-    return V, Λ, O, proj_err, compressed
+    return O, V
 end
 
 #====================#
 ## Generate operators
 #====================#
-# Compute the values for the intrusive model
-op_heat = LnL.Operators(A=A)
+# Intrusive
+op_heat = LnL.Operators(A=A, B=B)
 op_heat_new = LnL.pod(op_heat, Vrmax, options.system)
 Aint = op_heat_new.A
+Bint = op_heat_new.B
 
-## Compute OpInf
-op_infer = LnL.opinf(X, Vrmax, options; Xdot=Xdot)
+## OpInf
+op_infer = LnL.opinf(X, Vrmax, options; U=U, Xdot=Xdot)
 Ainf = op_infer.A
+Binf = op_infer.B
 
-## Compute One-Pass Streaming-OpInf
-rextra = 0
-Vstream, Λ, Ostream, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, rmax+rextra, 1e-12, 1e-9)
-Vsream = Vstream[:,1:rmax]
-Λ = Λ[1:rmax]
-# Ostream = (Φ + 1e-12I) \ Ψ
-Astream = Ostream'
+## One-Pass Streaming-OpInf
+Ostream, Vstream = OnePassStreamingOpInf(X, Xdot, U, rmax, 1e-12, 1e-9)
+Astream = Ostream[1:rmax,1:rmax]'
+Bstream = Ostream[rmax+1:rmax+1,1:rmax]'
+
+# # Check RLS is correct
+# Xhat = Vrmax' * X
+# Xhatdot = Vrmax' * Xdot
+# dmax = rmax+1
+# Ostream = zeros(dmax, rmax)
+# P = Matrix(1.0I(dmax) / 1e-9) 
+# for i in axes(Xhat, 2)
+#     xhat = Xhat[:,i] # rmax x 1
+#     rvec = Xhatdot[:,i] # rmax x 1
+#     u = U[:,i] # m x 1
+#     dvec = vcat(xhat, u)
+#     rls!(dvec, rvec, P, Ostream)
+# end
+# Astream = Ostream[1:rmax,1:rmax]'
+# Bstream = Ostream[rmax+1:rmax+1,1:rmax]'
 
 #=========#
 ## Analyze
@@ -319,26 +291,27 @@ proj_err_stream = zeros(rmax)
 @showprogress for i = 1:rmax
     Vr = Vrmax[:,1:i]
     Vr_stream = Vstream[:,1:i]
+    # Vr_stream = Vrmax[:,1:i]
 
     # Integrate the intrusive model
     Xint = heat1d.integrate_model(
-        heat1d.tspan, Vr' * heat1d.IC,
-        linear_matrix=Aint[1:i, 1:i], 
-        system_input=false, integrator_type=:BackwardEuler
+        heat1d.tspan, Vr' * ICref, Uref,
+        linear_matrix=Aint[1:i, 1:i], control_matrix=Bint[1:i,:],
+        system_input=true, integrator_type=:BackwardEuler
     )
 
     # Integrate the inferred model
     Xinf = heat1d.integrate_model(
-        heat1d.tspan, Vr' * heat1d.IC,
-        linear_matrix=Ainf[1:i, 1:i],
-        system_input=false, integrator_type=:BackwardEuler
+        heat1d.tspan, Vr' * ICref, Uref,
+        linear_matrix=Ainf[1:i, 1:i], control_matrix=Binf[1:i,:],
+        system_input=true, integrator_type=:BackwardEuler
     )
 
     # Integrate the streaming model
     Xstream = heat1d.integrate_model(
-        heat1d.tspan, Vr_stream' * heat1d.IC,
-        linear_matrix=Astream[1:i, 1:i],
-        system_input=false, integrator_type=:BackwardEuler
+        heat1d.tspan, Vr_stream' * ICref, Uref,
+        linear_matrix=Astream[1:i, 1:i], control_matrix=Bstream[1:i,:],
+        system_input=true, integrator_type=:BackwardEuler
     )
 
     # Compute errors
@@ -364,19 +337,6 @@ end
 with_theme(theme_latexfonts()) do
     fig = Figure(size = (800, 600))
     ax = Axis(
-        fig[1, 1], xlabel = "Reduced dimension", ylabel = "Singular Values",
-        yscale=log10, xticks=1:rmax, titlesize=30, 
-        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-    )
-    scatterlines!(ax, 1:rmax, Σrmax, label="batch", linewidth=8, markersize=30)
-    scatterlines!(ax, 1:rmax, sqrt.(Λ), label="stream", linewidth=5, linestyle=:dash, markersize=20)
-    axislegend(ax, position = :lb, labelsize=30)
-    display(fig)
-end
-
-with_theme(theme_latexfonts()) do
-    fig = Figure(size = (800, 600))
-    ax = Axis(
         fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative projection error",
         yscale=log10, xticks=1:rmax, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
@@ -393,6 +353,7 @@ with_theme(theme_latexfonts()) do
         fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative state error",
         yscale=log10, xticks=1:rmax, titlesize=30,
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 1e-6, 1e+6),
     )
     scatterlines!(ax, 1:rmax, intru_state_err, label = "intrusive", linewidth=8, markersize=30)
     scatterlines!(ax, 1:rmax, opinf_state_err, label = "opinf", linewidth=5, markersize=20, linestyle=:dash)
@@ -400,16 +361,3 @@ with_theme(theme_latexfonts()) do
     axislegend(ax, position = :lb, labelsize=30)
     display(fig)
 end
-
-# with_theme(theme_latexfonts()) do 
-#     fig = Figure(size = (800, 600))
-#     ax = Axis(
-#         fig[1, 1], xlabel = "stream", ylabel = "relative rojection error",
-#         yscale=log10, titlesize=30, xlabelsize=30, ylabelsize=30,
-#         xticklabelsize=25, yticklabelsize=25,
-#     )
-#     lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=5, label="full")
-#     lines!(ax, minimum(compress_idx):size(X,2), stream_proj_err[minimum(compress_idx):end], linewidth=5, label="compressed")
-#     axislegend(ax, position = :rt, labelsize=30)
-#     display(fig) 
-# end

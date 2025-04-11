@@ -9,6 +9,7 @@ using LinearAlgebra
 using BlockDiagonals
 using CairoMakie
 using ProgressMeter
+using Printf
 import PolynomialModelReductionDataset: Heat1DModel
 import LiftAndLearn as LnL
 
@@ -170,8 +171,12 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ, no_full=fals
     compression = no_full ? true : false
     not_initial_compression = no_full ? true : false
 
+    # Some metrics
+    global_proj_err = zeros(K)
+    global_proj_err[1] = norm(X - V * (V' * X)) / norm(X)
     proj_err = zeros(K)
-    proj_err[1] = norm(X - V * (V' * X)) / norm(X)
+    proj_err[1] = norm(x1 - V * (V' * x1))
+    subspace_err = zeros(K-1)
     compressed = []
 
     # Streaming process
@@ -208,6 +213,8 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ, no_full=fals
         C[end,end] = xperp_mag^2
 
         Vc, Λc, _ = svd(C)
+
+        V_save = deepcopy(V)
 
         if xperp_mag < ϵ  # No increment
             V = V * Vc[1:r,1:r]
@@ -263,10 +270,16 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ, no_full=fals
         end
 
         @views reorthogonalize!(V, ϵ)
-        PE = norm(X - V * (V' * X)) / norm(X)
-        proj_err[i] = PE
 
-        if PE < basis_tol
+        # Store some metrics/observations
+        GPE = norm(X - V * (V' * X)) / norm(X)
+        PE = norm(xi - V * (V' * xi))
+        SAE = sum(abs, 1 .- svdvals(V' * V_save).^2)
+        proj_err[i] = PE
+        global_proj_err[i] = GPE
+        subspace_err[i-1] = SAE
+
+        if GPE < basis_tol
             compression = true
         end
 
@@ -317,7 +330,7 @@ function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ, no_full=fals
         end
     end
 
-    return V, Λ, Φ, Ψ, proj_err, compressed
+    return V, Λ, Φ, Ψ, global_proj_err, proj_err, subspace_err, compressed
 end
 
 # function OnePassStreamingOpInf(X, Xdot, U, rmax, basis_tol, ϵ, λ)
@@ -484,7 +497,8 @@ Binf = op_infer.B
 
 ## Compute One-Pass Streaming-OpInf
 rextra = 0
-Vstream, Λ, Φ, Ψ, stream_proj_err, compress_idx = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, 1e-5, 1e-12, 1.0)
+pe_threshold = 1e-9
+Vstream, Λ, Φ, Ψ, glob_stream_proj_err, stream_proj_err, subspace_err, compress_idx = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra, pe_threshold, 1e-12, 1.0)
 Vsream = Vstream[:,1:rmax]
 Λ = Λ[1:rmax]
 Λ = sqrt.(Λ)
@@ -565,6 +579,7 @@ with_theme(theme_latexfonts()) do
     scatterlines!(ax, 1:rmax, Σrmax, label="batch", linewidth=8, markersize=30)
     scatterlines!(ax, 1:rmax, Λ, label="stream", linewidth=5, linestyle=:dash, markersize=20)
     axislegend(ax, position = :lb, labelsize=30)
+    save("svdvals_pe-" * @sprintf("%.2E", pe_threshold) * ".png", fig)
     display(fig)
 end
 
@@ -576,6 +591,7 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     scatterlines!(ax, 1:rmax, abs.(Σrmax - Λ) ./ Σrmax, linewidth=8, markersize=30)
+    save("svdvals_err_pe-" * @sprintf("%.2E", pe_threshold) * ".png", fig)
     display(fig)
 end
 
@@ -589,6 +605,7 @@ with_theme(theme_latexfonts()) do
     scatterlines!(ax, 1:rmax, proj_err, label="batch", linewidth=8, markersize=30)
     scatterlines!(ax, 1:rmax, proj_err_stream, label="stream", linewidth=5, linestyle=:dash, markersize=20)
     axislegend(ax, position = :lb, labelsize=30)
+    save("proj_err_pe-" * @sprintf("%.2E", pe_threshold) * ".png", fig)
     display(fig)
 end
 
@@ -600,6 +617,7 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     scatterlines!(ax, 1:rmax, stream_op_err, linewidth=8, markersize=30)
+    save("op_err_pe-" * @sprintf("%.2E", pe_threshold) * ".png", fig)
     display(fig)
 end
 
@@ -615,18 +633,58 @@ with_theme(theme_latexfonts()) do
     scatterlines!(ax, 1:rmax, opinf_state_err, label = "opinf", linewidth=5, markersize=20, linestyle=:dash)
     scatterlines!(ax, 1:rmax, stream_state_err, label = "stream", linewidth=3, markersize=15, linestyle=:dashdot)
     axislegend(ax, position = :lb, labelsize=30)
+    save("recon_err_pe-" * @sprintf("%.2E", pe_threshold) * ".png", fig)
     display(fig)
 end
 
 with_theme(theme_latexfonts()) do 
     fig = Figure(size = (800, 600))
     ax = Axis(
-        fig[1, 1], xlabel = "stream", ylabel = "relative rojection error",
+        fig[1, 1], xlabel = "stream", ylabel = "relative projection error",
         yscale=log10, titlesize=30, xlabelsize=30, ylabelsize=30,
         xticklabelsize=25, yticklabelsize=25,
     )
-    lines!(ax, 1:minimum(compress_idx)-1, stream_proj_err[1:minimum(compress_idx)-1], linewidth=8, label="full")
-    lines!(ax, minimum(compress_idx):length(stream_proj_err), stream_proj_err[minimum(compress_idx):end], linewidth=8, label="compressed")
+    L = length(glob_stream_proj_err)
+    indices1 = 1:minimum(compress_idx)-1
+    indices2 = minimum(compress_idx):L
+    scatterlines!(ax, indices1, glob_stream_proj_err[indices1], linewidth=8, label="full", markersize=20)
+    scatterlines!(ax, indices2, glob_stream_proj_err[indices2], linewidth=8, label="compressed", markersize=20)
     axislegend(ax, position = :rt, labelsize=30)
+    save("proj_errs_compress_pe-" * @sprintf("%.2E", pe_threshold) * ".png", fig)
     display(fig) 
+end
+
+with_theme(theme_latexfonts()) do
+    fig = Figure(size = (800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel = "streams", ylabel = "absolute projection error",
+        yscale=log10, titlesize=30,
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    L = length(stream_proj_err)
+    indices1 = 1:minimum(compress_idx)-1
+    indices2 = minimum(compress_idx):L
+    scatterlines!(ax, indices1, stream_proj_err[indices1], linewidth=8, label="full", markersize=20)
+    scatterlines!(ax, indices2, stream_proj_err[indices2], linewidth=8, label="compressed", markersize=20)
+    axislegend(ax, position = :rb, labelsize=30)
+    save("cum_proj_errs_compress_pe-" * @sprintf("%.2E", pe_threshold) * ".png", fig)
+    display(fig)
+end
+
+with_theme(theme_latexfonts()) do
+    fig = Figure(size = (800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel = "streams", ylabel = "subspace angle errors",
+        yscale=log10, titlesize=30,
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    popfirst!(subspace_err)
+    L = length(subspace_err)
+    indices1 = 3:minimum(compress_idx)-1
+    indices2 = minimum(compress_idx):L+2
+    scatterlines!(ax, indices1, subspace_err[indices1 .- 2], linewidth=8, label="full", markersize=20)
+    scatterlines!(ax, indices2, subspace_err[indices2 .- 2], linewidth=8, label="compressed", markersize=20)
+    axislegend(ax, position = :rt, labelsize=30)
+    save("subspace_errs_compress_pe-" * @sprintf("%.2E", pe_threshold) * ".png", fig)
+    display(fig)
 end

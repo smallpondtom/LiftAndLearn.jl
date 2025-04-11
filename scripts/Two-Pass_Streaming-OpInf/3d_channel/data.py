@@ -69,7 +69,7 @@ def read_single_snapshot(f, fields=fields, dims=ds.domain_dimensions, level=ds.m
         W = np.nan
         T = np.nan
     
-    return(U,V,W,T)
+    return (U,V,W,T)
 
 #%% Read all the data, load into numpy arrays
 failure_count = 0
@@ -79,10 +79,10 @@ for i, f in enumerate(files):
     
     if np.isnan(T):
         failure_count += 1
-    
-    Us[:, :, :, i] = U
-    Vs[:, :, :, i] = V
-    Ws[:, :, :, i] = W
+    else:
+        Us[:, :, :, i] = U
+        Vs[:, :, :, i] = V
+        Ws[:, :, :, i] = W
 
 #%%
 if __name__ == "__main__":

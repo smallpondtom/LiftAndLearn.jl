@@ -60,9 +60,8 @@ Xdot = finite_difference_derivative(X, tspan)
 # Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        state=[1,2],
+        state=[1,2,3],
         control=1,
-        coupled_input=1
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
@@ -81,8 +80,8 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
 #=================#
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
-Vrmax = basis_data["batch"].Vr[:,1:100]  # choose the POD basis
-iVrmax = basis_data["baker"].iVr[:,1:100]  # choose Baker's iSVD basis
+Vrmax = basis_data["batch"].Vr[:,1:50]  # choose the POD basis
+iVrmax = basis_data["baker"].iVr[:,1:50]  # choose Baker's iSVD basis
 rmax = size(iVrmax,2)
 
 #=======================#
@@ -132,7 +131,7 @@ op_inf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
 
 ## Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=0.0, A2=1000.0, B=0.0, N=1000.0)
+options.λ = LnL.TikhonovParameter(A=1e6, A2=1e12, A3=1e20, B=1e6)
 op_trinf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
 
 # ops["tropinf"] = op_trinf
