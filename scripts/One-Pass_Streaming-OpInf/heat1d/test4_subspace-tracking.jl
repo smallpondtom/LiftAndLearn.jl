@@ -203,43 +203,43 @@ end
 #     return O, V
 # end
 
-function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ, γ, μbar=1e-4)
-    n, num_of_snapshots = size(X)
-    m = size(U, 1)
-    dmax = rmax + m
+# function OnePassStreamingOpInf(X, Xdot, U, rmax, ϵ, γ, μbar=1e-4)
+#     n, num_of_snapshots = size(X)
+#     m = size(U, 1)
+#     dmax = rmax + m
 
-    # Initialization for RLS
-    O = zeros(dmax, rmax)
-    P = Matrix(1.0I(dmax) / γ)
+#     # Initialization for RLS
+#     O = zeros(dmax, rmax)
+#     P = Matrix(1.0I(dmax) / γ)
 
-    # Initialization for PAST
-    V = Matrix(1.0I(n)[:, 1:rmax])
+#     # Initialization for PAST
+#     V = Matrix(1.0I(n)[:, 1:rmax])
 
-    for i in 1:num_of_snapshots
-        x = X[:,i] # n x 1
-        xdot = Xdot[:,i] # n x 1
-        u = U[:,i] # m x 1
+#     for i in 1:num_of_snapshots
+#         x = X[:,i] # n x 1
+#         xdot = Xdot[:,i] # n x 1
+#         u = U[:,i] # m x 1
 
-        # --- Run the FDPM algorithm to compute the subspace/POD basis ---
-        μ = μbar / norm(x)
-        r = V' * x 
-        T = V + μ * x * r'
-        e1 = zeros(rmax)
-        e1[1] = 1.0
-        a = r - norm(r) * e1
-        V = T - 2 * (T * a) * a' / dot(a, a)
-        foreach(normalize!, eachcol(V))
-        @views reorthogonalize!(V, ϵ)
+#         # --- Run the FDPM algorithm to compute the subspace/POD basis ---
+#         μ = μbar / norm(x)
+#         r = V' * x 
+#         T = V + μ * x * r'
+#         e1 = zeros(rmax)
+#         e1[1] = 1.0
+#         a = r - norm(r) * e1
+#         V = T - 2 * (T * a) * a' / dot(a, a)
+#         foreach(normalize!, eachcol(V))
+#         @views reorthogonalize!(V, ϵ)
 
-        # --- Run the RLS algorithm to compute the operator ---
-        xhat = V' * x
-        rvec = V' * xdot
-        dvec = vcat(xhat, u)
-        rls!(dvec, rvec, P, O)
-    end
+#         # --- Run the RLS algorithm to compute the operator ---
+#         xhat = V' * x
+#         rvec = V' * xdot
+#         dvec = vcat(xhat, u)
+#         rls!(dvec, rvec, P, O)
+#     end
 
-    return O, V
-end
+#     return O, V
+# end
 
 #====================#
 ## Generate operators

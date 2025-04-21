@@ -29,7 +29,7 @@ println("Relative error: ", err)
 
 
 ## A^{-1} * B
-m, n = 8, 10
+m, n = 12, 10
 A = rand(m,m)
 B = rand(m,n)
 C = hcat(A,B)
@@ -62,7 +62,7 @@ err = norm(AinvB - AinvB_approx) / norm(AinvB)
 println("Relative error: ", err)
 
 ## A^{-1} * B  (The better one)
-m, n = 18, 19
+m, n = 20, 19
 A = rand(m,m)
 B = rand(m,n)
 C = vcat(A',B')
