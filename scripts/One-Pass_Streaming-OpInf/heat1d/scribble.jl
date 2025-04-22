@@ -32,11 +32,35 @@ X3 = U3 * S3 * V3'
 X4 = L2 * (U ⊗ U)' * D2 * X2
 
 ##
+D2' * (U ⊗ U)' * L2' * D2' * (U ⊗ U) * L2'
+
+##
+L2 * (U ⊗ U) * D2 * L2 * (U ⊗ U)' * D2
+
+##
 Xhat = U' * X
 X5 = Xhat ⦼ Xhat
 
 ##
+X3 = X ⊙ X ⊙ X
 
+##
+U3 = U ⊗ U ⊗ U
+S3 = S ⊗ S ⊗ S
+S3 = Diagonal(S3[:])
+V3 = V ⊖ V ⊖ V
+U3 * S3 * V3'
+
+##
+X3 = ⦼(X, 3)
+
+##
+L3 = elimat(n, 3)
+D3 = dupmat(n, 3)
+U3 = Matrix(U ⊗ U ⊗ U)
+S3 = Diagonal(⊘(S, 3))
+V3 = ⧁(V, 3)
+(L3 * U3 * D3) * S3 * V3'
 
 ##
 

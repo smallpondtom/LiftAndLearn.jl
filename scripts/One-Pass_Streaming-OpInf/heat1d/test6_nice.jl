@@ -538,7 +538,7 @@ Binf = op_infer.B
 
 ## Compute One-Pass Streaming-OpInf
 rextra = 0
-Ostream, Vstream, Λ, W, Vd, Λd, Wd, Φ, Ψ = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra,  0.0)
+Ostream, Vstream, Λ, W, Vd, Λd, Wd = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra,  0.0)
 Astream = Ostream[1:rmax,1:rmax]'
 Bstream = Ostream[rmax+rextra+1:rmax+rextra+1,1:rmax]'
 
