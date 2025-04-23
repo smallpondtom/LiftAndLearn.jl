@@ -19,7 +19,6 @@ function tall2fat(A::AbstractArray)
     end
 end
 
-
 """
     fat2tall(A::AbstractArray)
 

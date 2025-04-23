@@ -8,6 +8,7 @@ One-Pass Streaming-OpInf prototype for the Viscous Burgers Equation
 using LinearAlgebra
 using BlockDiagonals
 using CairoMakie
+using ProgressMeter
 using Random
 import PolynomialModelReductionDataset: BurgersModel
 import LiftAndLearn as LnL
@@ -81,7 +82,7 @@ U = reshape(Urand[2:end,:], (burgers.time_dim - 1) * num_inputs, 1)
 # Down sample the training data
 X = X[:, 1:options.data.DS:end]
 Xdot = Xdot[:, 1:options.data.DS:end]
-U = U[1:options.data.DS:end]
+U = reshape(U[1:options.data.DS:end], 1, :)
 
 # Compute the SVD
 rmax = 15
@@ -322,15 +323,18 @@ Finf = op_infer.A2u
 # Bstream = Ostream[rmax+rmax2+1,:]
 
 stream = LnL.OnePassStreamingOpInf(
-    options=options, n=size(X,1), m=size(U,1), rank=rmax
+    X[:,1], Xdot[:,1];
+    options=options, n=size(X,1), m=size(U,1), rank=rmax, 
 )
-for (xi, xdoti) in zip(X, Xdot)
-    update!(stream, xi, xdoti)
+for (xi, xdoti) in zip(eachcol(X[:,2:end]), eachcol(Xdot[:,2:end]))
+    LnL.stream!(stream, xi, xdoti)
 end
-op_stream = compute_operators(stream, U)
+op_stream = LnL.compute_onepass_operators(stream, U)
 Astream = op_stream.A
-Bstream = op_stream.B
 Fstream = op_stream.A2u
+Bstream = op_stream.B
+Vstream = stream.V
+Λ = stream.Σ
 
 #=========#
 ## Analyze

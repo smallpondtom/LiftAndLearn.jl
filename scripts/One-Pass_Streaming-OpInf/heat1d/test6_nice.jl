@@ -522,6 +522,177 @@ end
 #     return Xi
 # end
 
+# mutable struct OnePassStreamingOpInf{T<:AbstractFloat}
+#     # streaming SVD state
+#     V::Matrix{T}          # n × r_s
+#     Σ::Vector{T}          # r_s
+#     W::Matrix{T}          # r_s × r_s
+
+#     P::Matrix{T}          # n × r_d
+#     S::Vector{T}          # r_d
+#     Q::Matrix{T}          # r_d × r_d
+
+#     # pre-allocated scratch buffers (size = rmax)
+#     q_s::Vector{T}        # length rmax
+#     q2_s::Vector{T}       # length rmax
+#     xperp_s::Vector{T}    # length n
+#     C_s::Matrix{T}        # (rmax+1) × (rmax+1)
+
+#     q_d::Vector{T}        # length rmax
+#     q2_d::Vector{T}       # length rmax
+#     xperp_d::Vector{T}    # length n
+#     C_d::Matrix{T}        # (rmax+1) × (rmax+1)
+
+#     # dimensions
+#     state_dim::Int
+#     input_dim::Int
+#     r_s::Int
+#     r_d::Int
+#     rmax::Int
+
+#     options::LnL.LSOpInfOption
+# end
+
+# function OnePassStreamingOpInf(
+#     x_init::AbstractVector{T},
+#     xdot_init::AbstractVector{T};
+#     options::LnL.LSOpInfOption,
+#     n::Int,
+#     m::Int = 0,
+#     rank::Int = 1
+# ) where {T<:AbstractFloat}
+
+#     # init first SVD slice
+#     V = reshape(x_init / norm(x_init), :, 1)
+#     Σ = [norm(x_init)]
+#     W = reshape([T(1)], 1, 1)
+
+#     P = reshape(xdot_init / norm(xdot_init), :, 1)
+#     S = [norm(xdot_init)]
+#     Q = reshape([T(1)], 1, 1)
+
+#     # allocate scratch buffers once (max size = rank)
+#     q_s     = Vector{T}(undef, rank)
+#     q2_s    = Vector{T}(undef, rank)
+#     xperp_s = similar(x_init)
+#     C_s     = zeros(T, rank+1, rank+1)
+
+#     q_d     = Vector{T}(undef, rank)
+#     q2_d    = Vector{T}(undef, rank)
+#     xperp_d = similar(xdot_init)
+#     C_d     = zeros(T, rank+1, rank+1)
+
+#     OnePassStreamingOpInf(
+#       V, Σ, W,
+#       P, S, Q,
+#       q_s, q2_s, xperp_s, C_s,
+#       q_d, q2_d, xperp_d, C_d,
+#       n, m, 1, 1, rank,
+#       options
+#     )
+# end
+
+# function stream!(obj::OnePassStreamingOpInf{T}, x::AbstractVector{T}, 
+#     xdot::AbstractVector{T}) where {T<:AbstractFloat}
+
+#     r1 = obj.r_s
+#     r2 = obj.r_d
+
+#     #
+#     # —— 1) Snapshot update ———
+#     #
+#     # q_s[1:r1] = V[:,1:r1]' * x
+#     BLAS.gemv!('T', one(T), obj.V[:,1:r1], x, zero(T), view(obj.q_s,1:r1))
+#     # xperp_s = x - V[:,1:r1] * q_s[1:r1]
+#     copy!(obj.xperp_s, x)
+#     BLAS.gemv!('N', -one(T), obj.V[:,1:r1], view(obj.q_s,1:r1), one(T), obj.xperp_s)
+#     # q2_s = V[:,1:r1]' * xperp_s
+#     BLAS.gemv!('T', one(T), obj.V[:,1:r1], obj.xperp_s, zero(T), view(obj.q2_s,1:r1))
+#     # q_s .+= q2_s
+#     @inbounds for i in 1:r1
+#         obj.q_s[i] += obj.q2_s[i]
+#     end
+#     # p = ||xperp_s||
+#     p = BLAS.nrm2(obj.xperp_s)
+#     # Orthogonalize with in-place QR
+#     p_vec = [p]
+#     xmat = reshape(obj.xperp_s, :, 1)
+#     qrf!(xmat, p_vec)
+#     p = p_vec[1]
+#     obj.xperp_s .= xmat[:,1]
+
+#     # build the small (r1+1)x(r1+1) C_s
+#     cs = obj.C_s
+#     fill!(cs, zero(T))            # clear old data
+#     for j in 1:r1
+#         cs[j,j] = obj.Σ[j]
+#         cs[j, r1+1] = obj.q_s[j]
+#     end
+#     cs[r1+1, r1+1] = p
+
+#     # compute SVD(C_s) via LAPACK (allocates only once inside svd!)
+#     Uc, Sc, Vc = svd(cs[1:r1+1,1:r1+1]; full=false)
+
+#     # update V, Σ, W in-place
+#     obj.V = hcat(obj.V[:,1:r1], obj.xperp_s) * Uc
+#     obj.Σ = Sc
+#     obj.W = [obj.W zeros(T, size(obj.W,1), 1);
+#              zeros(T, 1, r1) one(T)] * Vc
+#     obj.r_s += 1
+
+#     #
+#     # —— 2) Derivative update ———
+#     #
+#     BLAS.gemv!('T', one(T), obj.P[:,1:r2], xdot, zero(T), view(obj.q_d,1:r2))
+#     copy!(obj.xperp_d, xdot)
+#     BLAS.gemv!('N', -one(T), obj.P[:,1:r2], view(obj.q_d,1:r2), one(T), obj.xperp_d)
+#     BLAS.gemv!('T', one(T), obj.P[:,1:r2], obj.xperp_d, zero(T), view(obj.q2_d,1:r2))
+#     @inbounds for i in 1:r2
+#         obj.q_d[i] += obj.q2_d[i]
+#     end
+#     p = BLAS.nrm2(obj.xperp_d)
+#     # Orthogonalize with in-place QR
+#     p_vec = [p]
+#     xmat = reshape(obj.xperp_d, :, 1)
+#     qrf!(xmat, p_vec)
+#     p = p_vec[1]
+#     obj.xperp_d .= xmat[:,1]
+
+#     cd = obj.C_d
+#     fill!(cd, zero(T))
+#     for j in 1:r2
+#         cd[j,j] = obj.S[j]
+#         cd[j, r2+1] = obj.q_d[j]
+#     end
+#     cd[r2+1, r2+1] = p
+
+#     Pd, Sd, Qd = svd(cd[1:r2+1, 1:r2+1]; full=false)
+
+#     obj.P = hcat(obj.P[:,1:r2], obj.xperp_d) * Pd
+#     obj.S = Sd
+#     obj.Q = [obj.Q zeros(T, size(obj.Q,1), 1);
+#              zeros(T, 1, r2) one(T)] * Qd
+#     obj.r_d += 1
+
+#     #
+#     # —— 3) Truncate to rmax if needed ———
+#     #
+#     if obj.r_s > obj.rmax
+#         obj.V = obj.V[:, 1:obj.rmax]
+#         obj.Σ = obj.Σ[1:obj.rmax]
+#         obj.W = obj.W[:, 1:obj.rmax]
+#         obj.r_s = obj.rmax
+#     end
+#     if obj.r_d > obj.rmax
+#         obj.P = obj.P[:, 1:obj.rmax]
+#         obj.S = obj.S[1:obj.rmax]
+#         obj.Q = obj.Q[:, 1:obj.rmax]
+#         obj.r_d = obj.rmax
+#     end
+
+#     return nothing
+# end
+
 #====================#
 ## Generate operators
 #====================#

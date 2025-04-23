@@ -10,6 +10,7 @@ using BlockDiagonals
 using Kronecker
 using Parameters
 using ProgressMeter: Progress, next!
+using PROPACK: tsvd
 using SciMLOperators: FunctionOperator
 using SparseArrays
 using JuMP
@@ -60,7 +61,6 @@ include("EP-OpInf/epopinf.jl")
 # Streaming-OpInf
 include("Streaming/streamify.jl")
 include("Streaming/twopass.jl")
-include("Streaming/isvd/isvd.jl")
 include("Streaming/onepass.jl")
 
 end # module LiftAndLearn

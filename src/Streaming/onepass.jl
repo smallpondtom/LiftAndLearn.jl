@@ -16,6 +16,13 @@ mutable struct OnePassStreamingOpInf{T<:Number}
     r_d::Int
     rmax::Int
 
+    # Cache (for efficient implementation)
+    Cs::SparseMatrixCSC{T}  # (rmax+1) x (rmax+1)
+    Cd::SparseMatrixCSC{T}  # (rmax+1) x (rmax+1)
+    q1cache::Vector{T}      # (rmax+1) x 1
+    q2cache::Vector{T}      # (rmax+1) x 1
+    xperp_cache::Vector{T}  # n x 1
+
     # Options
     options::LSOpInfOption
 end
@@ -25,25 +32,8 @@ function OnePassStreamingOpInf(
     xdot_init::AbstractVector{T};       # Initial derivative data
     options::LSOpInfOption,             # Standard (Least-Squares) Operator Inference options
     n::Int, m::Int=0,                   # state (n) and input (m) dimensions
-    # isvd_algo::Symbol=:baker,           # algorithm type
-    # reorth_algo::Symbol=:gramschmidt,   # reorthogonalization algorithm
     rank::Int=1                         # maximum rank for the iSVDs
     ) where {T<:Number}
-
-    # Initialize the iSVDs 
-    # isvd_algo = (Symbol ∘ lowercase ∘ string)(isvd_algo) # Ensure the algorithm is lowercase
-    # reorth_algo = (Symbol ∘ lowercase ∘ string)(reorth_algo) # Ensure lowercase
-    # if isvd_algo == :baker
-    #     # Initialize the Baker algorithm for state and derivative data
-    #     state_isvd = initialize_baker(x_init, max_rank=rank)
-    #     deriv_isvd = initialize_baker(xdot_init, max_rank=rank)
-    # elseif isvd_algo == :brand
-    #     # Initialize the Brand algorithm for state and derivative data
-    #     state_isvd = initialize_brand(x_init, max_rank=rank, reorth_method=reorth_algo)
-    #     deriv_isvd = initialize_brand(xdot_init, max_rank=rank, reorth_method=reorth_algo)
-    # else
-    #     error("Invalid algorithm specified. Use :baker or :brand.")
-    # end
 
     V = reshape(x_init / norm(x_init), :, 1)
     Σ = [norm(x_init)]
@@ -52,77 +42,117 @@ function OnePassStreamingOpInf(
     S = [norm(xdot_init)]
     Q = reshape([T(1)], 1, 1)
 
+    # Cache variables
+    Cs = spzeros(T, rank+1, rank+1)
+    Cd = spzeros(T, rank+1, rank+1)
+    q1cache = zeros(T, rank+1)
+    q2cache = zeros(T, rank+1)
+    xperp_cache = similar(x_init)
+
     OnePassStreamingOpInf(
         V, Σ, W, P, S, Q,
-        n, m, 1, 1, rank, options
+        n, m, 1, 1, rank, 
+        Cs, Cd, q1cache, q2cache, xperp_cache,
+        options
     )
 end
 
 function stream!(obj::OnePassStreamingOpInf, x::AbstractVector{T}, 
     xdot::AbstractVector{T}) where {T<:Real}
 
-    # # Increment the state and derivative iSVDs with the new data
-    # increment!(obj.state_isvd, x)
-    # increment!(obj.deriv_isvd, xdot)
-
-    # # Update the reduced dimension
-    # obj.reduced_dim = size(obj.state_isvd.V, 2)
-
-    # dimensions
+    # Reduced dimensions
     r1 = obj.r_s
     r2 = obj.r_d
     rmax = copy(obj.rmax)
 
+    ##
+    # --- (1) Snapshot matrix
+    ##
+    # Double orthogonalization of the new data
+    """ naive version
     q1 = obj.V' * x
     xperp = x - obj.V * q1
     q2 = obj.V' * xperp
     xperp = xperp - obj.V * q2
     q = q1 + q2
     p = norm(xperp)
+    """
+    # Compute C = V' * x
+    @views q = obj.q1cache[1:r1]
+    mul!(q, obj.V', x)
+    # Compute x_perp = x - V*q1
+    xperp = obj.xperp_cache
+    copy!(xperp, x)
+    BLAS.gemv!('N', -one(T), obj.V, q, one(T), xperp)
+    # Reorthogonalization
+    @views q2 = obj.q2cache[1:r1]
+    mul!(q2, obj.V', xperp)
+    BLAS.gemv!('N', -one(T), obj.V, q2, one(T), xperp)
+    axpy!(one(T), q2, q) # q = q1 + q2
 
-    p = [p]
+    # QR factorization of the orthogonalized data
+    p = [0.0]
     xperp = reshape(xperp, :, 1)
     qrf!(xperp, p)
-    p = p[1]
 
-    C = zeros(r1+1, r1+1)
+    # Build the broken arrowhead (sparse) matrix using cache
+    (dropzeros! ∘ fill!)(obj.Cs, zero(T))  # reset the cache
     for j in 1:r1
-        C[j,j] = obj.Σ[j]
-        C[j,end] = q[j]
+        obj.Cs[j,j] = obj.Σ[j]
+        obj.Cs[j,r1+1] = q[j]
     end
-    C[end,end] = p
+    obj.Cs[r1+1,r1+1] = p[1]
 
-    Vc, Σc, Wc = svd(C)
+    # Use PROPACK svd solver for SparseMatrixCSC type
+    Vc, Σc, Wc, _, _, _ = tsvd(obj.Cs[1:r1+1, 1:r1+1], k=r1+1)
+
+    # Update the iSVD components
     obj.V = hcat(obj.V, xperp) * Vc
     obj.Σ = Σc
     obj.W = [obj.W zeros(size(obj.W,1), 1); zeros(1, r1) 1.0] * Wc
-    obj.r_s += 1
+    obj.r_s += 1  # increment the rank
 
+    ##
+    # --- (2) Derivative matrix
+    ##
+    """
     q1 = obj.P' * xdot
     xdotperp = xdot - obj.P * q1
     q2 = obj.P' * xdotperp
     xdotperp = xdotperp - obj.P * q2
     q = q1 + q2
     p = norm(xdotperp)
+    """
+    @views q = obj.q1cache[1:r2]
+    mul!(q, obj.P', xdot)
+    xdotperp = obj.xperp_cache
+    copy!(xdotperp, xdot)
+    BLAS.gemv!('N', -one(T), obj.P, q, one(T), xdotperp)
+    @views q2 = obj.q2cache[1:r2]
+    mul!(q2, obj.P', xdotperp)
+    BLAS.gemv!('N', -one(T), obj.P, q2, one(T), xdotperp)
+    axpy!(one(T), q2, q)
 
-    p = [p]
+    p = [0.0]
     xdotperp = reshape(xdotperp, :, 1)
     qrf!(xdotperp, p)
-    p = p[1]
 
-    C = zeros(r2+1, r2+1)
+    (dropzeros! ∘ fill!)(obj.Cd, zero(T))
     for j in 1:r2
-        C[j,j] = obj.S[j]
-        C[j,end] = q[j]
+        obj.Cd[j,j] = obj.S[j]
+        obj.Cd[j,r2+1] = q[j]
     end
-    C[end,end] = p
+    obj.Cd[r2+1,r2+1] = p[1]
 
-    Pc, Sc, Qc = svd(C)
+    Pc, Sc, Qc, _, _, _ = tsvd(obj.Cd[1:r2+1, 1:r2+1], k=r2+1)
     obj.P = hcat(obj.P, xdotperp) * Pc
     obj.S = Sc
     obj.Q = [obj.Q zeros(size(obj.Q,1), 1); zeros(1, r2) 1.0] * Qc
     obj.r_d += 1
 
+    ##
+    # --- (3) Truncate the rank 
+    ##
     if obj.r_s > rmax
         obj.V = obj.V[:,1:rmax]
         obj.Σ = obj.Σ[1:rmax]
@@ -186,6 +216,7 @@ function compute_onepass_operators(obj::OnePassStreamingOpInf,
     end
 
     # NOTE: Only works for linear inputs (for now)
+    U = fat2tall(U)
     if !iszero(obj.options.system.control)
         D[:, tmp+1:tmp+m] = U'
         tmp += m
@@ -231,20 +262,6 @@ function compute_onepass_operators(obj::OnePassStreamingOpInf,
 
     # Unpack the operators
     unpack_operators!(operators, O, dims, operator_symbols)
-
-    ## DELETE THIS AFTER DEBUGGING
-    # D = [W * Σ_diag    U']
-    # R = Xdot_t * V
-
-    # O = D \ R
-
-    # rmax = obj.reduced_dim
-
-    # Astream = O[1:rmax,1:rmax]'
-    # Bstream = O[rmax+1:rmax+1,1:rmax]'
-
-    # operators = Operators(A=Astream, B=Bstream)
-    ##
 
     return operators
 end
