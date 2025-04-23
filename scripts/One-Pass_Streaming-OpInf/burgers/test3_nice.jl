@@ -8,7 +8,6 @@ One-Pass Streaming-OpInf prototype for the Viscous Burgers Equation
 using LinearAlgebra
 using BlockDiagonals
 using CairoMakie
-using ProgressMeter
 using Random
 import PolynomialModelReductionDataset: BurgersModel
 import LiftAndLearn as LnL
@@ -181,113 +180,113 @@ function reorthogonalize!(V::AbstractMatrix{T}, tol::Real) where {T<:Number}
 end
 
 
-function OnePassStreamingOpInf(X, Xdot, U, rmax, rdmax, λ)
-    n, K = size(X)
-    m = size(U,1)
+# function OnePassStreamingOpInf(X, Xdot, U, rmax, rdmax, λ)
+#     n, K = size(X)
+#     m = size(U,1)
 
-    x1 = X[:,1] 
-    xdot1 = Xdot[:,1] 
+#     x1 = X[:,1] 
+#     xdot1 = Xdot[:,1] 
    
-    V = x1 / norm(x1)
-    Σ = norm(x1)
-    W = 1.0
-    r1 = 1  
+#     V = x1 / norm(x1)
+#     Σ = norm(x1)
+#     W = 1.0
+#     r1 = 1  
 
-    Vd = xdot1 / norm(xdot1)
-    Σd = norm(xdot1)
-    Wd = 1.0
-    r2 = 1
+#     Vd = xdot1 / norm(xdot1)
+#     Σd = norm(xdot1)
+#     Wd = 1.0
+#     r2 = 1
 
-    for i in 2:K 
-        xi = X[:,i]
-        xdoti = Xdot[:,i]
+#     for i in 2:K 
+#         xi = X[:,i]
+#         xdoti = Xdot[:,i]
 
-        q1 = V' * xi
-        xperp = xi - V * q1
-        q2 = V' * xperp
-        xperp = xperp - V * q2
-        q = q1 + q2
-        p = norm(xperp)
+#         q1 = V' * xi
+#         xperp = xi - V * q1
+#         q2 = V' * xperp
+#         xperp = xperp - V * q2
+#         q = q1 + q2
+#         p = norm(xperp)
 
-        p = [p]
-        xperp = reshape(xperp, :, 1)
-        qrf!(xperp, p)
-        p = p[1]
+#         p = [p]
+#         xperp = reshape(xperp, :, 1)
+#         qrf!(xperp, p)
+#         p = p[1]
 
-        C = zeros(r1+1, r1+1)
-        for j in 1:r1
-            C[j,j] = Σ[j]
-            C[j,end] = q[j]
-        end
-        C[end,end] = p
+#         C = zeros(r1+1, r1+1)
+#         for j in 1:r1
+#             C[j,j] = Σ[j]
+#             C[j,end] = q[j]
+#         end
+#         C[end,end] = p
 
-        Vc, Σc, Wc = svd(C)
-        V = hcat(V, xperp) * Vc
-        Σ = Σc
-        W = [W zeros(size(W,1), 1); zeros(1, r1) 1.0] * Wc
-        r1 += 1
+#         Vc, Σc, Wc = svd(C)
+#         V = hcat(V, xperp) * Vc
+#         Σ = Σc
+#         W = [W zeros(size(W,1), 1); zeros(1, r1) 1.0] * Wc
+#         r1 += 1
 
-        q1 = Vd' * xdoti
-        xdotperp = xdoti - Vd * q1
-        q2 = Vd' * xdotperp
-        xdotperp = xdotperp - Vd * q2
-        q = q1 + q2
-        p = norm(xdotperp)
+#         q1 = Vd' * xdoti
+#         xdotperp = xdoti - Vd * q1
+#         q2 = Vd' * xdotperp
+#         xdotperp = xdotperp - Vd * q2
+#         q = q1 + q2
+#         p = norm(xdotperp)
 
-        p = [p]
-        xdotperp = reshape(xdotperp, :, 1)
-        qrf!(xdotperp, p)
-        p = p[1]
+#         p = [p]
+#         xdotperp = reshape(xdotperp, :, 1)
+#         qrf!(xdotperp, p)
+#         p = p[1]
 
-        C = zeros(r2+1, r2+1)
-        for j in 1:r2
-            C[j,j] = Σd[j]
-            C[j,end] = q[j]
-        end
-        C[end,end] = p
+#         C = zeros(r2+1, r2+1)
+#         for j in 1:r2
+#             C[j,j] = Σd[j]
+#             C[j,end] = q[j]
+#         end
+#         C[end,end] = p
 
-        Vcd, Σcd, Wcd = svd(C)
-        Vd = hcat(Vd, xdotperp) * Vcd
-        Σd = Σcd
-        Wd = [Wd zeros(size(Wd,1), 1); zeros(1, r2) 1.0] * Wcd
-        r2 += 1
+#         Vcd, Σcd, Wcd = svd(C)
+#         Vd = hcat(Vd, xdotperp) * Vcd
+#         Σd = Σcd
+#         Wd = [Wd zeros(size(Wd,1), 1); zeros(1, r2) 1.0] * Wcd
+#         r2 += 1
 
-        if r1 > rmax
-            V = V[:,1:rmax]
-            Σ = Σ[1:rmax]
-            W = W[:,1:rmax]
-            r1 = rmax
-        end
-        if r2 > rdmax
-            Vd = Vd[:,1:rdmax]
-            Σd = Σd[1:rdmax]
-            Wd = Wd[:,1:rdmax]
-            r2 = rdmax
-        end
-    end
+#         if r1 > rmax
+#             V = V[:,1:rmax]
+#             Σ = Σ[1:rmax]
+#             W = W[:,1:rmax]
+#             r1 = rmax
+#         end
+#         if r2 > rdmax
+#             Vd = Vd[:,1:rdmax]
+#             Σd = Σd[1:rdmax]
+#             Wd = Wd[:,1:rdmax]
+#             r2 = rdmax
+#         end
+#     end
 
-    Σ_diag = Diagonal(Σ)
-    Σd_diag = Diagonal(Σd)
-    Xd = Vd * Σd_diag * Wd'
+#     Σ_diag = Diagonal(Σ)
+#     Σd_diag = Diagonal(Σd)
+#     Xd = Vd * Σd_diag * Wd'
 
-    # D = [W * Σ   (W ⊖ W) * (Σ ⊗ Σ)   U']
-    D = [W * Σ_diag   (W ⧁ W) * Diagonal(Σ ⊘ Σ)   U']
-    R = Xd' * V
-    if !iszero(λ)
-        D = vcat(D, λ * I(size(D,2)))
-        R = vcat(R, zeros(size(D, 2), size(R, 2)))
-    end
+#     # D = [W * Σ   (W ⊖ W) * (Σ ⊗ Σ)   U']
+#     D = [W * Σ_diag   (W ⧁ W) * Diagonal(Σ ⊘ Σ)   U']
+#     R = Xd' * V
+#     if !iszero(λ)
+#         D = vcat(D, λ * I(size(D,2)))
+#         R = vcat(R, zeros(size(D, 2), size(R, 2)))
+#     end
 
-    # Φ = Z * Z'
-    # Ψ = Z * Xd' * V
+#     # Φ = Z * Z'
+#     # Ψ = Z * Xd' * V
 
-    O = D \ R
+#     O = D \ R
 
-    # O = Z \ Y        # define Φ and Ψ for least‑squares (and ridge if λ > 0)
-    # O = (Φ + λ*I) \ Ψ
-    # return O, V, Σ, W, Vd, Σd, Wd, Φ, Ψ
-    return O, V, Σ, W, Vd, Σd, Wd
-end
+#     # O = Z \ Y        # define Φ and Ψ for least‑squares (and ridge if λ > 0)
+#     # O = (Φ + λ*I) \ Ψ
+#     # return O, V, Σ, W, Vd, Σd, Wd, Φ, Ψ
+#     return O, V, Σ, W, Vd, Σd, Wd
+# end
 
 
 #====================#
@@ -307,20 +306,31 @@ Binf = op_infer.B
 Finf = op_infer.A2u
 
 ## Compute One-Pass Streaming-OpInf
-rextra = 0
-Ostream, Vstream, Λ, W, Vd, Λd, Wd = OnePassStreamingOpInf(X, Xdot, reshape(U, 1, :), rmax+rextra, rmax, 0.0)
-Vstream = Vstream[:,1:rmax]
-Λ = Λ[1:rmax]
+# rextra = 0
+# Ostream, Vstream, Λ, W, Vd, Λd, Wd = OnePassStreamingOpInf(X, Xdot, reshape(U, 1, :), rmax+rextra, rmax, 0.0)
+# Vstream = Vstream[:,1:rmax]
+# Λ = Λ[1:rmax]
 
 # Astream = Ostream[1:rmax,:]'
 # Hstream = Ostream[rmax+1:rmax+Int(rmax^2),:]'
 # Bstream = Ostream[rmax+Int(rmax^2)+1,:]
 # Fstream = UniqueKronecker.eliminate(Hstream, 2)
 
-rmax2 = Int(rmax * (rmax + 1) / 2)
-Astream = Ostream[1:rmax,:]'
-Fstream = Ostream[rmax+1:rmax+rmax2,:]'
-Bstream = Ostream[rmax+rmax2+1,:]
+# rmax2 = Int(rmax * (rmax + 1) / 2)
+# Astream = Ostream[1:rmax,:]'
+# Fstream = Ostream[rmax+1:rmax+rmax2,:]'
+# Bstream = Ostream[rmax+rmax2+1,:]
+
+stream = LnL.OnePassStreamingOpInf(
+    options=options, n=size(X,1), m=size(U,1), rank=rmax
+)
+for (xi, xdoti) in zip(X, Xdot)
+    update!(stream, xi, xdoti)
+end
+op_stream = compute_operators(stream, U)
+Astream = op_stream.A
+Bstream = op_stream.B
+Fstream = op_stream.A2u
 
 #=========#
 ## Analyze

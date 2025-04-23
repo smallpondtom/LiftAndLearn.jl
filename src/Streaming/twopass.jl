@@ -1,6 +1,6 @@
-export StreamingOpInf
+export TwoPassStreamingOpInf
 
-abstract type StreamingOpInf end
+abstract type TwoPassStreamingOpInf end
 
 # Import the algorithms
 include("algorithms/RLS/rls.jl")
@@ -8,7 +8,7 @@ include("algorithms/iQRRLS/iqrrls.jl")
 include("algorithms/QRRLS/qrrls.jl")
 
 # Each Algorithm solver structs
-mutable struct RLSOpInf{T<:Real} <: StreamingOpInf
+mutable struct RLSOpInf{T<:Real} <: TwoPassStreamingOpInf
     cache::RLSCache{T}
     # Dimensions
     dims::Dict{Symbol,Int}
@@ -20,7 +20,7 @@ mutable struct RLSOpInf{T<:Real} <: StreamingOpInf
     initial_step::Bool             # Flag for initial step when γs is zero
 end
 
-mutable struct iQRRLSOpInf{T<:Real} <: StreamingOpInf
+mutable struct iQRRLSOpInf{T<:Real} <: TwoPassStreamingOpInf
     cache::iQRRLSCache{T}
     # Dimensions
     dims::Dict{Symbol,Int}
@@ -30,7 +30,7 @@ mutable struct iQRRLSOpInf{T<:Real} <: StreamingOpInf
     options::LSOpInfOption  # Standard (Least-Squares) Operator Inference options
 end
 
-mutable struct QRRLSOpInf{T<:Real} <: StreamingOpInf
+mutable struct QRRLSOpInf{T<:Real} <: TwoPassStreamingOpInf
     cache::QRRLSCache{T}
     # Dimensions
     dims::Dict{Symbol,Int}
@@ -49,9 +49,9 @@ include("algorithms/QRRLS/stream.jl")
 """
 $(TYPEDEF)
 
-Streaming Operator Inference/Lift And Learn
+Streaming Two-Pass Operator Inference/Lift And Learn
 """
-function StreamingOpInf(;
+function TwoPassStreamingOpInf(;
     options::LSOpInfOption,             # Standard (Least-Squares) Operator Inference options
     n::Int, m::Int=0, l::Int=0,         # state (n), input (m), and output (l) dimensions
     algorithm::Symbol=:RLS,             # algorithm type
@@ -260,7 +260,7 @@ $(SIGNATURES)
 
 Terminate the streaming operator inference and return the operators.
 """
-function terminate_stream(obj::StreamingOpInf) 
+function terminate_stream(obj::TwoPassStreamingOpInf) 
     # Extract the operators
     operators = Operators(O=obj.cache.O)
     unpack_operators!(
@@ -275,7 +275,7 @@ $(SIGNATURES)
 
 Terminate the streaming operator inference and return the operators (dispatch)
 """
-function terminate_stream(state_obj::StreamingOpInf, output_obj::StreamingOpInf) 
+function terminate_stream(state_obj::TwoPassStreamingOpInf, output_obj::TwoPassStreamingOpInf) 
     # Extract the operators
     operators = Operators(O=obj.cache.O)
     unpack_operators!(

@@ -382,119 +382,119 @@ end
 #     return Ostream, V, Σ, Φ, Ψ, Vϕ, Λϕ, Vψ, Σψ, Wψ
 # end
 
-function OnePassStreamingOpInf(X, Xdot, U, rmax, λ)
-    n, K = size(X)
-    m = size(U,1)
+# function OnePassStreamingOpInf(X, Xdot, U, rmax, λ)
+#     n, K = size(X)
+#     m = size(U,1)
 
-    x1 = X[:,1] 
-    xdot1 = Xdot[:,1] 
+#     x1 = X[:,1] 
+#     xdot1 = Xdot[:,1] 
    
-    V = x1 / norm(x1)
-    Σ = norm(x1)
-    W = 1.0
-    r1 = 1  
+#     V = x1 / norm(x1)
+#     Σ = norm(x1)
+#     W = 1.0
+#     r1 = 1  
 
-    r2 = 1
-    Vd = xdot1 / norm(xdot1)
-    Σd = norm(xdot1)
-    Wd = 1.0
+#     r2 = 1
+#     Vd = xdot1 / norm(xdot1)
+#     Σd = norm(xdot1)
+#     Wd = 1.0
 
-    for i in 2:K 
-        xi = X[:,i]
-        xdoti = Xdot[:,i]
+#     for i in 2:K 
+#         xi = X[:,i]
+#         xdoti = Xdot[:,i]
 
-        q1 = V' * xi
-        xperp = xi - V * q1
-        q2 = V' * xperp
-        xperp = xperp - V * q2
-        q = q1 + q2
-        p = norm(xperp)
+#         q1 = V' * xi
+#         xperp = xi - V * q1
+#         q2 = V' * xperp
+#         xperp = xperp - V * q2
+#         q = q1 + q2
+#         p = norm(xperp)
 
-        p = [p]
-        xperp = reshape(xperp, :, 1)
-        qrf!(xperp, p)
-        p = p[1]
+#         p = [p]
+#         xperp = reshape(xperp, :, 1)
+#         qrf!(xperp, p)
+#         p = p[1]
 
-        C = zeros(r1+1, r1+1)
-        for j in 1:r1
-            C[j,j] = Σ[j]
-            C[j,end] = q[j]
-        end
-        C[end,end] = p
+#         C = zeros(r1+1, r1+1)
+#         for j in 1:r1
+#             C[j,j] = Σ[j]
+#             C[j,end] = q[j]
+#         end
+#         C[end,end] = p
 
-        Vc, Σc, Wc = svd(C)
-        V = hcat(V, xperp) * Vc
-        Σ = Σc
-        W = [W zeros(size(W,1), 1); zeros(1, r1) 1.0] * Wc
-        r1 += 1
+#         Vc, Σc, Wc = svd(C)
+#         V = hcat(V, xperp) * Vc
+#         Σ = Σc
+#         W = [W zeros(size(W,1), 1); zeros(1, r1) 1.0] * Wc
+#         r1 += 1
 
-        q1 = Vd' * xdoti
-        xdotperp = xdoti - Vd * q1
-        q2 = Vd' * xdotperp
-        xdotperp = xdotperp - Vd * q2
-        q = q1 + q2
-        p = norm(xdotperp)
+#         q1 = Vd' * xdoti
+#         xdotperp = xdoti - Vd * q1
+#         q2 = Vd' * xdotperp
+#         xdotperp = xdotperp - Vd * q2
+#         q = q1 + q2
+#         p = norm(xdotperp)
 
-        p = [p]
-        xdotperp = reshape(xdotperp, :, 1)
-        qrf!(xdotperp, p)
-        p = p[1]
+#         p = [p]
+#         xdotperp = reshape(xdotperp, :, 1)
+#         qrf!(xdotperp, p)
+#         p = p[1]
 
-        C = zeros(r2+1, r2+1)
-        for j in 1:r2
-            C[j,j] = Σd[j]
-            C[j,end] = q[j]
-        end
-        C[end,end] = p
+#         C = zeros(r2+1, r2+1)
+#         for j in 1:r2
+#             C[j,j] = Σd[j]
+#             C[j,end] = q[j]
+#         end
+#         C[end,end] = p
 
-        Vcd, Σcd, Wcd = svd(C)
-        Vd = hcat(Vd, xdotperp) * Vcd
-        Σd = Σcd
-        Wd = [Wd zeros(size(Wd,1), 1); zeros(1, r2) 1.0] * Wcd
-        r2 += 1
+#         Vcd, Σcd, Wcd = svd(C)
+#         Vd = hcat(Vd, xdotperp) * Vcd
+#         Σd = Σcd
+#         Wd = [Wd zeros(size(Wd,1), 1); zeros(1, r2) 1.0] * Wcd
+#         r2 += 1
 
-        if r1 > rmax
-            V = V[:,1:rmax]
-            Σ = Σ[1:rmax]
-            W = W[:,1:rmax]
-            r1 = rmax
-        end
-        if r2 > rmax
-            Vd = Vd[:,1:rmax]
-            Σd = Σd[1:rmax]
-            Wd = Wd[:,1:rmax]
-            r2 = rmax
-        end
-    end
+#         if r1 > rmax
+#             V = V[:,1:rmax]
+#             Σ = Σ[1:rmax]
+#             W = W[:,1:rmax]
+#             r1 = rmax
+#         end
+#         if r2 > rmax
+#             Vd = Vd[:,1:rmax]
+#             Σd = Σd[1:rmax]
+#             Wd = Wd[:,1:rmax]
+#             r2 = rmax
+#         end
+#     end
 
-    Σ = Diagonal(Σ)
-    Σd = Diagonal(Σd)
-    Xd = Vd * Σd * Wd'
+#     Σ = Diagonal(Σ)
+#     Σd = Diagonal(Σd)
+#     Xd = Vd * Σd * Wd'
 
-    D = [W * Σ    U']
-    R = Xd' * V
-    if !iszero(λ)
-        D = vcat(D, λ * I(size(D,2)))
-        R = vcat(R, zeros(size(D, 2), size(R, 2)))
-    end
+#     D = [W * Σ    U']
+#     R = Xd' * V
+#     if !iszero(λ)
+#         D = vcat(D, λ * I(size(D,2)))
+#         R = vcat(R, zeros(size(D, 2), size(R, 2)))
+#     end
 
-    O = D \ R
+#     O = D \ R
 
-    # Φ = zeros(rmax+m, rmax+m)
-    # Φ[1:rmax, 1:rmax] .= Σ.^2
-    # Φ[rmax+1:rmax+m, 1:rmax] .= U * W * Σ
-    # Φ[1:rmax, rmax+1:rmax+m] .= Σ * W' * U'
-    # Φ[rmax+1:rmax+m, rmax+1:rmax+m] .= U * U'
+#     # Φ = zeros(rmax+m, rmax+m)
+#     # Φ[1:rmax, 1:rmax] .= Σ.^2
+#     # Φ[rmax+1:rmax+m, 1:rmax] .= U * W * Σ
+#     # Φ[1:rmax, rmax+1:rmax+m] .= Σ * W' * U'
+#     # Φ[rmax+1:rmax+m, rmax+1:rmax+m] .= U * U'
 
-    # Ψ = zeros(rmax+m, rmax)
-    # Ψ[1:rmax, :] .= Σ * W' * Xd' * V 
-    # Ψ[rmax+1:rmax+m, :] .= U * Xd' * V
+#     # Ψ = zeros(rmax+m, rmax)
+#     # Ψ[1:rmax, :] .= Σ * W' * Xd' * V 
+#     # Ψ[rmax+1:rmax+m, :] .= U * Xd' * V
 
-    # O = (Φ + λ*I) \ Ψ
+#     # O = (Φ + λ*I) \ Ψ
 
-    # return O, V, diag(Σ), W, Vd, diag(Σd), Wd, Φ, Ψ
-    return O, V, diag(Σ), W, Vd, diag(Σd), Wd
-end
+#     # return O, V, diag(Σ), W, Vd, diag(Σd), Wd, Φ, Ψ
+#     return O, V, diag(Σ), W, Vd, diag(Σd), Wd
+# end
 
 # function SparseMat(k::Int, n::Int; zeta::Int=min(k,8))
 #     # if k > n
@@ -537,10 +537,23 @@ Ainf = op_infer.A
 Binf = op_infer.B
 
 ## Compute One-Pass Streaming-OpInf
-rextra = 0
-Ostream, Vstream, Λ, W, Vd, Λd, Wd = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra,  0.0)
-Astream = Ostream[1:rmax,1:rmax]'
-Bstream = Ostream[rmax+rextra+1:rmax+rextra+1,1:rmax]'
+# rextra = 0
+# Ostream, Vstream, Λ, Wstream, Vd, Λd, Wd = OnePassStreamingOpInf(X, Xdot, U, rmax+rextra,  0.0)
+# Astream = Ostream[1:rmax,1:rmax]'
+# Bstream = Ostream[rmax+rextra+1:rmax+rextra+1,1:rmax]'
+
+stream = LnL.OnePassStreamingOpInf(
+    X[:,1], Xdot[:,1];
+    options=options, n=size(X,1), m=size(U,1), rank=rmax, 
+)
+for (xi, xdoti) in zip(eachcol(X[:,2:end]), eachcol(Xdot[:,2:end]))
+    LnL.stream!(stream, xi, xdoti)
+end
+op_stream = LnL.compute_onepass_operators(stream, U)
+Astream = op_stream.A
+Bstream = op_stream.B
+Vstream = stream.V
+Λ = stream.Σ
 
 #=========#
 ## Analyze

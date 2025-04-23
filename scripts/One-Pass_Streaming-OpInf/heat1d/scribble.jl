@@ -1,4 +1,140 @@
 using LinearAlgebra
+using Random
+import LiftAndLearn as LnL
+
+##
+X = rand(5,10)
+U, S, V = svd(X)
+
+##
+isvd = LnL.initialize_brand(X[:,1]; max_rank=5)
+K = size(X, 2)
+for i in 2:K
+    LnL.increment!(isvd, X[:,i], 1e-8)
+end
+
+##
+norm(S - isvd.Σ) / norm(S)
+
+##
+sqrt(sum(abs2, 1 .- svdvals(U' * isvd.V)))
+
+##
+sqrt(sum(abs2, 1 .- svdvals(V' * isvd.W)))
+
+##
+opnorm(X - isvd.V * Diagonal(isvd.Σ) * isvd.W') / opnorm(X)
+
+
+##
+U2, S2, V2 = unko(X, 5)
+
+
+##
+norm(S - S2) / norm(S)
+
+##
+sqrt(sum(abs2, 1 .- svdvals(U' * U2)))
+
+##
+sqrt(sum(abs2, 1 .- svdvals(V' * V2)))
+
+##
+opnorm(X - U2 * Diagonal(S2) * V2') / opnorm(X)
+
+
+##
+sqrt(sum(abs2, 1 .- svdvals(isvd.W' * V2)))
+
+##
+
+function unko(X, rmax)
+    n, K = size(X)
+
+    x1 = X[:,1] 
+   
+    V = x1 / norm(x1)
+    Σ = norm(x1)
+    W = 1.0
+    r1 = 1  
+
+    for i in 2:K 
+        xi = X[:,i]
+
+        q1 = V' * xi
+        xperp = xi - V * q1
+        q2 = V' * xperp
+        xperp = xperp - V * q2
+        q = q1 + q2
+        p = norm(xperp)
+
+        p = [p]
+        xperp = reshape(xperp, :, 1)
+        qrf!(xperp, p)
+        p = p[1]
+
+        C = zeros(r1+1, r1+1)
+        for j in 1:r1
+            C[j,j] = Σ[j]
+            C[j,end] = q[j]
+        end
+        C[end,end] = p
+
+        Vc, Σc, Wc = svd(C)
+        V = hcat(V, xperp) * Vc
+        Σ = Σc
+        W = [W zeros(size(W,1), 1); zeros(1, r1) 1.0] * Wc
+        r1 += 1
+
+        if r1 > rmax
+            V = V[:,1:rmax]
+            Σ = Σ[1:rmax]
+            W = W[:,1:rmax]
+            r1 = rmax
+        end
+    end
+
+    return LinearAlgebra.SVD{Float64}(V, Σ, W')
+end
+
+
+##
+function qrf!(P::AbstractArray{T}, R::AbstractArray{T}) where {T<:Number}
+    m, b = checksize(P)
+    m >= b || throw(DimensionMismatch("Works only for m > b"))
+    P, tau = LAPACK.geqrf!(P)
+    fill!(R, zero(T))
+    @inbounds for j = 1:b, i = 1:j
+        R[i,j] = P[i,j]
+    end
+    LAPACK.orgqr!(P, tau)
+    return R
+end
+
+function qrf!(P::AbstractArray{<:Number})
+    m, b = checksize(P)
+    m >= b || throw(DimensionMismatch("Works only for m > b"))
+    P, tau = LAPACK.geqrf!(P)
+    LAPACK.orgqr!(P, tau)
+end
+
+function checksize(A::AbstractArray)
+    m, n = nothing, nothing
+    try
+        m, n = size(A)
+    catch e
+        if isa(e, BoundsError)
+            m, n = length(A), 1
+        else
+            rethrow(e)
+        end
+    end
+    return m, n
+end
+
+##
+
+using LinearAlgebra
 using LinearMaps
 using Kronecker: ⊗
 using BenchmarkTools

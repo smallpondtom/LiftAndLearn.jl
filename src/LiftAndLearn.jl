@@ -59,6 +59,8 @@ include("EP-OpInf/epopinf.jl")
 
 # Streaming-OpInf
 include("Streaming/streamify.jl")
-include("Streaming/streaming.jl")
+include("Streaming/twopass.jl")
+include("Streaming/isvd/isvd.jl")
+include("Streaming/onepass.jl")
 
 end # module LiftAndLearn
