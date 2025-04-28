@@ -1,5 +1,5 @@
 """
-One-Pass Streaming-OpInf prototype for 1D heat equation
+One-Pass Streaming-OpInf experiment for 1D heat equation
 """
 
 #=================#
@@ -63,20 +63,6 @@ Xdot = (state[:, 2:end] - state[:, 1:end-1]) / dt
 ICref = heat1d.IC
 X = state[:, 2:end]
 U = Ubc[2:end]'
-
-# Different initial conditions and inputs
-# rng = MersenneTwister(1234)
-# for i in 1:9
-#     heat1d.IC = randn(rng) * cos.(2π * heat1d.xspan) + randn(rng) * sin.(2π * heat1d.xspan) * 0.01
-#     # heat1d.IC[2:end-1] += randn(heat1d.spatial_dim-2) * 0.1
-#     Ubc = ones(heat1d.time_dim) * (rand(rng) * 2 - 1)
-
-#     state = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
-#                             system_input=true, integrator_type=:BackwardEuler)
-#     X = hcat(X, state[:, 2:end])
-#     Xdot = hcat(Xdot, (state[:, 2:end] - state[:, 1:end-1]) / dt)
-#     U = hcat(U, Ubc[2:end]')
-# end
 
 rmax = 10
 tmp = svd(X)
