@@ -1,136 +1,136 @@
-using LinearAlgebra
-using Random
-import LiftAndLearn as LnL
+# using LinearAlgebra
+# using Random
+# import LiftAndLearn as LnL
 
-##
-X = rand(5,10)
-U, S, V = svd(X)
+# ##
+# X = rand(5,10)
+# U, S, V = svd(X)
 
-##
-isvd = LnL.initialize_brand(X[:,1]; max_rank=5)
-K = size(X, 2)
-for i in 2:K
-    LnL.increment!(isvd, X[:,i], 1e-8)
-end
+# ##
+# isvd = LnL.initialize_brand(X[:,1]; max_rank=5)
+# K = size(X, 2)
+# for i in 2:K
+#     LnL.increment!(isvd, X[:,i], 1e-8)
+# end
 
-##
-norm(S - isvd.Σ) / norm(S)
+# ##
+# norm(S - isvd.Σ) / norm(S)
 
-##
-sqrt(sum(abs2, 1 .- svdvals(U' * isvd.V)))
+# ##
+# sqrt(sum(abs2, 1 .- svdvals(U' * isvd.V)))
 
-##
-sqrt(sum(abs2, 1 .- svdvals(V' * isvd.W)))
+# ##
+# sqrt(sum(abs2, 1 .- svdvals(V' * isvd.W)))
 
-##
-opnorm(X - isvd.V * Diagonal(isvd.Σ) * isvd.W') / opnorm(X)
-
-
-##
-U2, S2, V2 = unko(X, 5)
+# ##
+# opnorm(X - isvd.V * Diagonal(isvd.Σ) * isvd.W') / opnorm(X)
 
 
-##
-norm(S - S2) / norm(S)
-
-##
-sqrt(sum(abs2, 1 .- svdvals(U' * U2)))
-
-##
-sqrt(sum(abs2, 1 .- svdvals(V' * V2)))
-
-##
-opnorm(X - U2 * Diagonal(S2) * V2') / opnorm(X)
+# ##
+# U2, S2, V2 = unko(X, 5)
 
 
-##
-sqrt(sum(abs2, 1 .- svdvals(isvd.W' * V2)))
+# ##
+# norm(S - S2) / norm(S)
 
-##
+# ##
+# sqrt(sum(abs2, 1 .- svdvals(U' * U2)))
 
-function unko(X, rmax)
-    n, K = size(X)
+# ##
+# sqrt(sum(abs2, 1 .- svdvals(V' * V2)))
 
-    x1 = X[:,1] 
+# ##
+# opnorm(X - U2 * Diagonal(S2) * V2') / opnorm(X)
+
+
+# ##
+# sqrt(sum(abs2, 1 .- svdvals(isvd.W' * V2)))
+
+# ##
+
+# function unko(X, rmax)
+#     n, K = size(X)
+
+#     x1 = X[:,1] 
    
-    V = x1 / norm(x1)
-    Σ = norm(x1)
-    W = 1.0
-    r1 = 1  
+#     V = x1 / norm(x1)
+#     Σ = norm(x1)
+#     W = 1.0
+#     r1 = 1  
 
-    for i in 2:K 
-        xi = X[:,i]
+#     for i in 2:K 
+#         xi = X[:,i]
 
-        q1 = V' * xi
-        xperp = xi - V * q1
-        q2 = V' * xperp
-        xperp = xperp - V * q2
-        q = q1 + q2
-        p = norm(xperp)
+#         q1 = V' * xi
+#         xperp = xi - V * q1
+#         q2 = V' * xperp
+#         xperp = xperp - V * q2
+#         q = q1 + q2
+#         p = norm(xperp)
 
-        p = [p]
-        xperp = reshape(xperp, :, 1)
-        qrf!(xperp, p)
-        p = p[1]
+#         p = [p]
+#         xperp = reshape(xperp, :, 1)
+#         qrf!(xperp, p)
+#         p = p[1]
 
-        C = zeros(r1+1, r1+1)
-        for j in 1:r1
-            C[j,j] = Σ[j]
-            C[j,end] = q[j]
-        end
-        C[end,end] = p
+#         C = zeros(r1+1, r1+1)
+#         for j in 1:r1
+#             C[j,j] = Σ[j]
+#             C[j,end] = q[j]
+#         end
+#         C[end,end] = p
 
-        Vc, Σc, Wc = svd(C)
-        V = hcat(V, xperp) * Vc
-        Σ = Σc
-        W = [W zeros(size(W,1), 1); zeros(1, r1) 1.0] * Wc
-        r1 += 1
+#         Vc, Σc, Wc = svd(C)
+#         V = hcat(V, xperp) * Vc
+#         Σ = Σc
+#         W = [W zeros(size(W,1), 1); zeros(1, r1) 1.0] * Wc
+#         r1 += 1
 
-        if r1 > rmax
-            V = V[:,1:rmax]
-            Σ = Σ[1:rmax]
-            W = W[:,1:rmax]
-            r1 = rmax
-        end
-    end
+#         if r1 > rmax
+#             V = V[:,1:rmax]
+#             Σ = Σ[1:rmax]
+#             W = W[:,1:rmax]
+#             r1 = rmax
+#         end
+#     end
 
-    return LinearAlgebra.SVD{Float64}(V, Σ, W')
-end
+#     return LinearAlgebra.SVD{Float64}(V, Σ, W')
+# end
 
 
-##
-function qrf!(P::AbstractArray{T}, R::AbstractArray{T}) where {T<:Number}
-    m, b = checksize(P)
-    m >= b || throw(DimensionMismatch("Works only for m > b"))
-    P, tau = LAPACK.geqrf!(P)
-    fill!(R, zero(T))
-    @inbounds for j = 1:b, i = 1:j
-        R[i,j] = P[i,j]
-    end
-    LAPACK.orgqr!(P, tau)
-    return R
-end
+# ##
+# function qrf!(P::AbstractArray{T}, R::AbstractArray{T}) where {T<:Number}
+#     m, b = checksize(P)
+#     m >= b || throw(DimensionMismatch("Works only for m > b"))
+#     P, tau = LAPACK.geqrf!(P)
+#     fill!(R, zero(T))
+#     @inbounds for j = 1:b, i = 1:j
+#         R[i,j] = P[i,j]
+#     end
+#     LAPACK.orgqr!(P, tau)
+#     return R
+# end
 
-function qrf!(P::AbstractArray{<:Number})
-    m, b = checksize(P)
-    m >= b || throw(DimensionMismatch("Works only for m > b"))
-    P, tau = LAPACK.geqrf!(P)
-    LAPACK.orgqr!(P, tau)
-end
+# function qrf!(P::AbstractArray{<:Number})
+#     m, b = checksize(P)
+#     m >= b || throw(DimensionMismatch("Works only for m > b"))
+#     P, tau = LAPACK.geqrf!(P)
+#     LAPACK.orgqr!(P, tau)
+# end
 
-function checksize(A::AbstractArray)
-    m, n = nothing, nothing
-    try
-        m, n = size(A)
-    catch e
-        if isa(e, BoundsError)
-            m, n = length(A), 1
-        else
-            rethrow(e)
-        end
-    end
-    return m, n
-end
+# function checksize(A::AbstractArray)
+#     m, n = nothing, nothing
+#     try
+#         m, n = size(A)
+#     catch e
+#         if isa(e, BoundsError)
+#             m, n = length(A), 1
+#         else
+#             rethrow(e)
+#         end
+#     end
+#     return m, n
+# end
 
 ##
 
@@ -141,12 +141,43 @@ using BenchmarkTools
 using UniqueKronecker
 
 ##
-n, K = 3, 4
+n, K = 80, 500
 X = rand(n,K)
 U,S,V = svd(X)
+r = 8
+U = U[:,1:r]
+V = V[:,1:r]
+S = S[1:r]
 
 ##
-X2 = X ⦼ X
+X2 = X ⨸ X
+
+##
+Xhat = U' * X
+
+##
+Xhat2 = Xhat ⨸ Xhat
+
+##
+L2 = elimat(min(r,K), 2)
+D2 = dupmat(n, 2)
+N2 = symmtzrmat(n ,2)
+
+##
+foo = L2 * (U ⊗ U)' * D2 * X2
+
+## 
+S3 = Diagonal(S ⊘ S)
+V3 = V ⧁ V
+bar = S3 * V3'
+
+##
+println(norm(Xhat2 - foo) / norm(Xhat2))  # should be small
+println(norm(Xhat2 - bar) / norm(Xhat2))  # should be small
+println(norm(foo - bar) / norm(foo))  # should be small
+
+##
+X2 = X ⨸ X
 
 ##
 U2, S2, V2 = svd(X2)
@@ -154,15 +185,18 @@ U2, S2, V2 = svd(X2)
 
 ##
 L2 = elimat(n, 2)
-D2 = dupmat(n, 2)
+D2 = dupmat(min(n,K), 2)
 N2 = symmtzrmat(n ,2)
 
 ##
 
-U3 =  L2 * (U ⊗ U) * D2
+U3 =  L2 * N2 * (U ⊗ U) * D2
 S3 = Diagonal(S ⊘ S)
 V3 = V ⧁ V
 X3 = U3 * S3 * V3'
+
+##
+println(norm(X3 - X2) / norm(X2))  # should be small
 
 ##
 X4 = L2 * (U ⊗ U)' * D2 * X2
@@ -175,7 +209,7 @@ L2 * (U ⊗ U) * D2 * L2 * (U ⊗ U)' * D2
 
 ##
 Xhat = U' * X
-X5 = Xhat ⦼ Xhat
+X5 = Xhat ⨸ Xhat
 
 ##
 X3 = X ⊙ X ⊙ X
@@ -188,15 +222,24 @@ V3 = V ⊖ V ⊖ V
 U3 * S3 * V3'
 
 ##
-X3 = ⦼(X, 3)
+X3 = ⨸(X, 3)
 
 ##
 L3 = elimat(n, 3)
-D3 = dupmat(n, 3)
+D3 = dupmat(min(n,K), 3)
 U3 = Matrix(U ⊗ U ⊗ U)
 S3 = Diagonal(⊘(S, 3))
 V3 = ⧁(V, 3)
-(L3 * U3 * D3) * S3 * V3'
+X4 = (L3 * U3 * D3) * S3 * V3'
+
+##
+println(norm(X3 - X4) / norm(X3))  # should be small
+
+
+##
+foo = L3 * U3 * D3
+bar = L3 * U3' * D3
+bar * foo
 
 ##
 

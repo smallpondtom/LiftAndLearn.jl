@@ -133,9 +133,9 @@ begin
     @assert foo == num_of_streams "Wrong number of streams"
 
     # Initialize the streaming OpInfs
-    rls_stream  = LnL.StreamingOpInf(options=options, n=rmax, algorithm=:RLS, Γs=Γ) 
-    iqrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, algorithm=:iQRRLS, Γs=Γ)
-    qrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, algorithm=:QRRLS, Γs=Γ)
+    rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, algorithm=:RLS, Γs=Γ) 
+    iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, algorithm=:iQRRLS, Γs=Γ)
+    qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, algorithm=:QRRLS, Γs=Γ)
 
     Eps_true = Dict{Symbol, Matrix{Float64}}(
         :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 

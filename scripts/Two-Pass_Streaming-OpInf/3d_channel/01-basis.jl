@@ -7,7 +7,7 @@
 #================#
 using CairoMakie
 using FileIO
-using HDF5
+using Glob
 using JLD2
 using IncrementalSVD
 using LinearAlgebra
@@ -21,7 +21,6 @@ import LiftAndLearn as LnL
 ENV["JULIA_CONDAPKG_BACKEND"] = "System"
 ENV["JULIA_CONDAPKG_BACKEND"] = "default"
 
-
 #================================#
 ## Configure filepath for saving
 #================================#
@@ -30,28 +29,38 @@ FILEPATH = occursin("scripts", pwd()) ?
            joinpath(pwd(),"Two-Pass_Streaming-OpInf/3d_channel") : 
            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel")
 
-#=============================#
-## Load the training dataset
-#=============================#
-datafile = joinpath(DATAPATH, "2d_channel.h5")
-X = h5read(datafile, "V")  # wall-normal StreamVelocity
-xspan = h5read(datafile, "x") 
-yspan = h5read(datafile, "y")
-n, Ny, Nx = size(X)
-
-#====================#
-## Preprocess data  ##
-#====================#
-Xfold = zeros(Nx*Ny, n)
-for i in 1:n
-    Xfold[:,i] = reshape(X[i,:,:], :, 1)
+#==================#
+## Load the files
+#==================#
+# lexsort key function
+function lexsort_key(s::String)
+    parts = split(s, r"(\d+)")           # like Python’s re.split with capture
+    return [all(isdigit, t) ?            # if the token is all digits
+            parse(Int, t) :              # parse it as Int
+            lowercase(t)                 # else lowercase the string
+            for t in parts]
 end
-X = Xfold
+
+# Data location and input parameters
+path = "../../../../../DATA/NREL/3D_CHANNEL/plt*"
+
+# Get list of files and sort them
+files = glob(path)
+sort!(files, by=lexsort_key)
+
+# Keep only the last 200 files (steady state data)
+if length(files) >= 200
+    files = files[end-199:end]
+end
+
+# Number of time steps
+nt = length(files)
+Ts = zeros(nt)
 
 #=========================================================#
 ## Generate the POD basis using iSVD using all algorithms
 #=========================================================#
-rmax = 500
+rmax = 100
 Xall = Array[]
 
 # Execution times 
@@ -59,14 +68,16 @@ time_baker = []
 time_brand = []
 time_sketchy = []
 
-## (Dry) Run it once due to JUlia's JIT compilation
-baker = iSVD(x1=X[:,1], algo=:baker, max_rank=rmax) 
-full_increment!(baker, X[:,2:3], verbose=true, runtime=true)
-brand = iSVD(x1=X[:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
-full_increment!(brand, X[:,2:3], verbose=true, tol=1e-10, runtime=true)
-sketchy = iSVD(algo=:sketchy; m=100, n=200, r=4, ReduxMap=:Sparse)
-full_increment!(sketchy, X[1:100,1:200], verbose=true, runtime=true, dump_all=true)
-svd(X[:,1:10])
+## (Dry) Run it once with a dummy due to JUlia's JIT compilation
+Xdummy = rand(30, 200)
+baker = iSVD(x1=Xdummy, algo=:baker, max_rank=4) 
+full_increment!(baker, Xdummy, verbose=true, runtime=true)
+brand = iSVD(x1=Xdummy, algo=:brand1, reorth_method=:qr, max_rank=4)
+full_increment!(brand, Xdummy, verbose=true, tol=1e-10, runtime=true)
+sketchy = iSVD(algo=:sketchy; m=size(Xdummy,1), n=size(Xdummy,2), r=4, ReduxMap=:Sparse)
+full_increment!(sketchy, Xdummy, verbose=true, runtime=true, dump_all=true)
+svd(Xdummy)
+
 
 ## baker
 tmp = @elapsed baker = iSVD(x1=X[:,1], algo=:baker, max_rank=rmax)

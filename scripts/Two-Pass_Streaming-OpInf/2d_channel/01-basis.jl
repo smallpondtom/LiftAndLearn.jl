@@ -26,24 +26,29 @@ FILEPATH = occursin("scripts", pwd()) ?
 ## Load the training dataset
 #=============================#
 datafile = joinpath(DATAPATH, "2d_channel.h5")
-X = h5read(datafile, "V")  # wall-normal StreamVelocity
+Xu = h5read(datafile, "U")  # stream-wise "U"
+Xv = h5read(datafile, "V")  # wall-normal "V"
 xspan = h5read(datafile, "x") 
 yspan = h5read(datafile, "y")
-n, Ny, Nx = size(X)
+n, Ny_u, Nx_u = size(Xu)
+_, Ny_v, Nx_v = size(Xv)
+Ny = Ny_u == Ny_v ? Ny_u : @warn "Inconsistent y-dimensions"
+Nx = Nx_u == Nx_v ? Nx_u : @warn "Inconsistent x-dimensions"
 
 #====================#
 ## Preprocess data  ##
 #====================#
-Xfold = zeros(Nx*Ny, n)
+Xfold = zeros(2*Nx*Ny, n)
 for i in 1:n
-    Xfold[:,i] = reshape(X[i,:,:], :, 1)
+    Xfold[1:Nx*Ny,i] = reshape(Xu[i,:,:], :, 1)
+    Xfold[Nx*Ny+1:end,i] = reshape(Xv[i,:,:], :, 1)
 end
 X = Xfold
 
 #=========================================================#
 ## Generate the POD basis using iSVD using all algorithms
 #=========================================================#
-rmax = 500
+rmax = 50
 Xall = Array[]
 
 # Execution times 
@@ -73,7 +78,7 @@ tmp = full_increment!(brand, X[:,2:end], verbose=true, tol=1e-10, runtime=true)
 push!(time_brand, tmp)
 
 ## sketchy
-tmp = @elapsed sketchy = iSVD(algo=:sketchy; m=Nx*Ny, n=n, r=rmax, ReduxMap=:Sparse)
+tmp = @elapsed sketchy = iSVD(algo=:sketchy; m=2*Nx*Ny, n=n, r=rmax, ReduxMap=:Sparse)
 push!(time_sketchy, tmp)
 tmp = full_increment!(sketchy, X, verbose=true, runtime=true, dump_all=true)
 push!(time_sketchy, tmp.runtime)
@@ -92,7 +97,7 @@ bases = Dict(
     "sketchy" => (iVr=sketchy.Q[:,1:rmax], iΣr=sketchy.Σ[1:rmax]),
     "batch" => (Vr=F.U[:,1:rmax], Σr=F.S[1:rmax]),
 )
-save(joinpath(FILEPATH, "data/streaming/basis.jld2"), bases)
+save(joinpath(FILEPATH, "data/streamwise/streaming/basis.jld2"), bases)
 
 #============================================================#
 ## Save the runtime of the iSVD algorithms over all streams
@@ -101,7 +106,7 @@ time_baker = reduce(vcat, time_baker)
 time_brand = reduce(vcat, time_brand)
 # time_sketchy = reduce(vcat, time_sketchy)
 save(
-    joinpath(FILEPATH, "data/streaming/basis_runtime.jld2"),
+    joinpath(FILEPATH, "data/streamwise/streaming/basis_runtime.jld2"),
     "baker", time_baker, "brand", time_brand,  
     "batch", time_batch,  "sketchy", time_sketchy, 
 )
@@ -122,4 +127,4 @@ for i in 1:rmax
     proj_error["batch"][i] = norm(X - bases["batch"].Vr[:,1:i] * bases["batch"].Vr[:,1:i]' * X, 2) / norm(X, 2)
 end
 
-save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)            
+save(joinpath(FILEPATH, "data/streamwise/projection_errors.jld2"), proj_error)            

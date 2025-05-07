@@ -120,9 +120,9 @@ for (file_idx, data_file) in enumerate(training_data_files)
         @assert foo == num_of_streams "Wrong number of streams"
 
         # Initialize the streaming OpInfs
-        rls_stream  = LnL.StreamingOpInf(options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γ) 
-        iqrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ)
-        qrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ)
+        rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γ) 
+        iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ)
+        qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ)
 
         # Preallocate a dicdtionary to store the streaming results
         # error_factors = Dict{Symbol, Matrix{Float64}}(

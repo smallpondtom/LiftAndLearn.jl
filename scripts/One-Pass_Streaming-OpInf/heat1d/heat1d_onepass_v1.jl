@@ -86,7 +86,7 @@ Binf = op_infer.B
 ## Compute One-Pass Streaming-OpInf
 stream = LnL.OnePassStreamingOpInf(
     X[:,1], Xdot[:,1];
-    options=options, n=size(X,1), m=size(U,1), rank=rmax, 
+    options=options, n=size(X,1), m=size(U,1), rank=rmax, finite_diff=false 
 )
 for (xi, xdoti) in zip(eachcol(X[:,2:end]), eachcol(Xdot[:,2:end]))
     LnL.stream!(stream, xi, xdoti)
@@ -194,3 +194,4 @@ with_theme(theme_latexfonts()) do
     axislegend(ax, position = :lb, labelsize=30)
     display(fig)
 end
+

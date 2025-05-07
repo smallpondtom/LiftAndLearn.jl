@@ -1,5 +1,5 @@
 """
-2D Channel (wall-normal) flow: training models
+2D Channel (wall-normal or stream-wise) flow: training models
 """
 
 #================#
@@ -28,23 +28,49 @@ FILEPATH = occursin("scripts", pwd()) ?
 #========================#
 include(joinpath(FILEPATH, "utilities.jl"))
 
+# #=============================#
+# ## Load the training dataset
+# #=============================#
+# datafile = joinpath(DATAPATH, "2d_channel.h5")
+# X = h5read(datafile, "U")  # wall-normal "V", stream-wise "U" velocities
+# xspan = h5read(datafile, "x") 
+# yspan = h5read(datafile, "y")
+# n, Ny, Nx = size(X)
+# tspan = h5read(datafile, "time")
+# tspan .-= tspan[1]
+
+# #====================#
+# ## Preprocess data  ##
+# #====================#
+# Xfold = zeros(Nx*Ny, n)
+# for i in 1:n
+#     Xfold[:,i] = reshape(X[i,:,:], :, 1)
+# end
+# X = Xfold
+# U = - 0.001722 * ones(1,n)  # input data
+
 #=============================#
 ## Load the training dataset
 #=============================#
 datafile = joinpath(DATAPATH, "2d_channel.h5")
-X = h5read(datafile, "V")  # wall-normal StreamVelocity
+Xu = h5read(datafile, "U")  # stream-wise "U"
+Xv = h5read(datafile, "V")  # wall-normal "V"
 xspan = h5read(datafile, "x") 
 yspan = h5read(datafile, "y")
-n, Ny, Nx = size(X)
+n, Ny_u, Nx_u = size(Xu)
+_, Ny_v, Nx_v = size(Xv)
+Ny = Ny_u == Ny_v ? Ny_u : @warn "Inconsistent y-dimensions"
+Nx = Nx_u == Nx_v ? Nx_u : @warn "Inconsistent x-dimensions"
 tspan = h5read(datafile, "time")
 tspan .-= tspan[1]
 
 #====================#
 ## Preprocess data  ##
 #====================#
-Xfold = zeros(Nx*Ny, n)
+Xfold = zeros(2*Nx*Ny, n)
 for i in 1:n
-    Xfold[:,i] = reshape(X[i,:,:], :, 1)
+    Xfold[1:Nx*Ny,i] = reshape(Xu[i,:,:], :, 1)
+    Xfold[Nx*Ny+1:end,i] = reshape(Xv[i,:,:], :, 1)
 end
 X = Xfold
 U = - 0.001722 * ones(1,n)  # input data
@@ -60,7 +86,7 @@ Xdot = finite_difference_derivative(X, tspan)
 # Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        state=[1,2,3],
+        state=[1,2],
         control=1,
     ),
     optim=LnL.OptimizationSetting(
@@ -78,7 +104,7 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
 #=================#
 ## Load the bases 
 #=================#
-basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
+basis_file = joinpath(FILEPATH, "data/streamwise/streaming/basis.jld2")
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr[:,1:50]  # choose the POD basis
 iVrmax = basis_data["baker"].iVr[:,1:50]  # choose Baker's iSVD basis
@@ -93,7 +119,7 @@ include(joinpath(FILEPATH, "../utilities/interpolate.jl"))
 #===================================#
 ## Train batch and streaming models
 #===================================#
-Γ = 1e-12  # Regularization parameter
+Γ = 1e10  # Regularization parameter
 
 # The reduced dimensions to evaluate on
 rspan = [50, 100]
@@ -131,7 +157,7 @@ op_inf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
 
 ## Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e6, A2=1e12, A3=1e20, B=1e6)
+options.λ = LnL.TikhonovParameter(A=1e1, A2=1e6, B=0)
 op_trinf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
 
 # ops["tropinf"] = op_trinf
@@ -150,9 +176,9 @@ foo = length(X_stream)
 @assert foo == num_of_streams "Wrong number of streams"
 
 ## Initialize the streaming OpInfs
-rls_stream  = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS, Γs=Γ) 
-iqrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γ)
-qrrls_stream = LnL.StreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γ)
+rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS, Γs=Γ) 
+iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γ)
+qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γ)
 
 ## Preallocate a dicdtionary to store the streaming results
 Eps = Dict{Symbol, Matrix{Float64}}(
@@ -286,7 +312,7 @@ ops = Dict(
     "stream_rls" => op_stream_rls, "stream_iqrrls" => op_stream_iqrrls, 
     "stream_qrrls" => op_stream_qrrls, "rspan" => rspan
 )
-filename = joinpath(FILEPATH, "data/models", "operators.jld2")
+filename = joinpath(FILEPATH, "data/streamwise/models", "operators.jld2")
 save(filename, ops)
 
 ## Interpolate some of the results
@@ -297,7 +323,7 @@ for key in keys(stream_res)
 end
 
 ## Save the streaming results
-filename = joinpath(FILEPATH, "data/streaming", "stream_results.jld2")
+filename = joinpath(FILEPATH, "data/streamwise/streaming", "stream_results.jld2")
 save(filename, "stream_res", stream_res, "rspan", rspan)
 
 #====================================#
@@ -314,7 +340,7 @@ train_errors = Dict(
     :stream_qrrls  => zeros(length(rspan),1)
 )
 
-ops = load(joinpath(FILEPATH, "data/models/operators.jld2"))
+ops = load(joinpath(FILEPATH, "data/streamwise/models/operators.jld2"))
 op_keys = [key for key in keys(train_errors)]
 Threads.@threads for i in eachindex(op_keys)
     key = op_keys[i]
@@ -344,7 +370,7 @@ Threads.@threads for i in eachindex(op_keys)
 end
 
 # Save the errors
-save(joinpath(FILEPATH, "data/training_errors.jld2"), 
+save(joinpath(FILEPATH, "data/streamwise/training_errors.jld2"), 
     "train_errors", train_errors, 
     "rspan", rspan
 )
