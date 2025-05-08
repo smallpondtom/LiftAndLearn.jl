@@ -27,7 +27,12 @@ burgers = BurgersModel(
     diffusion_coeffs=0.5, BC=:dirichlet,
 )
 burgers.IC = 0.1*cos.(π*burgers.xspan)
+
+# WARNING: If you're using more than 1 input, you need to be very careful with
+# how you form the difference matrix and the indices to align the snapshot data with
+# the time derivative data.
 num_inputs = 1  # number of random inputs for training data
+
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=[1,2],
