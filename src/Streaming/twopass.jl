@@ -3,9 +3,9 @@ export TwoPassStreamingOpInf
 abstract type TwoPassStreamingOpInf end
 
 # Import the algorithms
-include("algorithms/RLS/rls.jl")
-include("algorithms/iQRRLS/iqrrls.jl")
-include("algorithms/QRRLS/qrrls.jl")
+include("rls_algorithms/RLS/rls.jl")
+include("rls_algorithms/iQRRLS/iqrrls.jl")
+include("rls_algorithms/QRRLS/qrrls.jl")
 
 # Each Algorithm solver structs
 mutable struct RLSOpInf{T<:Real} <: TwoPassStreamingOpInf
