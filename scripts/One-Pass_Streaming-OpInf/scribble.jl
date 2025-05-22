@@ -5,6 +5,25 @@ using SparseArrays
 using Kronecker
 
 ##
+foo = rand(3)
+D = Diagonal(foo ⊘ foo)
+D2 = Diagonal((foo ⊗ foo)[:])
+bar = elimat(3, 2) * symmtzrmat(3,2) * D2 * dupmat(3, 2) 
+D - bar
+
+##
+m,n = 4,5
+W = rand(m,n)
+W2 = W ⊖ W
+W3 = W ⧁ W
+W4 = W2 * elimat(n,2)'
+W3 - W4
+
+##
+W4 = W3 * dupmat(n,2)'
+W2 - W4
+
+##
 """
     kappa(n, idxs::Vararg{Int})
 
@@ -249,18 +268,25 @@ println(norm(L - L2) < 1e-12)  # should be true
 
 
 ##
-X = rand(10, 4)
+n, K, r = 4, 10, 3
+X = rand(n, K)
 U,Σ,V = svd(X)
+Ur = U[:, 1:r]
+Σr = Σ[1:r]
+Vr = V[:, 1:r]
 
 ##
-L = elimat(10,2)
-D = dupmat(4,2)
-U2 = L * (U ⊗ U) * D
-L = elimat(4,2)
-D = dupmat(10,2)
-U3 = L * (U ⊗ U)' * D
+Ln = elimat(n,2)
+Dr = dupmat(r,2)
+Sn = symmtzrmat(n,2)
+Sr = symmtzrmat(r,2)
+U2 = Ln * (Ur ⊗ Ur) * Dr
+Lr = elimat(r,2)
+Dn = dupmat(n,2)
+U3 = Lr * (Ur ⊗ Ur)' * Dn
 
 ##
 U3 * U2
 
 ##
+Lr * Diagonal((Σr ⊗ Σr)[:]) * Dr
