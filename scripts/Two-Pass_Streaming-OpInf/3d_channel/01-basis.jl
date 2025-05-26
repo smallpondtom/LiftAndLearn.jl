@@ -7,19 +7,17 @@
 #================#
 using CairoMakie
 using FileIO
-using Glob
+using HDF5
 using JLD2
 using IncrementalSVD
 using LinearAlgebra
 using ProgressMeter
-using PythonCall
 import LiftAndLearn as LnL
 
-#====================#
-## Configure Python 
-#====================#
-ENV["JULIA_CONDAPKG_BACKEND"] = "System"
-ENV["JULIA_CONDAPKG_BACKEND"] = "default"
+#==========================================#
+## Load struct to read data in HDF5 format 
+#==========================================#
+include("datasource.jl")
 
 #================================#
 ## Configure filepath for saving
@@ -28,34 +26,13 @@ DATAPATH = "../../../../../DATA/NREL/3D_CHANNEL"
 FILEPATH = occursin("scripts", pwd()) ? 
            joinpath(pwd(),"Two-Pass_Streaming-OpInf/3d_channel") : 
            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel")
+fn = "channel_5200_data_0_10000.h5"
+datafile = joinpath(DATAPATH, fn)
 
-#==================#
-## Load the files
-#==================#
-# lexsort key function
-function lexsort_key(s::String)
-    parts = split(s, r"(\d+)")           # like Python’s re.split with capture
-    return [all(isdigit, t) ?            # if the token is all digits
-            parse(Int, t) :              # parse it as Int
-            lowercase(t)                 # else lowercase the string
-            for t in parts]
-end
-
-# Data location and input parameters
-path = "../../../../../DATA/NREL/3D_CHANNEL/plt*"
-
-# Get list of files and sort them
-files = glob(path)
-sort!(files, by=lexsort_key)
-
-# Keep only the last 200 files (steady state data)
-if length(files) >= 200
-    files = files[end-199:end]
-end
-
-# Number of time steps
-nt = length(files)
-Ts = zeros(nt)
+#=============================#
+## Load the training dataset
+#=============================#
+ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 
 #=========================================================#
 ## Generate the POD basis using iSVD using all algorithms
