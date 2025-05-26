@@ -41,9 +41,9 @@ mutable struct QRRLSOpInf{T<:Real} <: TwoPassStreamingOpInf
 end
 
 # Import the streaming methods
-include("algorithms/RLS/stream.jl")
-include("algorithms/iQRRLS/stream.jl")
-include("algorithms/QRRLS/stream.jl")
+include("rls_algorithms/RLS/stream.jl")
+include("rls_algorithms/iQRRLS/stream.jl")
+include("rls_algorithms/QRRLS/stream.jl")
 
 
 """
