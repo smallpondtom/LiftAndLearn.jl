@@ -13,23 +13,34 @@ function Base.getindex(fp::FieldProxy, indices...)
         idx isa Integer ? (idx:idx) : idx
     end
     
-    # Validate indices
-    @assert length(idx_array) == 4 "Expected 4 indices for field access (x,y,z,time)"
-    @assert all(maximum.(idx_array) .<= fp.ds.dims[vcat(3:-1:1,5)]) "Indices out of bounds"
-
-    # Get field index
-    field_idx = findfirst(==(fp.field_name), fp.ds.fields)
-    isnothing(field_idx) && throw(ArgumentError("Field '$(fp.field_name)' not found"))
+    # Ensure we have either 4 indices (x,y,z,time) or 1 index (all times)
+    @assert (
+        length(idx_array) == 4 || length(idx_array) == 1
+    ) "Expected 4 indices for field access (x,y,z,time), or 1 for each field"
     
-    # Single HDF5 read with correct indices
-    h5f = h5open(fp.ds.hfname, "r") do f
-        dset = f["data"]
+    if length(idx_array) == 1
+        # If only one index is provided, assume it is for x, y, z, or time
+        h5f = h5open(fp.ds.hfname, "r") do f
+            dset = f[fp.field_name]
+            dset[indices...]    
+        end 
+    else
+        @assert all(maximum.(idx_array) .<= fp.ds.dims[vcat(3:-1:1,5)]) "Indices out of bounds"
+
+        # Get field index
+        field_idx = findfirst(==(fp.field_name), fp.ds.fields)
+        isnothing(field_idx) && throw(ArgumentError("Field '$(fp.field_name)' not found"))
         
-        # Create HDF5 index array [z,y,x,field,time]
-        h5_idx = [idx_array[3], idx_array[2], idx_array[1], field_idx, idx_array[4]]
-        
-        # Read data in one operation and permute
-        permutedims(dset[h5_idx...], (3, 2, 1, 4))
+        # Single HDF5 read with correct indices
+        h5f = h5open(fp.ds.hfname, "r") do f
+            dset = f["data"]
+            
+            # Create HDF5 index array [z,y,x,field,time]
+            h5_idx = [idx_array[3], idx_array[2], idx_array[1], field_idx, idx_array[4]]
+            
+            # Read data in one operation and permute
+            permutedims(dset[h5_idx...], (3, 2, 1, 4))
+        end
     end
     
     return h5f
@@ -62,7 +73,7 @@ Base.length(ds::ChannelDataSource) = ds.n_snapshots
 # Main getindex that returns a FieldProxy for string keys
 function Base.getindex(ds::ChannelDataSource, key::String)
     # Check if the field exists
-    if !(key in ds.fields)
+    if !(key in ds.fields) && !(key in filter(x->x != "fields", ds.dim_order))
         throw(ArgumentError("Field '$key' not found. Available fields: $(join(ds.fields, ", "))"))
     end
     
