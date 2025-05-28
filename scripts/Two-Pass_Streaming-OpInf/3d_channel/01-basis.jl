@@ -7,18 +7,12 @@
 #================#
 using CairoMakie
 using FileIO
-using HDF5
 using JLD2
 using IncrementalSVD
 using LinearAlgebra
 using ProgressMeter
 using SparseArrays
 import LiftAndLearn as LnL
-
-#==========================================#
-## Load struct to read data in HDF5 format 
-#==========================================#
-include("datasource.jl")
 
 #================================#
 ## Configure filepath for saving
@@ -29,6 +23,11 @@ FILEPATH = occursin("scripts", pwd()) ?
            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel")
 fn = "channel_5200_data_0_10000.h5"
 datafile = joinpath(DATAPATH, fn)
+
+#==========================================#
+## Load struct to read data in HDF5 format 
+#==========================================#
+include(joinpath(FILEPATH, "datasource.jl"))
 
 #=============================#
 ## Load the training dataset
