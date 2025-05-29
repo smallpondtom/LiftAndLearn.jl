@@ -62,7 +62,7 @@ function TwoPassStreamingOpInf(;
     variable_regularize::Bool=false     # variable regularization flag
     ) where {T<:Real}
 
-    # # Initialize the dimensions 
+    # Initialize the dimensions 
     # dims = Dict(:n => n, :m => m, :l => l)
     # d = 0  # total dimension of the data matrix
     # d += sum(i != 0 ? binomial(n+i-1, i) : 0 for i in options.system.state)
@@ -72,22 +72,64 @@ function TwoPassStreamingOpInf(;
     # dims[:d] = d
 
     # Initialize the dimensions 
+    # dims = Dict(:n => n, :m => m, :l => l)
+    # state_dims = isa(options.system.state, Real) ? [options.system.state] : options.system.state
+    # control_dims = isa(options.system.control, Real) ? [options.system.control] : options.system.control
+    # coupled_input_dims = isa(options.system.coupled_input, Real) ? [options.system.coupled_input] : options.system.coupled_input 
+    # operator_info = vcat(
+    # [
+    #     (
+    #         binomial(n+i-1, i), i == 1 ? :A : 
+    #         (options.optim.nonredundant_operators ? Symbol("A$(i)u") : Symbol("A$(i)"))
+    #     )
+    #     for i in filter(!iszero, state_dims)
+    # ],
+    # [(binomial(m+i-1, i), :B) for i in filter(!iszero, control_dims)],
+    # [(binomial(n+i-1, i) * m, i == 1 ? :N : Symbol("N$(i)")) for i in filter(!iszero, coupled_input_dims)],
+    # options.system.constant != 0 ? [(1, :K)] : []
+    # )
+    # operator_dimensions, operator_symbols = zip(operator_info...) .|> collect
+    # d = sum(operator_dimensions)  # total dimension of the data matrix
+    # dims[:d] = d
+
+    # Initialize the dimensions 
     dims = Dict(:n => n, :m => m, :l => l)
     state_dims = isa(options.system.state, Real) ? [options.system.state] : options.system.state
     control_dims = isa(options.system.control, Real) ? [options.system.control] : options.system.control
     coupled_input_dims = isa(options.system.coupled_input, Real) ? [options.system.coupled_input] : options.system.coupled_input 
-    operator_info = vcat(
-    [
-        (
-            binomial(n+i-1, i), i == 1 ? :A : 
-            (options.optim.nonredundant_operators ? Symbol("A$(i)u") : Symbol("A$(i)"))
-        )
-        for i in filter(!iszero, state_dims)
-    ],
-    [(binomial(m+i-1, i), :B) for i in filter(!iszero, control_dims)],
-    [(binomial(n+i-1, i) * m, i == 1 ? :N : Symbol("N$(i)")) for i in filter(!iszero, coupled_input_dims)],
-    options.system.constant != 0 ? [(1, :K)] : []
-    )
+
+    # Build operator info (!!!! with B after A !!!!)
+    operator_info = Vector{Tuple{Int, Symbol}}()
+
+    # Add linear state operator A first
+    linear_state = filter(i -> i == 1, state_dims)
+    if !isempty(linear_state)
+        push!(operator_info, (binomial(n, 1), :A))
+    end
+
+    # Add control operator B right after A
+    for i in filter(!iszero, control_dims)
+        push!(operator_info, (binomial(m+i-1, i), :B))
+    end
+
+    # Add higher-order state operators (A2, A3, etc.)
+    higher_order_state = filter(i -> i > 1, state_dims)
+    for i in higher_order_state
+        symbol = options.optim.nonredundant_operators ? Symbol("A$(i)u") : Symbol("A$(i)")
+        push!(operator_info, (binomial(n+i-1, i), symbol))
+    end
+
+    # Add coupled input operators
+    for i in filter(!iszero, coupled_input_dims)
+        symbol = i == 1 ? :N : Symbol("N$(i)")
+        push!(operator_info, (binomial(n+i-1, i) * m, symbol))
+    end
+
+    # Add constant term
+    if options.system.constant != 0
+        push!(operator_info, (1, :K))
+    end
+
     operator_dimensions, operator_symbols = zip(operator_info...) .|> collect
     d = sum(operator_dimensions)  # total dimension of the data matrix
     dims[:d] = d

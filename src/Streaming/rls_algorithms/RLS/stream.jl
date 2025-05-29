@@ -22,9 +22,9 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
             @warn "Transposing while assuming the row dim is the input dim and the column dim is the number of data points."
         end
         # if iszero(obj.cache.counter)
-        #     # D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
-        #     # obj.termination_settings[:dims] = operator_dims
-        #     # obj.termination_settings[:syms] = operator_symbols
+        #     D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
+        #     obj.termination_settings[:dims] = operator_dims
+        #     obj.termination_settings[:syms] = operator_symbols
         # else
         #     D = get_data_matrix(X, U', obj.options; verbose=false)
         # end
@@ -40,9 +40,9 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
         # end
     else
         # if iszero(obj.cache.counter)
-        #     # D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
-        #     # obj.termination_settings[:dims] = operator_dims
-        #     # obj.termination_settings[:syms] = operator_symbols
+        #     D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
+        #     obj.termination_settings[:dims] = operator_dims
+        #     obj.termination_settings[:syms] = operator_symbols
         # else
         #     D = get_data_matrix(X, U, obj.options; verbose=false)
         # end

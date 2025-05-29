@@ -17,9 +17,9 @@ function stream!(obj::iQRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::
         end
 
         # if iszero(obj.cache.counter)
-        #     # D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
-        #     # obj.termination_settings[:dims] = operator_dims
-        #     # obj.termination_settings[:syms] = operator_symbols
+        #     D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
+        #     obj.termination_settings[:dims] = operator_dims
+        #     obj.termination_settings[:syms] = operator_symbols
         # else
         #     D = get_data_matrix(X, U', obj.options; verbose=false)
         # end
@@ -36,9 +36,9 @@ function stream!(obj::iQRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::
     else
 
         # if iszero(obj.cache.counter)
-        #     # D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
-        #     # obj.termination_settings[:dims] = operator_dims
-        #     # obj.termination_settings[:syms] = operator_symbols
+        #     D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
+        #     obj.termination_settings[:dims] = operator_dims
+        #     obj.termination_settings[:syms] = operator_symbols
         # else
         #     D = get_data_matrix(X, U, obj.options; verbose=false)
         # end

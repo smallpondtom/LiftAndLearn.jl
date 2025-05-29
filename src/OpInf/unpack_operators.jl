@@ -20,6 +20,9 @@ function unpack_operators!(operators::Operators, O::AbstractArray, Yt::AbstractA
         setproperty!(operators, :C, Chat)
     end
 
+    B_index = findfirst(==(:B), operator_symbols)
+    B_index > 2 && @warn ":B (control) operator should come right after :A (linear) operator to be compatible with the `get_data_matrix` function."
+
     TD = 1  # initialize this dummy variable for total dimension (TD)
     for (i, symbol) in zip(dims, operator_symbols)
         if 'N' in string(symbol)  # only implemented for bilinear terms
@@ -49,6 +52,9 @@ Unpack the operators from the operator matrix O.
 """
 function unpack_operators!(operators::Operators, O::AbstractArray, dims::AbstractArray, operator_symbols::AbstractArray)
     n = size(O, 1)
+
+    B_index = findfirst(==(:B), operator_symbols)
+    B_index > 2 && @warn ":B (control) operator should come right after :A (linear) operator to be compatible with the `get_data_matrix` function."
 
     TD = 1  # initialize this dummy variable for total dimension (TD)
     for (i, symbol) in zip(dims, operator_symbols)
