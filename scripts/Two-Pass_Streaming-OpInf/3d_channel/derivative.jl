@@ -63,7 +63,7 @@ function fwd4(xs::Matrix, dt::Float64, is_init::Bool)
     return dxdt
 end
 # Dispatch
-function fwd4(xs::Array{Vector}, dt::Float64, is_init::Bool)
+function fwd4(xs::Array{<:Vector}, dt::Float64, is_init::Bool)
     if length(xs) < 5
         error("Need at least 5 time points for 4th order finite differences.")
     end
@@ -98,7 +98,7 @@ function bwd4(xs::Matrix, dt::Float64, is_final::Bool)
     return dxdt
 end
 # Dispatch
-function bwd4(xs::Array{Vector}, dt::Float64, is_final::Bool)
+function bwd4(xs::Array{<:Vector}, dt::Float64, is_final::Bool)
     if length(xs) < 5
         error("Need at least 5 time points for 4th order finite differences.")
     end
@@ -126,7 +126,7 @@ function ctd4(xs::Matrix, dt::Float64)
     return dxdt
 end
 # Dispatch
-function ctd4(xs::Array{Vector}, dt::Float64)
+function ctd4(xs::Array{<:Vector}, dt::Float64)
     if length(xs) < 5
         error("Need at least 5 time points for 4th order finite differences.")
     end

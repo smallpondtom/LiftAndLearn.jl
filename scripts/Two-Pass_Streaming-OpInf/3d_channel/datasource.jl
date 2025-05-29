@@ -81,16 +81,31 @@ function Base.getindex(ds::ChannelDataSource, key::String)
     return FieldProxy(ds, key)
 end
 
-# Improved ChannelDataSource getindex
+# Improved ChannelDataSource getindex (ignoring pressure field)
 function Base.getindex(ds::ChannelDataSource, index...)
     # Dimensions for convenience
     Nz, Ny, Nx, Nf, Nt = ds.dims
     N = Nz * Ny * Nx
     
+    # Find and exclude pressure field index
+    p_idx = findfirst(==("p"), ds.fields)
+    velocity_fields = isnothing(p_idx) ? (1:Nf) : [i for i in 1:Nf if i != p_idx]
+    
     if length(index) == 1 || length(index) == 2
         # Extract and normalize indices
-        field_idx = length(index) == 2 ? index[1] : (1:Nf)
+        field_idx = length(index) == 2 ? index[1] : velocity_fields
         time_idx = length(index) == 2 ? index[2] : index[1]
+        
+        # If specific fields are requested, honor that request
+        # Otherwise use our filtered velocity fields
+        if length(index) == 2 && !(field_idx isa Integer) && field_idx != (1:Nf)
+            # User specified specific fields, keep as is
+        else
+            # Use only velocity fields (filter out pressure)
+            field_idx = field_idx isa Integer ? 
+                        (field_idx <= p_idx ? field_idx : field_idx-1) : 
+                        velocity_fields
+        end
         
         # Convert to ranges if needed
         field_idx = field_idx isa Integer ? (field_idx:field_idx) : field_idx
@@ -126,6 +141,53 @@ function Base.getindex(ds::ChannelDataSource, index...)
         error("Invalid indexing. Expected 1 or 2 indices, got $(length(index)).")
     end
 end
+
+
+# # Improved ChannelDataSource getindex
+# function Base.getindex(ds::ChannelDataSource, index...)
+#     # Dimensions for convenience
+#     Nz, Ny, Nx, Nf, Nt = ds.dims
+#     N = Nz * Ny * Nx
+    
+#     if length(index) == 1 || length(index) == 2
+#         # Extract and normalize indices
+#         field_idx = length(index) == 2 ? index[1] : (1:Nf)
+#         time_idx = length(index) == 2 ? index[2] : index[1]
+        
+#         # Convert to ranges if needed
+#         field_idx = field_idx isa Integer ? (field_idx:field_idx) : field_idx
+#         time_idx = time_idx isa Integer ? (time_idx:time_idx) : time_idx
+        
+#         # Preallocate result matrix
+#         result = zeros(N*length(field_idx), length(time_idx))
+        
+#         # Read data in a single operation when possible
+#         h5open(ds.hfname, "r") do f
+#             dset = f["data"]
+            
+#             # Batch process for efficiency
+#             row_offset = 0
+#             for (f_idx, field) in enumerate(field_idx)
+#                 # Read all requested times for this field at once
+#                 field_data = dset[:,:,:,field,time_idx]
+                
+#                 # Reshape and store in result matrix
+#                 for t_idx in 1:length(time_idx)
+#                     result[row_offset+1:row_offset+N, t_idx] = reshape(
+#                         permutedims(field_data[:,:,:,t_idx], (3,2,1)), 
+#                         :
+#                     )
+#                 end
+#                 row_offset += N
+#             end
+#         end
+        
+#         # Return vector for single snapshots
+#         return length(time_idx) == 1 ? vec(result) : result
+#     else
+#         error("Invalid indexing. Expected 1 or 2 indices, got $(length(index)).")
+#     end
+# end
 
 
 # using HDF5

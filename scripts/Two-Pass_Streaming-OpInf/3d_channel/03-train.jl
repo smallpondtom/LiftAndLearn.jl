@@ -42,11 +42,6 @@ include(joinpath(FILEPATH, "../utilities/interpolate.jl"))
 ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 Nz, Ny, Nx, n_fields, n = ds.dims
 
-#===============#
-## Input data  ##
-#===============#
-U = - 0.001722 * ones(1,n)  
-
 #===================#
 ## Setup the options
 #===================#
@@ -78,6 +73,37 @@ basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
 iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
 rmax = size(iVrmax,2)
+
+#=========================#
+## Load reduced data
+#=========================#
+Xhat = load(joinpath(FILEPATH, "data/streaming/reduced_data.jld2"))["Xhat"]
+Xhatdot = load(joinpath(FILEPATH, "data/streaming/reduced_data.jld2"))["Xhatdot"]
+U = load(joinpath(FILEPATH, "data/streaming/reduced_data.jld2"))["U"]
+
+#=========================#
+## Train Batch model
+#=========================#
+# OpInf
+options.with_reg = false
+op_inf = LnL.opinf(Xhat, options; U=U, Xhatdot=Xhatdot)
+
+##
+# ops = Dict("opinf" => op_inf)
+# save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
+# ops = load(joinpath(FILEPATH, "data/models", "operators.jld2"))
+
+## Tikhonov Regularized OpInf
+options.with_reg = true
+options.λ = LnL.TikhonovParameter(A=1e1, A2=1e6, B=0)
+op_trinf = LnL.opinf(Xhat, options; U=U, Xhatdot=Xhatdot)
+
+# ops["tropinf"] = op_trinf
+# save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
+
+## Keep the reference batch model to compare with the streaming models
+Ostar = op_trinf.O'
+# Ostar = ops["tropinf"].O'
 
 #=========================#
 ## Train streaming model
