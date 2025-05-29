@@ -27,15 +27,15 @@ Solve the standard Operator Inference with/without regularization
 """
 function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Yt::AbstractArray, Xhat_t::AbstractArray, 
                             dims::AbstractArray, operator_symbols::AbstractArray, options::AbstractOption)
-    # Preallocate the Tikhonov weight Matrix
-    Γ = spzeros(sum(dims))
-
-    # Construct the Tikhonov matrix
-    tikhonov_matrix!(Γ, dims, operator_symbols, options.λ)
-    Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
-
     # compute least squares (pseudo inverse)
     if options.with_reg 
+        # Preallocate the Tikhonov weight Matrix
+        Γ = spzeros(sum(dims))
+
+        # Construct the Tikhonov matrix
+        tikhonov_matrix!(Γ, dims, operator_symbols, options.λ)
+        Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
+
         Ot = tikhonov(Rt, D, Γ, options.pinv_tol; tol_flag=options.with_tol, use_gpu=options.use_gpu, 
                       use_backslash=options.use_backslash)
     else
@@ -93,6 +93,43 @@ function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption;
         Xhat = Vn' * X
         Xhat_t = Xhat'
         Rt = Xdot' * Vn  
+    end
+
+    D, dims, op_symbols = get_data_matrix(Xhat, Xhat_t, Ut, options; verbose=true)
+    op = leastsquares_solve(D, Rt, Yt, Xhat_t, dims, op_symbols, options)
+    return op
+end
+
+
+"""
+    opinf(Xhat::AbstractArray, options::AbstractOption; 
+               U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
+               Xhatdot::AbstractArray=[]) → op::Operators
+
+Infer the operators with derivative data given. NOTE: This function dispatch
+accepts the reduced data matrices.
+
+## Arguments
+- `Xhat::AbstractArray`: reduced state data matrix
+- `options::AbstractOption`: options for the operator inference defined by the user
+- `U::AbstractArray`: input data matrix
+- `Y::AbstractArray`: output data matix
+- `Xhatdot::AbstractArray`: reduced derivative data matrix
+
+## Returns
+- `op::Operators`: inferred operators
+"""
+function opinf(Xhat::AbstractArray, options::AbstractOption; 
+               U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
+               Xhatdot::AbstractArray=[])
+    Ut = fat2tall(U)
+    Yt = fat2tall(Y)
+
+    if isempty(Xhatdot)
+        @error "Xhatdot is required for this function. Please provide the time derivative data."
+    else
+        Xhat_t = Xhat'
+        Rt = Xhatdot'
     end
 
     D, dims, op_symbols = get_data_matrix(Xhat, Xhat_t, Ut, options; verbose=true)
