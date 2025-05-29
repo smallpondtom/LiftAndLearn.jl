@@ -12,6 +12,7 @@ using ProgressMeter
 using PolynomialModelReductionDataset: BurgersModel
 using Printf
 using Random
+using Revise
 import UniqueKronecker
 import LiftAndLearn as LnL
 
@@ -124,9 +125,12 @@ for (file_idx, data_file) in enumerate(training_data_files)
         @assert foo == num_of_streams "Wrong number of streams"
 
         # Initialize the streaming OpInfs
-        rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS, Γs=Γ) 
-        iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γ)
-        qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γ)
+        # rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS, Γs=Γ) 
+        # iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γ)
+        # qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γ)
+        rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS) 
+        iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS)
+        qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS)
 
         # Preallocate a dictionary to store the streaming results
         Eps_true = Dict{Symbol, Matrix{Float64}}(
@@ -164,7 +168,7 @@ for (file_idx, data_file) in enumerate(training_data_files)
                 Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
             end
 
-            if (i-1) % 3 == 0 || i ∈ num_of_streams-10:num_of_streams
+            if (i-1) % 5 == 0 || i ∈ num_of_streams-10:num_of_streams
                 # Unpack operators
                 # RLS
                 op_rls = LnL.Operators()

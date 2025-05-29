@@ -339,7 +339,7 @@ with_theme(theme_latexfonts()) do
         labelsize=30
     )
     display(fig)
-    save(joinpath(FILEPATH, "plots/training_rse_errors.pdf"), fig)
+    # save(joinpath(FILEPATH, "plots/training_rse_errors.pdf"), fig)
 end
 
 #============================================#
@@ -393,7 +393,7 @@ with_theme(theme_latexfonts()) do
     end
     Legend(fig[1,4], lines, labels, labelsize=30)
     display(fig)
-    save(joinpath(FILEPATH, "plots/rel_state_err_per_stream.pdf"), fig)
+    # save(joinpath(FILEPATH, "plots/rel_state_err_per_stream.pdf"), fig)
 end
 
 #================================================#
