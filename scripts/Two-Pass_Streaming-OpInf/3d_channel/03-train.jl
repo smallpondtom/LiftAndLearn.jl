@@ -108,8 +108,6 @@ Ostar = op_trinf.O'
 #=========================#
 ## Train streaming model
 #=========================#
-Γ = 1e-8  # Regularization parameter
-
 # The reduced dimensions to evaluate on
 rspan = [rmax ÷ 2, rmax]
 
@@ -118,11 +116,11 @@ tspan = 1:0.01:n
 
 num_of_streams = n  
 tmp_res = (
-    stream_err_fac  = zeros(length(rspan), num_of_streams),
-    rse             = zeros(length(rspan), num_of_streams),
-    post_err        = zeros(num_of_streams),
-    conv_factor     = zeros(num_of_streams),
-    cost            = zeros(num_of_streams),
+    stream_err  = zeros(length(rspan), num_of_streams),
+    rse         = zeros(length(rspan), num_of_streams),
+    post_err    = zeros(num_of_streams),
+    conv_factor = zeros(num_of_streams),
+    cost        = zeros(num_of_streams),
 )
 
 # Dict to store all streaming results for different algorithms 
@@ -133,7 +131,7 @@ stream_res = Dict(
 )
 
 ## Initialize the streaming OpInfs
-rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS, Γs=Γ) 
+rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS) 
 # iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γ)
 # qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γ)
 
@@ -147,32 +145,35 @@ Eps = Dict{Symbol, Matrix{Float64}}(
 ## Stream one-by-one and collect data
 @showprogress for i in 1:num_of_streams
     # Get the i-th snapshot
-    x_i = ds[i]  
-    xhat_i = iVrmax' * x_i  # Project the snapshot onto the basis
+    # x_i = ds[i]  
+    # xhat_i = iVrmax' * x_i  # Project the snapshot onto the basis
+    xhat_i = Xhat[:,i]
     
-    # Compute the i-th time derivative 
-    if i == 1
-        # First snapshot, use forward finite difference
-        dt = ds["times"][5] - ds["times"][1]
-        xdot_i = fwd4(ds[i:i+4], dt/4, true)
-    elseif i == 2
-        # Second snapshot, use forward finite difference but with adjusted stencil
-        dt = ds["times"][5] - ds["times"][1]
-        xdot_i = fwd4(ds[i-1:i+3], dt/4, false)
-    elseif i == n-1
-        # Second to last snapshot, use backward finite difference
-        dt = ds["times"][n] - ds["times"][n-4]
-        xdot_i = bwd4(ds[i-3:i+1], dt/4, false)
-    elseif i == n 
-        # Last snapshot, use backward finite difference with adjusted stencil
-        dt = ds["times"][n] - ds["times"][n-4]
-        xdot_i = bwd4(ds[i-4:i], dt/4, true)
-    else
-        # For all other snapshots, use central finite difference
-        dt = ds["times"][i+2] - ds["times"][i-2]
-        xdot_i = ctd4(ds[i-2:i+2], dt/4)
-    end
-    xhatdot_i = iVrmax' * xdot_i  # Project the time derivative onto the basis
+    # # Compute the i-th time derivative 
+    # if i == 1
+    #     # First snapshot, use forward finite difference
+    #     dt = ds["times"][5] - ds["times"][1]
+    #     xdot_i = fwd4(ds[i:i+4], dt/4, true)
+    # elseif i == 2
+    #     # Second snapshot, use forward finite difference but with adjusted stencil
+    #     dt = ds["times"][5] - ds["times"][1]
+    #     xdot_i = fwd4(ds[i-1:i+3], dt/4, false)
+    # elseif i == n-1
+    #     # Second to last snapshot, use backward finite difference
+    #     dt = ds["times"][n] - ds["times"][n-4]
+    #     xdot_i = bwd4(ds[i-3:i+1], dt/4, false)
+    # elseif i == n 
+    #     # Last snapshot, use backward finite difference with adjusted stencil
+    #     dt = ds["times"][n] - ds["times"][n-4]
+    #     xdot_i = bwd4(ds[i-4:i], dt/4, true)
+    # else
+    #     # For all other snapshots, use central finite difference
+    #     dt = ds["times"][i+2] - ds["times"][i-2]
+    #     xdot_i = ctd4(ds[i-2:i+2], dt/4)
+    # end
+    # xhatdot_i = iVrmax' * xdot_i  # Project the time derivative onto the basis
+
+    xhatdot_i = Xhatdot[:,i]  # Use the precomputed time derivative
 
     # Get the i-th input 
     u_i = U[i]
@@ -182,19 +183,19 @@ Eps = Dict{Symbol, Matrix{Float64}}(
     # LnL.stream!(iqrrls_stream, xhat_i, xhatdot_i, U=[u_i])   # iQRRLS
     # LnL.stream!(qrrls_stream, xhat_i, xhatdot_i, U=[u_i])    # QRRLS
 
-    # # Streaming errors (cannot be computed since we don't have Ostar)
-    # if i == 1
-    #     Eps[:rls]    = Ostar - rls_stream.cache.O ≈ 1.0
-    #     Eps[:iqrrls] = Ostar - iqrrls_stream.cache.O ≈ 1.0
-    #     Eps[:qrrls]  = Ostar - qrrls_stream.cache.O ≈ 1.0
-    # else
-    #     Eps[:rls]    .= Eps[:rls] - rls_stream.cache.K * rls_stream.cache.ξpre
-    #     Eps[:iqrrls] .= Eps[:iqrrls] - iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
-    #     Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
-    # end
+    # Streaming errors (cannot be computed since we don't have Ostar)
+    if i == 1
+        Eps[:rls]    = Ostar - rls_stream.cache.O 
+        Eps[:iqrrls] = Ostar - iqrrls_stream.cache.O
+        Eps[:qrrls]  = Ostar - qrrls_stream.cache.O
+    else
+        Eps[:rls]    .= Eps[:rls] - rls_stream.cache.K * rls_stream.cache.ξpre
+        Eps[:iqrrls] .= Eps[:iqrrls] - iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
+        Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
+    end
 
-    # Streaming error factors
-    Eps[:rls]    = rls_stream.cache.K * rls_stream.cache.ξpre
+    # # Streaming error factors
+    # Eps[:rls]    = rls_stream.cache.K * rls_stream.cache.ξpre
     # Eps[:iqrrls] = iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
     # Eps[:qrrls]  = qrrls_stream.cache.K * qrrls_stream.cache.ξpre
 
@@ -268,7 +269,7 @@ Eps = Dict{Symbol, Matrix{Float64}}(
                 @views Eps_sub = Eps[key][idx,1:rj]
 
                 # Streaming error factors
-                stream_res[key].stream_err_fac[j,i] += norm(Eps_sub,2)
+                stream_res[key].stream_err[j,i] += norm(Eps_sub,2)
 
                 @info "Done: Stream $i / $num_of_streams, Algorithm: $key, Reduced dimension: $rj"
             end
@@ -335,8 +336,8 @@ save(filename, "stream_res", stream_res, "rspan", rspan)
 rspan = [25, 50, 100]
 train_errors = Dict(
     # :pod           => zeros(length(rspan),1),
-    # :opinf         => zeros(length(rspan),1),
-    # :tropinf       => zeros(length(rspan),1),
+    :opinf         => zeros(length(rspan),1),
+    :tropinf       => zeros(length(rspan),1),
     :stream_rls    => zeros(length(rspan),1),
     :stream_iqrrls => zeros(length(rspan),1),
     :stream_qrrls  => zeros(length(rspan),1)
