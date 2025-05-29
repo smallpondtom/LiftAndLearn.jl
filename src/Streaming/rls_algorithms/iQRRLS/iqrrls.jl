@@ -22,7 +22,7 @@ Inverse QR Decomposition Recursive Least-Squares (iQRRLS) cache struct to solve 
     temp_Ke::Array{T,2} = zeros(T,N,n)   # Temporary matrix for K * ξpre (N x n)
 
     # Update counter
-    counter::Int = 0
+    # counter::Int = 0
 end
 
 

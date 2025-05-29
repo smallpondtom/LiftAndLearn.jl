@@ -23,7 +23,7 @@ QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = 
     temp_Kd::Array{T,2} = zeros(T,N,1)    # Temporary matrix for P * d' (N x 1)
 
     # Update counter
-    counter::Int = 0
+    # counter::Int = 0
 end
 
 

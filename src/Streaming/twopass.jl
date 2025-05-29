@@ -62,14 +62,48 @@ function TwoPassStreamingOpInf(;
     variable_regularize::Bool=false     # variable regularization flag
     ) where {T<:Real}
 
+    # # Initialize the dimensions 
+    # dims = Dict(:n => n, :m => m, :l => l)
+    # d = 0  # total dimension of the data matrix
+    # d += sum(i != 0 ? binomial(n+i-1, i) : 0 for i in options.system.state)
+    # d += sum(i != 0 ? binomial(m+i-1, i) : 0 for i in options.system.control)
+    # d += sum(i != 0 ? binomial(n+i-1, i) * m : 0 for i in options.system.coupled_input)
+    # d += iszero(options.system.constant) ? 0 : 1
+    # dims[:d] = d
+
     # Initialize the dimensions 
     dims = Dict(:n => n, :m => m, :l => l)
-    d = 0  # total dimension of the data matrix
-    d += sum(i != 0 ? binomial(n+i-1, i) : 0 for i in options.system.state)
-    d += sum(i != 0 ? binomial(m+i-1, i) : 0 for i in options.system.control)
-    d += sum(i != 0 ? binomial(n+i-1, i) * m : 0 for i in options.system.coupled_input)
-    d += iszero(options.system.constant) ? 0 : 1
+    state_dims = isa(options.system.state, Real) ? [options.system.state] : options.system.state
+    control_dims = isa(options.system.control, Real) ? [options.system.control] : options.system.control
+    coupled_input_dims = isa(options.system.coupled_input, Real) ? [options.system.coupled_input] : options.system.coupled_input 
+    operator_info = vcat(
+    [
+        (
+            binomial(n+i-1, i), i == 1 ? :A : 
+            (options.optim.nonredundant_operators ? Symbol("A$(i)u") : Symbol("A$(i)"))
+        )
+        for i in filter(!iszero, state_dims)
+    ],
+    [(binomial(m+i-1, i), :B) for i in filter(!iszero, control_dims)],
+    [(binomial(n+i-1, i) * m, i == 1 ? :N : Symbol("N$(i)")) for i in filter(!iszero, coupled_input_dims)],
+    options.system.constant != 0 ? [(1, :K)] : []
+    )
+    operator_dimensions, operator_symbols = zip(operator_info...) .|> collect
+    d = sum(operator_dimensions)  # total dimension of the data matrix
     dims[:d] = d
+
+    # Build Tikhonov matrix using built-in function
+    if iszero(Γs) && options.with_reg
+        # Construct the Tikhonov matrix
+        Γs = spzeros(d)
+        tikhonov_matrix!(Γs, operator_dimensions, operator_symbols, options.λ)
+        Γs = diagm(0 => Γs)  # convert to sparse diagonal matrix
+    end
+
+    # Termination settings
+    term_setting = Dict{Symbol,Any}(
+        :dims => operator_dimensions, :syms => operator_symbols,
+    )
 
     if algorithm == :RLS  # Standard Recursive Least-Squares (RLS)
         # Initialize the inverse correlation matrices
@@ -79,7 +113,8 @@ function TwoPassStreamingOpInf(;
         # State regression
         state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, Γ=Γs, λ=λ)
         state_rls = RLSOpInf{T}(
-            state_cache, dims, Dict{Symbol,Any}(), options, 
+            # state_cache, dims, Dict{Symbol,Any}(), options, 
+            state_cache, dims, term_setting, options, 
             variable_regularize, iszero(Γs)
         )
         if iszero(l)
@@ -102,7 +137,8 @@ function TwoPassStreamingOpInf(;
 
         # State regression
         state_cache = QRRLSCache{T}(N=d, n=n, P=Ps, Φsq=Φsqs, λ=λ)
-        state_qrrls = QRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
+        # state_qrrls = QRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
+        state_qrrls = QRRLSOpInf{T}(state_cache, dims, term_setting, options)
         if iszero(l)
             return state_qrrls
         end
@@ -118,7 +154,8 @@ function TwoPassStreamingOpInf(;
 
         # State regression
         state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, λ=λ)
-        state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
+        # state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
+        state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, term_setting, options)
         if iszero(l)
             return state_iqrrls
         end

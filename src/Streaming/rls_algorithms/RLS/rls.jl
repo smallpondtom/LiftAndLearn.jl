@@ -25,7 +25,7 @@ Recursive Least-Squares (RLS) cache struct to solve for DO = R.
     temp_Ke::Array{T,2} = zeros(T,N,n)      # For updating O (N x n)
 
     # Update counter
-    counter::Int = 0
+    # counter::Int = 0
 end
 
 """
