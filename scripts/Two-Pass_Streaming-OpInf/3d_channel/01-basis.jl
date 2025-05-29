@@ -44,7 +44,7 @@ Nz, Ny, Nx, n_fields, n = ds.dims
 ## Compute the mean velocity for shiting
 #========================================#
 @time begin
-    xbar = compute_mean_parallel_threads(ds, (Nz*Ny*Nx*3,); batch_size=10)
+    xbar = compute_mean_parallel_threads(ds, (Nz*Ny*Nx*3,); batch_size=100)
 end
 @info "Mean computation complete"
 save(joinpath(FILEPATH, "data/streaming/mean.jld2"), "xbar", xbar)
