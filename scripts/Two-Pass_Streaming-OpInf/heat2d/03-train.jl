@@ -124,7 +124,7 @@ for (file_idx, data_file) in enumerate(training_data_files)
         iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ)
         qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ)
 
-        # Preallocate a dicdtionary to store the streaming results
+        # Preallocate a dictionary to store the streaming results
         # error_factors = Dict{Symbol, Matrix{Float64}}(
         #     :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d]), 
         #     :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d]), 
