@@ -5,12 +5,13 @@
 #================#
 ## Load Packages
 #================#
+using DifferentialEquations
 using FileIO
 using JLD2
 using LinearAlgebra
 using ProgressMeter
 using Printf
-using Random
+using Sundials
 using UniqueKronecker
 import LiftAndLearn as LnL
 
@@ -47,8 +48,8 @@ Nz, Ny, Nx, n_fields, n = ds.dims
 #=================#
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
-iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
-rmax = size(iVrmax,2)
+rmax = 100
+iVrmax = basis_data["baker"].iVr[:,1:rmax];  # choose Baker's iSVD basis
 
 #=========================#
 ## Load reduced data
@@ -59,32 +60,50 @@ U = load(joinpath(FILEPATH, "data/streaming/reduced_data.jld2"))["U"]
 #====================================#
 ## Simulate the learned reduced model
 #====================================#
-# Error analysis 
-rspan = [25, 50, 100]
-train_errors = Dict(
-    # :pod           => zeros(length(rspan),1),
-    :opinf         => zeros(length(rspan),1),
-    :tropinf       => zeros(length(rspan),1),
-    :stream_rls    => zeros(length(rspan),1),
-    :stream_iqrrls => zeros(length(rspan),1),
-    :stream_qrrls  => zeros(length(rspan),1)
+ops = load(joinpath(FILEPATH, "data/models/operators.jld2"))
+op = ops["tropinf"]
+
+##
+function channel3d(dx, x, p, t)
+    A = p[1]
+    A2u = p[2]
+    B = p[3]
+    u = p[4]
+    dx[:] = A * x + A2u * (x ⊘ x) + B * u
+end
+
+##
+Tend = ds["times"][length(ds)] - ds["times"][1]
+params = (op.A, op.A2u, op.B, U[1])
+prob_3dchannel = ODEProblem(
+    channel3d, iVrmax' * ds[1], (0.0, Tend), params
 )
 
-ops = load(joinpath(FILEPATH, "data/streamwise/models/operators.jld2"))
-op_rls = ops["stream_rls"]
+##
+sol = solve(prob_3dchannel, CVODE_BDF(linear_solver = :GMRES));
 
-# Integrate the model
-tspan_rk4 = 0:0.001:tspan[end]
+## Integrate the model
+Tend = ds["times"][length(ds)] - ds["times"][1]
+tspan_rk4 = 0:0.001:Tend
 Xrecon = zeros(rmax, length(tspan_rk4))
 Xrecon[:,1] = iVrmax' * ds[1]
 for k in 1:length(tspan_rk4)-1
     dt = tspan_rk4[k+1] - tspan_rk4[k]
-    Xrecon[:,k+1] = rk4_step(Xrecon[:,k], U[1], dt, op_rls.A, op_rls.A2u, op_rls.B)
+    Xrecon[:,k+1] = rk4_step(Xrecon[:,k], U[1], dt, op.A, op.A2u, op.B)
+    x1 = Xrecon[1,k+1]
+    x_end = Xrecon[end,k+1]
+    if isnan(x1) || isnan(x_end)
+        println("Step $k of $(length(tspan_rk4)-1): x1 = $(x1), x_end = $(x_end)")
+        println("NaN encountered in reduced state at step $k")
+        break
+    else
+        println("Step $k of $(length(tspan_rk4)-1): x1 = $(x1), x_end = $(x_end)")
+    end
 end
 
-# Compute relative state error (averaged over parameters)
+## Compute relative state error (averaged over parameters)
 Xhat_interp = cubic_interpolate_matrix(Xhat, ds["times"][:], tspan_rk4)
 reduced_error += norm(Xhat_interp - Xrecon) / norm(Xhat_interp)
 
-# Save the reconstructed reduced states 
+## Save the reconstructed reduced states 
 save(joinpath(FILEPATH, "data/check/recon_states.jld2"), "Xrecon", Xrecon)

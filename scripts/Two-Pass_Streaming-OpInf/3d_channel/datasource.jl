@@ -142,8 +142,7 @@ function Base.getindex(ds::ChannelDataSource, index...)
     end
 end
 
-
-# # Improved ChannelDataSource getindex
+# # Improved ChannelDataSource getindex (including pressure field)
 # function Base.getindex(ds::ChannelDataSource, index...)
 #     # Dimensions for convenience
 #     Nz, Ny, Nx, Nf, Nt = ds.dims
@@ -188,7 +187,6 @@ end
 #         error("Invalid indexing. Expected 1 or 2 indices, got $(length(index)).")
 #     end
 # end
-
 
 # using HDF5
 

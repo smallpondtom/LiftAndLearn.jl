@@ -51,131 +51,159 @@ xbar = load(joinpath(FILEPATH, "data/streaming/mean.jld2"))["xbar"]
 #=================#
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
-iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
-rmax = size(iVrmax,2)
+rmax = 100
+iVrmax = basis_data["baker"].iVr[:,1:rmax]  # choose Baker's iSVD basis
+# rmax = size(iVrmax,2)
 
 #=============================#
 ## Generate the reduced data
 #=============================#
-Xhat = Array{Float64}(undef, rmax, n)  # Preallocate the reduced data matrix
-Xhatdot = Array{Float64}(undef, rmax, n)  # Preallocate the reduced time derivative matrix
+TIME_DERIV_METHOD = 2
 
-## SEQUENTIAL (SLOW)
-# @showprogress for i in 1:n
-#     # Get the i-th snapshot
-#     x_i = ds[i]  
-#     Xhat[:,i] = iVrmax' * x_i  # Project the snapshot onto the basis
-    
-#     # Compute the i-th time derivative 
-#     if i == 1
-#         # First snapshot, use forward finite difference
-#         dt = ds["times"][5] - ds["times"][1]
-#         xdot_i = fwd4(ds[i:i+4], dt/4, true)
-#     elseif i == 2
-#         # Second snapshot, use forward finite difference but with adjusted stencil
-#         dt = ds["times"][5] - ds["times"][1]
-#         xdot_i = fwd4(ds[i-1:i+3], dt/4, false)
-#     elseif i == n-1
-#         # Second to last snapshot, use backward finite difference
-#         dt = ds["times"][n] - ds["times"][n-4]
-#         xdot_i = bwd4(ds[i-3:i+1], dt/4, false)
-#     elseif i == n 
-#         # Last snapshot, use backward finite difference with adjusted stencil
-#         dt = ds["times"][n] - ds["times"][n-4]
-#         xdot_i = bwd4(ds[i-4:i], dt/4, true)
-#     else
-#         # For all other snapshots, use central finite difference
-#         dt = ds["times"][i+2] - ds["times"][i-2]
-#         xdot_i = ctd4(ds[i-2:i+2], dt/4)
-#     end
-#     Xhatdot[:,i] = iVrmax' * xdot_i  # Project the time derivative onto the basis
-# end
+if TIME_DERIV_METHOD == 1
+    @info "Sequential using forward, backward, and central finite differences"
 
-## PARALLEL (FAST)
-# First load times data once (avoid repeated reads)
-times = ds["times"]
-
-# Read all snapshots in batches to minimize I/O overhead
-const BATCH_SIZE = 100  # Adjust based on available memory
-num_batches = ceil(Int, n / BATCH_SIZE)
-
-## Process boundary cases separately (first 2 and last 2 points)
-# Handle first two points
-for i in 1:2
-    if i == 1
-        dt = times[5] - times[1]
-        snapshots = [ds[j] for j in 1:5] .- xbar  # Adjust for mean velocity
-        xdot_i = fwd4(snapshots, dt/4, true)
-    else # i == 2
-        dt = times[5] - times[1]
-        snapshots = [ds[j] for j in 1:5] .- xbar  # Adjust for mean velocity
-        xdot_i = fwd4(snapshots, dt/4, false)
-    end
-    Xhat[:,i] = iVrmax' * ds[i]
-    Xhatdot[:,i] = iVrmax' * xdot_i
-end
-
-# Handle last two points
-for i in (n-1):n
-    if i == n-1
-        dt = times[n] - times[n-4]
-        snapshots = [ds[j] for j in (n-4):n] .- xbar  # Adjust for mean velocity
-        xdot_i = bwd4(snapshots, dt/4, false)
-    else # i == n
-        dt = times[n] - times[n-4]
-        snapshots = [ds[j] for j in (n-4):n] .- xbar  # Adjust for mean velocity
-        xdot_i = bwd4(snapshots, dt/4, true)
-    end
-    Xhat[:,i] = iVrmax' * ds[i]
-    Xhatdot[:,i] = iVrmax' * xdot_i
-end
-
-## Process all other points in parallel batches
-@info "Processing $(n-4) snapshots in $num_batches batches using $(Threads.nthreads()) threads"
-@time begin
-    # Process middle points (3 to n-2) in parallel
-    Threads.@threads for batch in 1:num_batches
-        start_idx = 3 + (batch-1) * BATCH_SIZE
-        end_idx = min(start_idx + BATCH_SIZE - 1, n-2)
+    ## METHOD #1) SEQUENTIAL (SLOW) FWD + BWD + CTD
+    Xhat = Array{Float64}(undef, rmax, n)  # Preallocate the reduced data matrix
+    Xhatdot = Array{Float64}(undef, rmax, n)  # Preallocate the reduced time derivative matrix
+    @showprogress for i in 1:n
+        # Get the i-th snapshot
+        x_i = ds[i] - xbar 
+        Xhat[:,i] = iVrmax' * x_i  # Project the snapshot onto the basis
         
-        # Skip if out of range
-        if start_idx > n-2
-            continue
+        # Compute the i-th time derivative 
+        if i == 1
+            # First snapshot, use forward finite difference
+            dt = ds["times"][5] - ds["times"][1]
+            xdot_i = fwd4(ds[i:i+4] .- xbar, dt/4, true)
+        elseif i == 2
+            # Second snapshot, use forward finite difference but with adjusted stencil
+            dt = ds["times"][5] - ds["times"][1]
+            xdot_i = fwd4(ds[i-1:i+3] .- xbar , dt/4, false)
+        elseif i == n-1
+            # Second to last snapshot, use backward finite difference
+            dt = ds["times"][n] - ds["times"][n-4]
+            xdot_i = bwd4(ds[i-3:i+1] .- xbar, dt/4, false)
+        elseif i == n 
+            # Last snapshot, use backward finite difference with adjusted stencil
+            dt = ds["times"][n] - ds["times"][n-4]
+            xdot_i = bwd4(ds[i-4:i] .- xbar, dt/4, true)
+        else
+            # For all other snapshots, use central finite difference
+            dt = ds["times"][i+2] - ds["times"][i-2]
+            xdot_i = ctd4(ds[i-2:i+2] .- xbar, dt/4)
         end
-        
-        # Pre-allocate batch arrays for this thread
-        batch_size = end_idx - start_idx + 1
-        batch_xhat = Matrix{Float64}(undef, rmax, batch_size)
-        batch_xhatdot = Matrix{Float64}(undef, rmax, batch_size)
-        
-        # Process batch
-        for (local_idx, i) in enumerate(start_idx:end_idx)
-            # Get 5-point stencil for finite difference
-            window_start = i-2
-            window_end = i+2
-            snapshots = [ds[j] for j in window_start:window_end] .- xbar  # Adjust for mean velocity
-            
-            # Calculate time step
-            dt = times[i+2] - times[i-2]
-            
-            # Calculate derivative
-            xdot_i = ctd4(snapshots, dt/4)
-            
-            # Store results in thread-local batch arrays
-            batch_xhat[:, local_idx] = iVrmax' * snapshots[3]  # middle point is i
-            batch_xhatdot[:, local_idx] = iVrmax' * xdot_i
-        end
-        
-        # Copy batch results to global arrays (critical section)
-        batch_offset = start_idx - 3
-        Xhat[:, start_idx:end_idx] = batch_xhat
-        Xhatdot[:, start_idx:end_idx] = batch_xhatdot
-
-        @info "Processed batch $(batch) from $(start_idx) to $(end_idx)"
+        Xhatdot[:,i] = iVrmax' * xdot_i  # Project the time derivative onto the basis
     end
-end
+elseif TIME_DERIV_METHOD == 2
+    @info "Sequential using central finite differences only"
 
-@info "Completed processing $n snapshots"
+    ## METHOD #2) SEQUENTIAL (SLOW) CTD only
+    Xhat = Array{Float64}(undef, rmax, n-4)  # Preallocate the reduced data matrix
+    Xhatdot = Array{Float64}(undef, rmax, n-4)  # Preallocate the reduced time derivative matrix
+    @showprogress for (ct, i) in enumerate(3:n-2)
+        # Get the i-th snapshot
+        x_i = ds[i] - xbar 
+        Xhat[:,ct] = iVrmax' * x_i  # Project the snapshot onto the basis
+        
+        # Compute the i-th time derivative using central finite difference
+        dt = ds["times"][i+2] - ds["times"][i-2]
+        xdot_i = ctd4(ds[i-2:i+2] .- xbar, dt/4)
+
+        Xhatdot[:,ct] = iVrmax' * xdot_i  # Project the time derivative onto the basis
+    end
+
+else
+    @info "Parallel using forward, backward, and central finite differences"
+
+    ## METHOD #3) PARALLEL (FAST)
+    Xhat = Array{Float64}(undef, rmax, n)  # Preallocate the reduced data matrix
+    Xhatdot = Array{Float64}(undef, rmax, n)  # Preallocate the reduced time derivative matrix
+    # First load times data once (avoid repeated reads)
+    times = ds["times"]
+
+    # Read all snapshots in batches to minimize I/O overhead
+    const BATCH_SIZE = 100  # Adjust based on available memory
+    num_batches = ceil(Int, n / BATCH_SIZE)
+
+    ## Process boundary cases separately (first 2 and last 2 points)
+    # Handle first two points
+    for i in 1:2
+        if i == 1
+            dt = times[5] - times[1]
+            snapshots = [ds[j] - xbar for j in 1:5]  # Adjust for mean velocity
+            xdot_i = fwd4(snapshots, dt/4, true)
+        else # i == 2
+            dt = times[5] - times[1]
+            snapshots = [ds[j] - xbar for j in 1:5]  # Adjust for mean velocity
+            xdot_i = fwd4(snapshots, dt/4, false)
+        end
+        Xhat[:,i] = iVrmax' * (ds[i] - xbar)
+        Xhatdot[:,i] = iVrmax' * xdot_i
+    end
+
+    # Handle last two points
+    for i in (n-1):n
+        if i == n-1
+            dt = times[n] - times[n-4]
+            snapshots = [ds[j] - xbar for j in (n-4):n]  # Adjust for mean velocity
+            xdot_i = bwd4(snapshots, dt/4, false)
+        else # i == n
+            dt = times[n] - times[n-4]
+            snapshots = [ds[j] - xbar for j in (n-4):n] # Adjust for mean velocity
+            xdot_i = bwd4(snapshots, dt/4, true)
+        end
+        Xhat[:,i] = iVrmax' * (ds[i] - xbar)
+        Xhatdot[:,i] = iVrmax' * xdot_i
+    end
+
+    ## Process all other points in parallel batches
+    @info "Processing $(n-4) snapshots in $num_batches batches using $(Threads.nthreads()) threads"
+    @time begin
+        # Process middle points (3 to n-2) in parallel
+        Threads.@threads for batch in 1:num_batches
+            start_idx = 3 + (batch-1) * BATCH_SIZE
+            end_idx = min(start_idx + BATCH_SIZE - 1, n-2)
+            
+            # Skip if out of range
+            if start_idx > n-2
+                continue
+            end
+            
+            # Pre-allocate batch arrays for this thread
+            batch_size = end_idx - start_idx + 1
+            batch_xhat = Matrix{Float64}(undef, rmax, batch_size)
+            batch_xhatdot = Matrix{Float64}(undef, rmax, batch_size)
+            
+            # Process batch
+            for (local_idx, i) in enumerate(start_idx:end_idx)
+                # Get 5-point stencil for finite difference
+                window_start = i-2
+                window_end = i+2
+                snapshots = [ds[j] - xbar for j in window_start:window_end]  # Adjust for mean velocity
+                
+                # Calculate time step
+                dt = times[i+2] - times[i-2]
+                
+                # Calculate derivative
+                xdot_i = ctd4(snapshots, dt/4)
+                
+                # Store results in thread-local batch arrays
+                batch_xhat[:, local_idx] = iVrmax' * snapshots[3] # middle point is i
+                batch_xhatdot[:, local_idx] = iVrmax' * xdot_i
+            end
+            
+            # Copy batch results to global arrays (critical section)
+            batch_offset = start_idx - 3
+            Xhat[:, start_idx:end_idx] = batch_xhat
+            Xhatdot[:, start_idx:end_idx] = batch_xhatdot
+
+            @info "Processed batch $(batch) from $(start_idx) to $(end_idx)"
+        end
+    end
+
+    @info "Completed processing $n snapshots"
+end
 
 #===========================#
 ## Save the reduced data

@@ -21,7 +21,10 @@ function unpack_operators!(operators::Operators, O::AbstractArray, Yt::AbstractA
     end
 
     B_index = findfirst(==(:B), operator_symbols)
-    B_index > 2 && @warn ":B (control) operator should come right after :A (linear) operator to be compatible with the `get_data_matrix` function."
+    if !isnothing(B_index)
+        B_index > 2 && @warn ":B (control) operator should come right after :A (linear) \
+             operator to be compatible with the `get_data_matrix` function."
+    end
 
     TD = 1  # initialize this dummy variable for total dimension (TD)
     for (i, symbol) in zip(dims, operator_symbols)
@@ -54,7 +57,11 @@ function unpack_operators!(operators::Operators, O::AbstractArray, dims::Abstrac
     n = size(O, 1)
 
     B_index = findfirst(==(:B), operator_symbols)
-    B_index > 2 && @warn ":B (control) operator should come right after :A (linear) operator to be compatible with the `get_data_matrix` function."
+    if !isnothing(B_index)
+        # Check if :B operator is right after :A operator
+        B_index > 2 && @warn ":B (control) operator should come right after :A (linear) \
+            operator to be compatible with the `get_data_matrix` function."
+    end
 
     TD = 1  # initialize this dummy variable for total dimension (TD)
     for (i, symbol) in zip(dims, operator_symbols)
