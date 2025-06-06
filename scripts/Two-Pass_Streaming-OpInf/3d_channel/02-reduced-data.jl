@@ -146,14 +146,14 @@ else
         if i == 1
             dt = times[5] - times[1]
             reduced_snapshots = [
-                iVrmax' * scale(ds[j] - xbar, dim_per_field, scale_factors)
+                iVrmax' * scale(ds[j] .- xbar, dim_per_field, scale_factors)
                 for j in 1:5
             ]  
             xhatdot_i = fwd4(reduced_snapshots, dt/4, true)
         else # i == 2
             dt = times[5] - times[1]
             reduced_snapshots = [
-                iVrmax' * scale(ds[j] - xbar, dim_per_field, scale_factors)
+                iVrmax' * scale(ds[j] .- xbar, dim_per_field, scale_factors)
                 for j in 1:5
             ]
             xhatdot_i = fwd4(reduced_snapshots, dt/4, false)
@@ -167,19 +167,20 @@ else
         if i == n-1
             dt = times[n] - times[n-4]
             reduced_snapshots = [
-                iVrmax' * scale(ds[j] - xbar, dim_per_field, scale_factors)
+                iVrmax' * scale(ds[j] .- xbar, dim_per_field, scale_factors)
                 for j in (n-4):n
             ] 
             xhatdot_i = bwd4(reduced_snapshots, dt/4, false)
+            Xhat[:,i] = reduced_snapshots[4]
         else # i == n
             dt = times[n] - times[n-4]
             reduced_snapshots = [
-                iVrmax' * scale(ds[j] - xbar , dim_per_field, scale_factors)
+                iVrmax' * scale(ds[j] .- xbar , dim_per_field, scale_factors)
                 for j in (n-4):n
             ] 
             xhatdot_i = bwd4(reduced_snapshots, dt/4, true)
+            Xhat[:,i] = reduced_snapshots[5]
         end
-        Xhat[:,i] = reduced_snapshots[i]
         Xhatdot[:,i] = xhatdot_i
     end
 
@@ -207,7 +208,7 @@ else
                 window_start = i-2
                 window_end = i+2
                 reduced_snapshots = [
-                    iVrmax' * scale(ds[j] - xbar, dim_per_field, scale_factors)
+                    iVrmax' * scale(ds[j] .- xbar, dim_per_field, scale_factors)
                     for j in window_start:window_end
                 ]
                 

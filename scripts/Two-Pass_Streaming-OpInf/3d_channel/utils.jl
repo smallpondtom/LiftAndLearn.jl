@@ -150,3 +150,215 @@ function compute_mean_multiprocess(ds, dims; batch_size=50, data_path=nothing, i
     @info "Processed $total_count of $n snapshots"
     return xbar
 end
+
+function right_ssm!(selected_rank::Int, 
+                    Σ1::AbstractArray{T}, Σ2::AbstractArray{T},
+                    W1::AbstractMatrix{T}, W2::AbstractMatrix{T}; 
+                    γ::Real=1.0) where {T<:Number}
+    # Dimensions
+    k1 = size(V1,2)
+    k2 = size(V2,2)
+    k = k1 + k2
+    n = size(W1,1)
+
+    # Check dimensions
+    size(W2,1) == n || throw(DimensionMismatch("W1 and W2 must have the same number of columns"))
+
+    # Convert Σ1, Σ2 to vectors if they are diagonal
+    Σ1_vec = (ndims(Σ1) == 1) ? Σ1 : diag(Σ1)
+    Σ2_vec = (ndims(Σ2) == 1) ? Σ2 : diag(Σ2)
+
+    # Create combined matrix Z = [γ*Σ1*W1'; Σ2*W2']
+    Z = Matrix{T}(undef, k, n)
+    @views begin
+        Z[1:k1, :] = W1'
+        Z[k1+1:k, :] = W2'
+    end
+
+    # Scale columns
+    @views scale_rows!(Z[1:k1, :], γ .* Σ1_vec)
+    @views scale_rows!(Z[k1+1:k, :], Σ2_vec)
+
+    # QR factorization
+    L = zeros(T, k, k)
+    lqf!(Z, L)
+
+    # SVD of L
+    # L is ((k1+k2) x (k1+k2)) since typically n ≥ k1+k2 
+    # We'll get a small SVD:
+    _, Σl, Wl = svd(L)
+
+    # (1) Truncate singular values
+    Σmerge = Σl[1:selected_rank]
+
+    # (2) Truncated right singular vectors
+    # Truncate (Z is the in-place LQ factorization of Z)
+    Wmerge = Z' * Wl[:, 1:selected_rank]
+
+    # (3) Truncated left singular vectors
+    # Vtilde = BlockDiagonal([V1, V2])
+    # Vmerge = Vtilde * Vl[:, 1:selected_rank]
+    # Vl = Vl[:, 1:selected_rank]
+    # Vl1 = @view Vl[1:k1, :]
+    # Vl2 = @view Vl[k1+1:end, :]
+    # Vmerge = vcat(V1 * Vl1, V2 * Vl2)
+
+    return Σmerge, Wmerge
+end
+
+function left_ssm!(selected_rank::Int, 
+                   V1::AbstractMatrix{T}, V2::AbstractMatrix{T}, 
+                   Σ1::AbstractArray{T}, Σ2::AbstractArray{T}, 
+                   W1::AbstractMatrix{T}=zeros(T,1,1), W2::AbstractMatrix{T}=zeros(T,1,1);
+                   γ::Real=1.0, right_singular_vectors::Bool=false) where {T<:Number}
+    # Dimensions
+    m = size(V1,1)
+    k1 = size(V1,2)
+    k2 = size(V2,2)
+    k = k1 + k2
+
+    @assert selected_rank ≤ k "selected_rank must be ≤ the sum of ranks of V1 and V2."
+    size(V2,1) == m || throw(DimensionMismatch("V1 and V2 must have the same number of rows"))
+
+    # Convert Σ1, Σ2 to vectors if they are diagonal
+    Σ1_vec = (ndims(Σ1) == 1) ? Σ1 : diag(Σ1)
+    Σ2_vec = (ndims(Σ2) == 1) ? Σ2 : diag(Σ2)
+
+    # Create combined matrix A = [γ*V1*Σ1  V2*Σ2]
+    A = Matrix{T}(undef, m, k)
+    @views begin
+        A[:, 1:k1] = V1
+        A[:, k1+1:k] = V2
+    end
+
+    # Scale columns
+    @views scale_columns!(A[:,1:k1], γ .* Σ1_vec)
+    @views scale_columns!(A[:,k1+1:k], Σ2_vec)
+
+    # QR factorization
+    R = qrf!(A, zeros(k, k))
+
+    # SVD of R
+    # R is (m x (k1+k2)) but typically m ≥ k1+k2 so R's bottom is zero-triangular.
+    # We'll get a small SVD:
+    if right_singular_vectors
+        Vr, Σr, Wr = svd(R)
+
+        # (1) Truncate singular values: Σr[1:selected_rank]
+        Σmerge = Σr[1:selected_rank]
+
+        # (2) Truncate (A is the in-place QR factorization of A)
+        Vmerge = A * Vr[:, 1:selected_rank]
+
+        # (3) Truncate the right singular vectors if needed
+        # Wtilde = BlockDiagonal([W1, W2])
+        # Wmerge = Wtilde * Wr[:, 1:selected_rank]
+        Wr = Wr[:, 1:selected_rank]
+        Wr1 = @view Wr[1:k1, :]
+        Wr2 = @view Wr[k1+1:end, :]
+        Wmerge = vcat(W1 * Wr1, W2 * Wr2)
+
+        return LinearAlgebra.SVD(Vmerge, Σmerge, Wmerge)
+    else
+        Vr, Σr, _ = svd(R)
+
+        # (1) Truncate singular values: Σr[1:selected_rank]
+        Σmerge = Σr[1:selected_rank]
+
+        # (2) Truncate (A is the in-place QR factorization of A)
+        Vmerge = A * Vr[:, 1:selected_rank]
+
+        return LinearAlgebra.SVD(Vmerge, Σmerge, zeros(1,1))
+    end
+end
+
+@inline function scale_rows!(A::AbstractMatrix, v::AbstractVector)
+    @assert size(A, 1) == length(v)
+    @inbounds @simd for i in eachindex(v)
+        α = v[i]
+        for j in axes(A, 2)
+            A[i,j] *= α
+        end
+    end
+    return A
+end
+
+@inline function scale_columns!(A::AbstractMatrix, Σ::AbstractVector)
+    @assert size(A, 2) == length(Σ)
+    @inbounds @simd for j in eachindex(Σ)
+        σ = Σ[j]
+        for i in axes(A,1)
+            A[i,j] *= σ
+        end
+    end
+    return A
+end
+
+function qrf!(P::AbstractArray{T}, R::AbstractArray{T}) where {T<:Number}
+    if issparse(P) # If P is sparse, convert it to dense.
+        P = Matrix(P)
+    end
+    m, b = checksize(P)
+    m >= b || throw(DimensionMismatch("Works only for m ≥ b"))
+    P, tau = LAPACK.geqrf!(P)
+    fill!(R, zero(T))
+    @inbounds for j = 1:b, i = 1:j
+        R[i,j] = P[i,j]
+    end
+    LAPACK.orgqr!(P, tau)
+    return R
+end
+
+function qrf!(P::AbstractArray{<:Number})
+    if issparse(P) # If P is sparse, convert it to dense.
+        P = Matrix(P)
+    end
+    m, b = checksize(P)
+    m >= b || throw(DimensionMismatch("Works only for m ≥ b"))
+    P, tau = LAPACK.geqrf!(P)
+    LAPACK.orgqr!(P, tau)
+end
+
+function lqf!(P::AbstractArray{T}, L::AbstractArray{T}) where {T<:Number}
+    if issparse(P) # If P is sparse, convert it to dense.
+        P = Matrix(P)
+    end
+    m, n = checksize(P)
+    n >= m || throw(DimensionMismatch("Works only for n ≥ m"))
+    # Compute the LQ factorization of P; gelqf! returns P (with Householder info) and tau.
+    P, tau = LAPACK.gelqf!(P)
+    # Copy the lower–triangular part of P into L.
+    fill!(L, zero(T))
+    @inbounds for i = 1:m
+        for j = 1:i
+            L[i, j] = P[i, j]
+        end
+    end
+    # Generate the orthogonal matrix Q in place (overwriting P).
+    LAPACK.orglq!(P, tau)
+    return L
+end
+
+function lqf!(P::AbstractArray{<:Number})
+    if issparse(P) # If P is sparse, convert it to dense.
+        P = Matrix(P)
+    end
+    m, n = checksize(P)
+    n >= m || throw(DimensionMismatch("Works only for n ≥ m"))
+    P, tau = LAPACK.gelqf!(P)
+    LAPACK.orglq!(P, tau)
+end
+
+function checksize(A::AbstractArray)
+    m, n = nothing, nothing
+    try
+        m, n = size(A)
+    catch e
+        if isa(e, BoundsError)
+            m, n = length(A), 1
+        else
+            rethrow(e)
+        end
+    end
+    return m, n
+end

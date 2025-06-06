@@ -248,7 +248,7 @@ for (i, r) in enumerate(rspan)
         "total" => zeros(nt)
     )
 
-    @threads for j in 1:n
+    Threads.@threads for j in 1:n
         tid = Threads.threadid()
 
         # Extract full snapshot X = ds[j] - xbar
@@ -290,4 +290,297 @@ for (i, r) in enumerate(rspan)
 end
 
 # Save to disk:
-save(joinpath(FILEPATH, "data/projection_errors.jld2"), "proj_error" => proj_error)
+save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)
+
+#================================#
+## Two-level Block-wise SVD with left_ssm and right_ssm merging
+#================================#
+@info "Computing two-level block-wise SVD with left_ssm and right_ssm merging..."
+
+# Parameters
+Nrow = 512     # Number of row blocks
+Ncol = 250     # Number of column blocks per row
+target_rank = 10000   # Target rank for each small block SVD
+intermediate_rank = 10000  # Rank after column merging (per row block)
+final_rank = 10000   # Final merged rank after row merging
+
+# Field dimensions
+field_names = ds.fields
+N = dim_per_field
+total_fields = length(field_names)
+total_rows = N * total_fields
+total_cols = length(ds)
+
+@info "Two-level Block SVD parameters:"
+@info "  Row blocks: $Nrow, Column blocks per row: $Ncol"
+@info "  Target rank per block: $target_rank"
+@info "  Intermediate rank per row: $intermediate_rank" 
+@info "  Final rank: $final_rank"
+@info "  Total matrix size: $total_rows × $total_cols"
+
+# Function to compute SVD for a single block
+function compute_small_block_svd(row_range, col_range, target_rank)
+    @info "Computing SVD for rows $(first(row_range)):$(last(row_range)), cols $(first(col_range)):$(last(col_range))"
+    
+    # Determine which fields are involved
+    field_row_starts = [1; cumsum([N for _ in 1:total_fields-1]) .+ 1]
+    field_row_ends = cumsum([N for _ in 1:total_fields])
+    
+    # Extract block data efficiently using the new indexing
+    block_data = zeros(length(row_range), length(col_range))
+    current_row = 1
+    
+    for (field_idx, field_name) in enumerate(field_names)
+        field_start = field_row_starts[field_idx]
+        field_end = field_row_ends[field_idx]
+        
+        # Check if this field overlaps with our row range
+        if field_start <= last(row_range) && field_end >= first(row_range)
+            # Calculate overlap
+            local_start = max(1, first(row_range) - field_start + 1)
+            local_end = min(N, last(row_range) - field_start + 1)
+            
+            if local_start <= local_end
+                local_range = local_start:local_end
+                
+                # Extract field data for the column range using new efficient indexing
+                field_data = ds[field_idx, col_range][local_range, :]
+                
+                # Apply scaling
+                if field_name != "p"
+                    field_data .*= sqrt(dPdx)
+                else
+                    field_data .*= dPdx
+                end
+                
+                # Subtract mean if applicable
+                if xbar != 0.0
+                    global_indices = (field_idx-1)*N .+ local_range
+                    mean_block = xbar[global_indices]
+                    field_data .-= mean_block
+                end
+                
+                # Place in block_data
+                rows_to_fill = length(local_range)
+                block_data[current_row:(current_row + rows_to_fill - 1), :] = field_data
+                current_row += rows_to_fill
+            end
+        end
+    end
+    
+    @info "Block data size: $(size(block_data))"
+    
+    # Compute SVD with rank truncation
+    try
+        F = svd(block_data)
+        k = min(target_rank, length(F.S), size(F.U, 2), size(F.Vt, 1))
+        
+        @info "SVD computed, truncating to rank $k (from $(length(F.S)) singular values)"
+        
+        result = (U=F.U[:, 1:k], S=F.S[1:k], Vt=F.Vt[1:k, :])
+        
+        # Clear memory
+        block_data = nothing
+        F = nothing
+        GC.gc()
+        
+        return result
+    catch e
+        @error "SVD failed for block rows $(first(row_range)):$(last(row_range)), cols $(first(col_range)):$(last(col_range)): $e"
+        rethrow(e)
+    end
+end
+
+## Main two-level processing
+@time begin
+    # Storage for row block SVDs
+    row_block_svds = Vector{NamedTuple}(undef, Nrow)
+    
+    # Process each row block
+    for row_block in 1:Nrow
+        @info "Processing row block $row_block of $Nrow"
+        
+        # Calculate row range for this block
+        row_block_size = ceil(Int, total_rows / Nrow)
+        row_start = (row_block - 1) * row_block_size + 1
+        row_end = min(row_block * row_block_size, total_rows)
+        row_range = row_start:row_end
+        
+        @info "Row block $row_block covers rows $row_start:$row_end"
+        
+        # Initialize for column merging within this row block
+        row_merged_U = Matrix{Float64}(undef, 0, 0)
+        row_merged_S = Float64[]
+        row_merged_Vt = Matrix{Float64}(undef, 0, 0)
+        is_first_col_block = true
+        
+        # Process column blocks sequentially and merge with left_ssm!
+        for col_block in 1:Ncol
+            @info "  Processing column block $col_block of $Ncol for row block $row_block"
+            
+            # Calculate column range for this block
+            col_block_size = ceil(Int, total_cols / Ncol)
+            col_start = (col_block - 1) * col_block_size + 1
+            col_end = min(col_block * col_block_size, total_cols)
+            col_range = col_start:col_end
+            
+            try
+                # Compute SVD for this small block
+                block_svd = compute_small_block_svd(row_range, col_range, target_rank)
+                
+                if is_first_col_block
+                    # Initialize with first column block
+                    row_merged_U = copy(block_svd.U)
+                    row_merged_S = copy(block_svd.S)
+                    row_merged_Vt = copy(block_svd.Vt)
+                    is_first_col_block = false
+                    @info "  Initialized row block $row_block with first column block: $(length(row_merged_S)) singular values"
+                else
+                    # Merge with existing result using left_ssm!
+                    @info "  Merging column block $col_block with existing row block result..."
+                    @info "  Current row merged: $(length(row_merged_S)) singular values"
+                    @info "  Block: $(length(block_svd.S)) singular values"
+                    
+                    try
+                        max_rank = min(intermediate_rank, length(row_merged_S) + length(block_svd.S))
+                        
+                        # Use left_ssm! for column merging
+                        merged_result = left_ssm!(
+                            max_rank,
+                            row_merged_U, block_svd.U,
+                            row_merged_S, block_svd.S,
+                            row_merged_Vt', block_svd.Vt';
+                            γ=1.0,
+                            right_singular_vectors=true
+                        )
+                        
+                        # Update merged components
+                        row_merged_U = merged_result.U
+                        row_merged_S = merged_result.S
+                        row_merged_Vt = merged_result.Vt'
+                        
+                        @info "  Column merge successful. New row merged: $(length(row_merged_S)) singular values"
+                        
+                    catch merge_error
+                        @error "  Column merge failed for row block $row_block, col block $col_block: $merge_error"
+                        rethrow(merge_error)
+                    end
+                end
+                
+                # Clear block data
+                block_svd = nothing
+                GC.gc()
+                
+            catch e
+                @error "Failed to process row block $row_block, col block $col_block: $e"
+                @info "Continuing with next column block..."
+                continue
+            end
+        end
+        
+        # Store the merged result for this row block
+        row_block_svds[row_block] = (U=row_merged_U, S=row_merged_S, Vt=row_merged_Vt)
+        @info "Completed row block $row_block with $(length(row_merged_S)) singular values"
+        
+        # Clear row block data
+        row_merged_U = nothing
+        row_merged_S = nothing  
+        row_merged_Vt = nothing
+        GC.gc()
+    end
+    
+    @info "Completed all row blocks. Now merging row blocks with right_ssm!..."
+    
+    # Now merge all row blocks using right_ssm!
+    final_merged_S = Float64[]
+    final_merged_Vt = Matrix{Float64}(undef, 0, 0)
+    is_first_row_block = true
+    
+    for row_block in 1:Nrow
+        @info "Merging row block $row_block into final result..."
+        
+        row_svd = row_block_svds[row_block]
+        
+        if is_first_row_block
+            # Initialize with first row block
+            final_merged_S = copy(row_svd.S)
+            final_merged_Vt = copy(row_svd.Vt)
+            is_first_row_block = false
+            @info "Initialized final result with row block 1: $(length(final_merged_S)) singular values"
+        else
+            # Merge with existing result using right_ssm!
+            @info "Current final merged: $(length(final_merged_S)) singular values"
+            @info "Row block: $(length(row_svd.S)) singular values"
+            
+            try
+                max_rank = min(final_rank, length(final_merged_S) + length(row_svd.S))
+                
+                # Use right_ssm! for row merging
+                final_merged_S_new, final_merged_Vt_new = right_ssm!(
+                    max_rank,
+                    final_merged_S, row_svd.S,
+                    final_merged_Vt', row_svd.Vt';
+                    γ=1.0
+                )
+                
+                # Update final merged components
+                final_merged_S = final_merged_S_new
+                final_merged_Vt = final_merged_Vt_new'
+                
+                @info "Row merge successful. New final merged: $(length(final_merged_S)) singular values"
+                @info "Spectral decay check - first 5 σ: $(final_merged_S[1:min(5, length(final_merged_S))])"
+                
+            catch merge_error
+                @error "Row merge failed for row block $row_block: $merge_error"
+                rethrow(merge_error)
+            end
+        end
+        
+        # Clear row block data
+        row_block_svds[row_block] = nothing
+        GC.gc()
+    end
+    
+    @info "Completed two-level merging!"
+    @info "Final number of singular values: $(length(final_merged_S))"
+    @info "Spectral decay - first 20 σ: $(final_merged_S[1:min(20, length(final_merged_S))])"
+    @info "Spectral decay - last 20 σ: $(final_merged_S[max(1, end-19):end])"
+end
+
+# Store the results
+two_level_singular_values = final_merged_S[1:min(final_rank, length(final_merged_S))]
+
+## Save the singular values for analysis
+save(joinpath(FILEPATH, "data/streaming/two_level_block_singular_values.jld2"), 
+     "singular_values", two_level_singular_values,
+     "total_computed", length(final_merged_S),
+     "parameters", Dict("Nrow" => Nrow, "Ncol" => Ncol, "target_rank" => target_rank, 
+                       "intermediate_rank" => intermediate_rank, "final_rank" => final_rank))
+
+@info "Two-level block-wise SVD computation complete."
+@info "Computed $(length(final_merged_S)) singular values, saved $(length(two_level_singular_values)) for analysis"
+
+## Create visualization comparing approaches
+using CairoMakie 
+fig = Figure(resolution=(1000, 600))
+
+# Plot both results if available
+ax = Axis(fig[1,1], yscale=log10, xlabel="Singular Value Index", ylabel="Singular Value", 
+         title="Spectral Decay Comparison")
+
+scatter!(ax, 1:length(two_level_singular_values), two_level_singular_values, 
+         markersize=2, color=:red, label="Two-level Block SVD")
+
+# Add single-level results if they exist
+if @isdefined block_merged_singular_values
+    scatter!(ax, 1:min(length(block_merged_singular_values), length(two_level_singular_values)), 
+             block_merged_singular_values[1:min(length(block_merged_singular_values), length(two_level_singular_values))], 
+             markersize=2, color=:blue, label="Single-level Block SVD")
+end
+
+axislegend(ax)
+
+## Save the comparison plot
+save(joinpath(FILEPATH, "plots/spectral_decay_comparison.png"), fig)
+
+@info "Two-level block-wise SVD analysis complete"

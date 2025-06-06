@@ -188,6 +188,7 @@ function Base.getindex(ds::ChannelDataSource, index...)
     end
 end
 
+
 function scale(data::Array{Float64}, dim::Int, factors::Vector{Float64})
     @assert length(factors) == div(size(data, 1), dim) "Number of factors 
         must match number of dimensions"
