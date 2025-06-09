@@ -178,6 +178,8 @@ function tikhonov_matrix!(Γ::AbstractArray, dims::AbstractArray, operator_symbo
     for (d, symbol) in zip(dims, operator_symbols)
         symbol_str  = string(symbol)
         if (length(symbol_str) >= 2) && ('A' in symbol_str)
+            # lambda has fields λ.A2, λ.A3, etc. for polynomial operators
+            # and not λ.A2u, λ.A3u, etc.
             Γ[si:si+d-1] .= getproperty(λ, Symbol(symbol_str[1:2]))
         else
             Γ[si:si+d-1] .= getproperty(λ, symbol)

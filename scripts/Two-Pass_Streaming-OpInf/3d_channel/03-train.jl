@@ -40,6 +40,9 @@ include(joinpath(FILEPATH, "../utilities/interpolate.jl"))
 #=============================#
 ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 Nz, Ny, Nx, n_fields, n = ds.dims
+dim_per_field = Nz * Ny * Nx
+dPdx = 0.001722
+scale_factors = [sqrt(dPdx), sqrt(dPdx), sqrt(dPdx), dPdx]
 
 #===================#
 ## Setup the options
@@ -48,8 +51,8 @@ Nz, Ny, Nx, n_fields, n = ds.dims
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=[1,2],
-        control=1,
-        constant=0,
+        # control=1,
+        constant=1,
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
@@ -71,7 +74,7 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
 #=================#
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
-rmax = 100
+rmax = 200
 iVrmax = basis_data["baker"].iVr[:,1:rmax]  # choose Baker's iSVD basis
 
 #=========================#
@@ -89,7 +92,7 @@ size(Xhat,1) != rmax && @warn "Xhat has a different number of \
 #=========================#
 # OpInf
 options.with_reg = false
-op_inf = LnL.opinf(Xhat, options; U=U[1:end-4], Xhatdot=Xhatdot)
+op_inf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 ##
 # ops = Dict("opinf" => op_inf)
@@ -98,8 +101,8 @@ op_inf = LnL.opinf(Xhat, options; U=U[1:end-4], Xhatdot=Xhatdot)
 
 ## Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e-8, A2=1e-4, B=1e-8, K=1e-8, N=1e-8)
-op_trinf = LnL.opinf(Xhat, options; U=U[1:end-4], Xhatdot=Xhatdot)
+options.λ = LnL.TikhonovParameter(A=1e-8, A2=1e8, K=1e-15)
+op_trinf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 # ops["tropinf"] = op_trinf
 # save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
