@@ -203,7 +203,25 @@ end
 # #=====================================================================#
 # ## Save the POD basis and singular values
 # #=====================================================================#
-# save(joinpath(FILEPATH, "data/streaming/basis.jld2"), bases)
+# if isfile(joinpath(FILEPATH, "data/streaming/basis.jld2"))
+#     @info "Loading existing basis file to update"
+#     existing_data = load(joinpath(FILEPATH, "data/streaming/basis.jld2"))
+#     existing_bases = get(existing_data, "bases", Dict())
+#     for (algo, basis) in bases
+#         if haskey(existing_bases, algo)
+#             @info "Updating existing basis for algorithm $algo"
+#             existing_bases[algo].iVr = basis.iVr
+#             existing_bases[algo].iΣr = basis.iΣr
+#         else
+#             @info "Adding new basis for algorithm $algo"
+#             existing_bases[algo] = basis
+#         end
+#     end
+#     save(joinpath(FILEPATH, "data/streaming/basis.jld2"), "bases", existing_bases)
+# else
+#     @info "Creating new basis file"
+#     save(joinpath(FILEPATH, "data/streaming/basis.jld2"), "bases", bases)
+# end
 
 # #============================================================#
 # ## Save the runtime of the algorithms
@@ -453,11 +471,33 @@ for result in field_results
 end
 
 ## Save field-wise results
-save(joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2"), 
-     "iVr", block_diagonal_basis,
-     "iΣr", block_diagonal_singular_values,
-     "field_results", field_results,
-     "parameters", Dict("field_rank" => field_rank, "total_rank" => total_rank))
+if isfile(joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2"))
+    # Load existing file to update
+    @info "Loading existing field-wise basis file"
+    existing_data = load(joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2"))
+    existing_bases = get(existing_data, "bases", Dict())
+    for (field_name, basis) in bases
+        if haskey(existing_bases, field_name)
+            @info "Updating existing basis for field $field_name"
+            existing_bases[field_name].iVr = basis.iVr
+            existing_bases[field_name].iΣr = basis.iΣr
+        else
+            @info "Adding new basis for field $field_name"
+            existing_bases[field_name] = basis
+        end
+    end
+    existing_data["field_results"] = field_results
+    existing_data["parameters"] = Dict("field_rank" => field_rank, "total_rank" => total_rank)
+    save(joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2"), existing_data)
+else
+    @info "Creating new field-wise basis file"
+    save(joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2"), 
+        "bases", bases,
+        # "iVr", block_diagonal_basis,
+        # "iΣr", block_diagonal_singular_values,
+        "field_results", field_results,
+        "parameters", Dict("field_rank" => field_rank, "total_rank" => total_rank))
+end
 
 @info "Saved field-wise Baker iSVD results"
 
@@ -465,6 +505,15 @@ save(joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2"),
 ## Compute projection errors for field-wise basis
 #================================#
 @info "Computing projection errors for field-wise basis..."
+
+proj_error_file = joinpath(FILEPATH, "data/streaming/proj_error.jld2")
+if isfile(proj_error_file)
+    @info "Loading existing projection errors from file"
+    proj_error = load(proj_error, "proj_error")
+else
+    @info "Initializing new projection error dictionary"
+    proj_error = Dict()
+end
 
 # Add field-wise to projection error dictionary
 rspan = [100]
@@ -547,7 +596,7 @@ for (i, r) in enumerate(fieldwise_rspan)
 end
 
 # Update saves to include field-wise results
-save(joinpath(FILEPATH, "data/streaming/basis.jld2"), bases)
+# save(joinpath(FILEPATH, "data/streaming/basis.jld2"), bases)
 save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)
 
 @info "Field-wise Baker iSVD analysis complete"
