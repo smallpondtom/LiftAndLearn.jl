@@ -345,7 +345,7 @@ N = dim_per_field
 
 ## Function to compute iSVD for a single field
 @everywhere function compute_field_isvd(field_idx, field_name, datafile, n, xbar, 
-                                        dPdx, field_rank, N)
+                                        dPdx, field_rank, N, algo)
 
     @info "Worker $(myid()): Computing iSVD for field $field_name (index $field_idx)"
 
@@ -371,7 +371,7 @@ N = dim_per_field
     @info "Worker $(myid()): Initializing iSVD for field $field_name"
     
     # Initialize iSVD
-    baker_field = iSVD(x1=x1, algo=:baker, max_rank=field_rank)
+    isvd_field = iSVD(x1=x1, algo=algo, max_rank=field_rank)
     
     # Incremental updates
     @info "Worker $(myid()): Running incremental updates for field $field_name"
@@ -386,7 +386,7 @@ N = dim_per_field
         xi .*= scale_factor
         
         # Incremental update
-        increment!(baker_field, xi)
+        increment!(isvd_field, xi)
         
         # Progress reporting every 1000 snapshots
         if i % 1000 == 0
@@ -399,8 +399,8 @@ N = dim_per_field
     # Return the basis and singular values
     return (
         field_name = field_name,
-        Q = baker_field.Q[:, 1:min(n,field_rank)],
-        Σ = baker_field.Σ[1:min(n,field_rank)],
+        Q = isvd_field.Q[:, 1:min(n,field_rank)],
+        Σ = isvd_field.Σ[1:min(n,field_rank)],
     )
 end
 
@@ -412,7 +412,7 @@ end
     field_tasks = []
     for (field_idx, field_name) in enumerate(field_names)
         task = @spawnat :any compute_field_isvd(
-            field_idx, field_name, datafile, n, xbar, dPdx, field_rank, N)
+            field_idx, field_name, datafile, n, xbar, dPdx, field_rank, N, :brand1)
         push!(field_tasks, task)
     end
     
