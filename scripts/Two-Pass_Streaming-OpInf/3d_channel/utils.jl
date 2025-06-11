@@ -156,52 +156,47 @@ function right_ssm!(selected_rank::Int,
                     W1::AbstractMatrix{T}, W2::AbstractMatrix{T}; 
                     γ::Real=1.0) where {T<:Number}
     # Dimensions
-    k1 = size(V1,2)
-    k2 = size(V2,2)
+    k1 = length(Σ1)
+    k2 = length(Σ2)
     k = k1 + k2
-    n = size(W1,1)
+    n = size(W1, 2)  # Number of columns in the right singular vector matrices
 
     # Check dimensions
-    size(W2,1) == n || throw(DimensionMismatch("W1 and W2 must have the same number of columns"))
+    size(W2, 2) == n || throw(DimensionMismatch("W1 and W2 must have the same number of columns"))
+    size(W1, 1) == k1 || throw(DimensionMismatch("W1 must have k1 rows"))
+    size(W2, 1) == k2 || throw(DimensionMismatch("W2 must have k2 rows"))
 
     # Convert Σ1, Σ2 to vectors if they are diagonal
     Σ1_vec = (ndims(Σ1) == 1) ? Σ1 : diag(Σ1)
     Σ2_vec = (ndims(Σ2) == 1) ? Σ2 : diag(Σ2)
 
-    # Create combined matrix Z = [γ*Σ1*W1'; Σ2*W2']
+    # Create combined matrix Z = [γ*Σ1*W1; Σ2*W2] (row-wise concatenation)
     Z = Matrix{T}(undef, k, n)
     @views begin
-        Z[1:k1, :] = W1'
-        Z[k1+1:k, :] = W2'
+        Z[1:k1, :] = W1
+        Z[k1+1:k, :] = W2
     end
 
-    # Scale columns
+    # Scale rows by singular values
     @views scale_rows!(Z[1:k1, :], γ .* Σ1_vec)
     @views scale_rows!(Z[k1+1:k, :], Σ2_vec)
 
-    # QR factorization
+    # LQ factorization: Z = L * Q where Q is orthogonal
     L = zeros(T, k, k)
-    lqf!(Z, L)
+    lqf!(Z, L)  # Z gets overwritten with Q, L contains the lower triangular part
 
     # SVD of L
-    # L is ((k1+k2) x (k1+k2)) since typically n ≥ k1+k2 
-    # We'll get a small SVD:
     _, Σl, Wl = svd(L)
 
-    # (1) Truncate singular values
+    # Truncate to selected rank
+    selected_rank = min(selected_rank, length(Σl), k, n)
+    
+    # (1) Truncated singular values
     Σmerge = Σl[1:selected_rank]
 
     # (2) Truncated right singular vectors
-    # Truncate (Z is the in-place LQ factorization of Z)
+    # Z now contains Q from LQ factorization
     Wmerge = Z' * Wl[:, 1:selected_rank]
-
-    # (3) Truncated left singular vectors
-    # Vtilde = BlockDiagonal([V1, V2])
-    # Vmerge = Vtilde * Vl[:, 1:selected_rank]
-    # Vl = Vl[:, 1:selected_rank]
-    # Vl1 = @view Vl[1:k1, :]
-    # Vl2 = @view Vl[k1+1:end, :]
-    # Vmerge = vcat(V1 * Vl1, V2 * Vl2)
 
     return Σmerge, Wmerge
 end

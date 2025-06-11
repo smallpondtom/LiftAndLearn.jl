@@ -11,6 +11,8 @@ using LinearAlgebra
 using ProgressMeter
 using Printf
 using UniqueKronecker
+using BlockDiagonals
+using SparseArrays
 import LiftAndLearn as LnL
 
 #================================#
@@ -72,10 +74,10 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
 #=================#
 ## Load the bases 
 #=================#
-basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
+basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
 basis_data = load(basis_file)
-rmax = 200
-iVrmax = basis_data["baker"].iVr[:,1:rmax]  # choose Baker's iSVD basis
+rmax = 400
+iVrmax = sparse(basis_data["bases"]["baker_fieldwise"].iVr[:,1:rmax])  # choose Baker's iSVD basis
 
 #=========================#
 ## Load reduced data
@@ -101,7 +103,7 @@ op_inf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 ## Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e-8, A2=1e8, K=1e-15)
+options.λ = LnL.TikhonovParameter(A=1e-6, A2=1e-2, K=1e-15)
 op_trinf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 # ops["tropinf"] = op_trinf

@@ -9,6 +9,8 @@ using FileIO
 using JLD2
 using LinearAlgebra
 using ProgressMeter
+using BlockDiagonals
+using SparseArrays
 
 #================================#
 ## Configure filepath for saving
@@ -52,10 +54,10 @@ xbar = load(joinpath(FILEPATH, "data/streaming/mean.jld2"))["xbar"]
 #=================#
 ## Load the bases 
 #=================#
-basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
+basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
 basis_data = load(basis_file)
-rmax = 200
-iVrmax = basis_data["baker"].iVr[:,1:rmax]  # choose Baker's iSVD basis
+rmax = 400
+iVrmax = sparse(basis_data["bases"]["baker_fieldwise"].iVr[:,1:rmax])  # choose Baker's iSVD basis
 
 #=============================#
 ## Generate the reduced data
