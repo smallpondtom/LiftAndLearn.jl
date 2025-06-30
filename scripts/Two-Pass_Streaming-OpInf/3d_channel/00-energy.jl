@@ -67,19 +67,20 @@ else
 end
 
 #================================#
-## Two-level Block-wise SVD with left_ssm and right_ssm merging
+## Two-level Block-wise SVD with row-based multiprocessing
 #================================#
-@info "Computing complete energy spectrum using multi-process, multi-threaded block SVD..."
+@info "Computing complete energy spectrum using multi-process row-based computation..."
 
 using Distributed
 
-# Add worker processes if not already added (one for each velocity component)
-velocity_components = ["u", "v", "w"]  # Exclude pressure
-if nprocs() < length(velocity_components) + 1
-    n_workers_needed = length(velocity_components) - (nprocs() - 1)
+# Add worker processes based on available cores (more efficient than field-based)
+n_cores = Sys.CPU_THREADS
+desired_workers = min(n_cores - 1, 8)  # Reserve one core for main process, cap at 8
+if nprocs() < desired_workers + 1
+    n_workers_needed = desired_workers - (nprocs() - 1)
     if n_workers_needed > 0
         addprocs(n_workers_needed)
-        @info "Added $n_workers_needed worker processes for velocity components"
+        @info "Added $n_workers_needed worker processes for row-based computation"
     end
 end
 
@@ -94,84 +95,74 @@ end
 @everywhere include(joinpath(@__DIR__, "utils.jl"))
 
 # Parameters for complete energy spectrum computation
-Nrow = 64      # Number of row blocks per field
+Nrow = min(64, nprocs() * 4)  # Scale row blocks with number of workers
 Ncol = 25      # Number of column blocks per row block
 target_rank = length(ds)    # Maximum possible rank (time dimension)
 intermediate_rank = length(ds)  # Rank after column merging
 final_rank = length(ds)     # Final rank (complete spectrum)
 
 # Field dimensions
-velocity_field_names = velocity_components  # Only u, v, w (exclude pressure)
+velocity_field_names = ["u", "v", "w"]  # Only u, v, w (exclude pressure)
 N = dim_per_field
 total_cols = length(ds)
 
-@info "Complete Energy Spectrum SVD parameters:"
-@info "  Velocity fields: $velocity_field_names"
-@info "  Row blocks per field: $Nrow, Column blocks per row: $Ncol"
+@info "Row-based Energy Spectrum SVD parameters:"
+@info "  Workers: $(nprocs()-1), Row blocks: $Nrow, Column blocks per row: $Ncol"
 @info "  Target rank per block: $target_rank"
 @info "  Intermediate rank per row: $intermediate_rank" 
 @info "  Final rank: $final_rank"
-@info "  Field dimension: $N"
-@info "  Time dimension: $total_cols"
-@info "  Complete spectrum will have $(min(N, total_cols)) singular values per field"
+@info "  Field dimension: $N, Time dimension: $total_cols"
 
-# Function to compute SVD for a single field using multi-threaded block processing
-@everywhere function compute_field_complete_svd(
-    field_name::String, field_idx::Int, datafile::String, 
+# Function to compute SVD for a single row block across all velocity fields
+@everywhere function compute_row_block_svd(
+    row_block::Int, datafile::String, 
     N::Int, total_cols::Int, Nrow::Int, Ncol::Int,
-    target_rank::Int, intermediate_rank::Int, final_rank::Int,
+    target_rank::Int, intermediate_rank::Int,
     xbar, dPdx::Float64, velocity_field_names::Vector{String})
     
-    @info "Worker $(myid()): Computing complete SVD for field $field_name"
+    @info "Worker $(myid()): Computing row block $row_block of $Nrow"
     
     # Create datasource on worker
     ds_worker = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
     
-    # Apply appropriate scaling
-    scale_factor = field_name != "p" ? sqrt(dPdx) : dPdx
+    # Calculate row range for this block
+    row_block_size = ceil(Int, N / Nrow)
+    row_start = (row_block - 1) * row_block_size + 1
+    row_end = min(row_block * row_block_size, N)
+    row_range = row_start:row_end
     
-    # Storage for row block SVDs
-    row_block_svds = Vector{NamedTuple}(undef, Nrow)
+    # Storage for field results within this row block
+    field_row_results = Vector{NamedTuple}()
     
-    # Process each row block
-    for row_block in 1:Nrow
-        @info "Worker $(myid()): Processing row block $row_block of $Nrow for field $field_name"
+    # Process each velocity field for this row block
+    for (field_idx_in_vel, field_name) in enumerate(velocity_field_names)
+        # Find actual field index in dataset
+        actual_field_idx = findfirst(==(field_name), ds_worker.fields)
+        scale_factor = sqrt(dPdx)  # All velocity fields use same scaling
         
-        # Calculate row range for this block
-        row_block_size = ceil(Int, N / Nrow)
-        row_start = (row_block - 1) * row_block_size + 1
-        row_end = min(row_block * row_block_size, N)
-        row_range = row_start:row_end
+        @info "Worker $(myid()): Processing field $field_name for row block $row_block"
         
-        # Initialize for column merging within this row block
-        row_merged_U = Matrix{Float64}(undef, 0, 0)
-        row_merged_S = Float64[]
-        row_merged_Vt = Matrix{Float64}(undef, 0, 0)
-        is_first_col_block = true
-        
-        # Process column blocks and store results for merging
+        # Initialize for column merging within this row block and field
         col_block_results = Vector{Union{Nothing, NamedTuple}}(undef, Ncol)
         
+        # Process column blocks in parallel using threads
         Threads.@threads for col_block in 1:Ncol
             try
-                @info "Worker $(myid()): Processing column block $col_block of $Ncol for row block $row_block, field $field_name"
-                
                 # Calculate column range for this block
                 col_block_size = ceil(Int, total_cols / Ncol)
                 col_start = (col_block - 1) * col_block_size + 1
                 col_end = min(col_block * col_block_size, total_cols)
                 col_range = col_start:col_end
                 
-                # Extract block data for this field
-                field_data = ds_worker[field_idx, col_range][row_range, :]
+                # Extract block data for this field and row block
+                field_data = ds_worker[actual_field_idx, col_range][row_range, :]
                 
                 # Apply scaling
                 field_data .*= scale_factor
                 
                 # Subtract mean if applicable
                 if xbar !== nothing && xbar != 0.0
-                    # Calculate global indices for this field
-                    field_global_start = (findfirst(==(field_name), velocity_field_names) - 1) * N + 1
+                    field_global_start = (field_idx_in_vel - 1) * N + 1
                     global_indices = field_global_start .+ (row_range .- 1)
                     mean_block = xbar[global_indices]
                     field_data .-= mean_block
@@ -181,147 +172,115 @@ total_cols = length(ds)
                 F = svd(field_data)
                 k = min(target_rank, length(F.S), size(F.U, 2), size(F.Vt, 1))
                 
-                # Store result (need U for horizontal merging with left_ssm!)
+                # Store result
                 col_block_results[col_block] = (U=F.U[:, 1:k], S=F.S[1:k], Vt=F.Vt[1:k, :])
                 
                 # Clear memory
                 field_data = nothing
                 F = nothing
-                GC.gc()
                 
             catch e
-                @error "Worker $(myid()): Failed to process row block $row_block, col block $col_block for field $field_name: $e"
+                @error "Worker $(myid()): Failed to process row block $row_block, col block $col_block, field $field_name: $e"
                 col_block_results[col_block] = nothing
             end
         end
-          # Now merge the column blocks using direct SVD of [U1*S1, U2*S2, ..., U_m*S_m]
-        # Collect all valid column block results
+        
+        # Merge column blocks for this field and row block
         valid_col_blocks = filter(x -> x !== nothing, col_block_results)
         
         if !isempty(valid_col_blocks)
-            @info "Worker $(myid()): Merging $(length(valid_col_blocks)) column blocks for row block $row_block"
-            
             # Create the horizontally concatenated matrix [U1*S1, U2*S2, ..., U_m*S_m]
-            col_matrices = []
-            for block_svd in valid_col_blocks
-                # Compute U*S for this block
-                US_block = block_svd.U * Diagonal(block_svd.S)
-                push!(col_matrices, US_block)
-            end
-            
-            # Horizontally concatenate all U*S matrices
+            col_matrices = [block_svd.U * Diagonal(block_svd.S) for block_svd in valid_col_blocks]
             merged_matrix = hcat(col_matrices...)
             
             # Take SVD of the merged matrix
             try
                 F_merged = svd(merged_matrix)
-                k = min(intermediate_rank, length(F_merged.S), size(F_merged.U, 2), size(F_merged.Vt, 1))
+                k = min(intermediate_rank, length(F_merged.S))
                 
-                # Store the result (we need the V^T for vertical merging later)
-                row_merged_S = F_merged.S[1:k]
-                row_merged_Vt = F_merged.Vt[1:k, :]
-                
-                @info "Worker $(myid()): Column merge successful for row block $row_block. Merged: $(length(row_merged_S)) singular values"
+                # Store the result for this field in this row block
+                push!(field_row_results, (
+                    field_name=field_name,
+                    S=F_merged.S[1:k], 
+                    Vt=F_merged.Vt[1:k, :]
+                ))
                 
             catch merge_error
                 @error "Worker $(myid()): Column merge failed for row block $row_block, field $field_name: $merge_error"
-                # Create empty result
-                row_merged_S = Float64[]
-                row_merged_Vt = Matrix{Float64}(undef, 0, 0)
             end
-        else
-            # No valid column blocks
-            @warn "Worker $(myid()): No valid column blocks for row block $row_block, field $field_name"
-            row_merged_S = Float64[]
-            row_merged_Vt = Matrix{Float64}(undef, 0, 0)
         end
         
-        # Store the merged result for this row block (drop U to save memory)
-        row_block_svds[row_block] = (S=row_merged_S, Vt=row_merged_Vt)
-        @info "Worker $(myid()): Completed row block $row_block for field $field_name with $(length(row_merged_S)) singular values"
-          # Clear row block data
-        row_merged_S = nothing
-        row_merged_Vt = nothing
+        # Clear column block data
         col_block_results = nothing
         GC.gc()
     end
     
-    @info "Worker $(myid()): Completed all row blocks for field $field_name. Now merging row blocks using direct SVD..."
-    
-    # Now merge all row blocks using direct SVD of [S1*V1^T; S2*V2^T; ...; S_m*V_m^T]
-    # Collect all valid row block results
-    valid_row_blocks = filter(x -> length(x.S) > 0, row_block_svds)
-    
-    if !isempty(valid_row_blocks)
-        @info "Worker $(myid()): Merging $(length(valid_row_blocks)) row blocks for field $field_name"
-        
-        # Create the vertically concatenated matrix [S1*V1^T; S2*V2^T; ...; S_m*V_m^T]
-        row_matrices = []
-        for row_svd in valid_row_blocks
-            # Compute S*V^T for this row block
-            SVt_block = Diagonal(row_svd.S) * row_svd.Vt
-            push!(row_matrices, SVt_block)
-        end
-        
-        # Vertically concatenate all S*V^T matrices
-        merged_matrix = vcat(row_matrices...)
-        
-        # Take SVD of the merged matrix
-        try
-            F_merged = svd(merged_matrix)
-            k = min(final_rank, length(F_merged.S), size(F_merged.U, 2), size(F_merged.Vt, 1))
-            
-            # Store final result
-            final_S = F_merged.S[1:k]
-            final_Vt = F_merged.Vt[1:k, :]
-            
-            @info "Worker $(myid()): Row merge successful for field $field_name. Final: $(length(final_S)) singular values"
-            
-        catch merge_error
-            @error "Worker $(myid()): Row merge failed for field $field_name: $merge_error"
-            # Create empty result
-            final_S = Float64[]
-            final_Vt = Matrix{Float64}(undef, 0, 0)
-        end
-    else
-        # No valid row blocks
-        @warn "Worker $(myid()): No valid row blocks for field $field_name"
-        final_S = Float64[]
-        final_Vt = Matrix{Float64}(undef, 0, 0)
-    end
-    
-    @info "Worker $(myid()): Completed field $field_name with $(length(final_S)) singular values"
-    @info "Worker $(myid()): Field $field_name spectral decay - first 10 σ: $(final_S[1:min(10, length(final_S))])"
-    
-    return (field_name=field_name, S=final_S, Vt=final_Vt)
+    @info "Worker $(myid()): Completed row block $row_block with $(length(field_row_results)) fields"
+    return (row_block=row_block, field_results=field_row_results)
 end
 
-## Main multi-process field-wise SVD computation
+## Main row-based SVD computation
 @time begin
-    # Create tasks for each velocity field (run in separate processes)
-    field_tasks = []
+    # Create tasks for each row block (distributed across processes)
+    row_tasks = []
     
-    for (field_idx, field_name) in enumerate(velocity_field_names)
-        # Find the actual field index in the dataset
-        actual_field_idx = findfirst(==(field_name), ds.fields)
-        
-        task = @spawnat :any compute_field_complete_svd(
-            field_name, actual_field_idx, datafile, N, total_cols, 
-            Nrow, Ncol, target_rank, intermediate_rank, final_rank,
+    for row_block in 1:Nrow
+        task = @spawnat :any compute_row_block_svd(
+            row_block, datafile, N, total_cols, 
+            Nrow, Ncol, target_rank, intermediate_rank,
             xbar, dPdx, velocity_field_names
         )
-        push!(field_tasks, task)
-        @info "Created task for field $field_name (index $actual_field_idx) on worker process"
+        push!(row_tasks, task)
+        @info "Created task for row block $row_block"
     end
     
-    # Wait for all field tasks to complete and collect results
-    @info "Waiting for all field SVD computations to complete..."
-    field_results = [fetch(task) for task in field_tasks]
+    # Wait for all row tasks to complete and collect results
+    @info "Waiting for all row block computations to complete..."
+    row_results = [fetch(task) for task in row_tasks]
     
-    @info "All field SVD computations completed!"
-    for result in field_results
-        @info "Field $(result.field_name): $(length(result.S)) singular values"
-        @info "  First 10 σ: $(result.S[1:min(10, length(result.S))])"
+    @info "All row block computations completed!"
+end
+
+## Reorganize results by field and merge row blocks
+@info "Reorganizing results by field and merging row blocks..."
+
+@time begin
+    # Group results by field
+    field_results = []
+    
+    for field_name in velocity_field_names
+        @info "Processing field $field_name"
+        
+        # Collect all row block results for this field
+        field_row_blocks = []
+        for row_result in row_results
+            field_data = filter(x -> x.field_name == field_name, row_result.field_results)
+            if !isempty(field_data)
+                push!(field_row_blocks, field_data[1])  # Should be exactly one match
+            end
+        end
+        
+        if !isempty(field_row_blocks)
+            # Merge all row blocks for this field using direct SVD
+            row_matrices = [Diagonal(row_block.S) * row_block.Vt for row_block in field_row_blocks]
+            merged_matrix = vcat(row_matrices...)
+            
+            try
+                F_merged = svd(merged_matrix)
+                k = min(final_rank, length(F_merged.S))
+                
+                push!(field_results, (
+                    field_name=field_name,
+                    S=F_merged.S[1:k],
+                    Vt=F_merged.Vt[1:k, :]
+                ))
+                
+                @info "Field $field_name: $(length(F_merged.S[1:k])) singular values"
+                
+            catch merge_error
+                @error "Row merge failed for field $field_name: $merge_error"
+            end
+        end
     end
 end
 
