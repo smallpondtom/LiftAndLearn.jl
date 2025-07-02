@@ -9,6 +9,7 @@ using FileIO
 using JLD2
 using IncrementalSVD
 using LinearAlgebra
+using BlockDiagonals
 using ProgressMeter
 using SparseArrays
 import LiftAndLearn as LnL
@@ -550,7 +551,7 @@ end
 #================================#
 @info "Computing projection errors for field-wise basis..."
 
-proj_error_file = joinpath(FILEPATH, "data/streaming/proj_error.jld2")
+proj_error_file = joinpath(FILEPATH, "data/streaming/proj_error_fieldwise.jld2")
 if isfile(proj_error_file)
     @info "Loading existing projection errors from file"
     proj_error = load(proj_error, "proj_error")
@@ -559,21 +560,44 @@ else
     proj_error = Dict()
 end
 
-# Add field-wise to projection error dictionary
-proj_error["baker_fieldwise"] = Dict(
-    "u" => 0.0,
-    "v" => 0.0,
-    "w" => 0.0,
-    "p" => 0.0,
-    "total" => 0.0,
-    "merge" => 0.0  
-)
+##
+basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
+field_results = load(basis_file)["field_results"]
+
+rmax = field_rank
+iVr_u = field_results[1].Q[:, 1:rmax]  # u-component basis
+iVr_v = field_results[2].Q[:, 1:rmax]  # v-component basis
+iVr_w = field_results[3].Q[:, 1:rmax]  # w-component basis
+iVr_p = field_results[4].Q[:, 1:rmax]  # p-component basis
+field_results = nothing  # Free memory
 
 # Test different ranks (multiples of field_rank up to total available)
-fieldwise_rspan = field_rank:field_rank:(length(field_names) * field_rank)
+# fieldwise_rspan = field_rank:field_rank:(length(field_names) * field_rank)
+fieldwise_rspan = [50, 100, 150, 200, 250]
 
+# Add field-wise to projection error dictionary
+proj_error["baker_fieldwise"] = Dict(
+    "u"     => zeros(length(fieldwise_rspan)),
+    "v"     => zeros(length(fieldwise_rspan)),
+    "w"     => zeros(length(fieldwise_rspan)),
+    "p"     => zeros(length(fieldwise_rspan)),
+    "total" => zeros(length(fieldwise_rspan)),
+)
+
+##
+error_per_thread = nothing
+norm_per_thread = nothing
+
+##
 for (i, r) in enumerate(fieldwise_rspan)
-    if r <= size(bases["baker_fieldwise"].iVr, 2)
+    iVr_u_tmp = @view iVr_u[:, 1:r]
+    iVr_v_tmp = @view iVr_v[:, 1:r]
+    iVr_w_tmp = @view iVr_w[:, 1:r]
+    iVr_p_tmp = @view iVr_p[:, 1:r]
+    iVr_tmp = BlockDiagonal([ iVr_u_tmp, iVr_v_tmp, iVr_w_tmp, iVr_p_tmp ])
+
+    # if r <= size(bases["baker_fieldwise"].iVr, 2)
+    if r <= size(iVr_u, 2)
         # Number of threads
         nt = Threads.nthreads()
 
@@ -602,14 +626,14 @@ for (i, r) in enumerate(fieldwise_rspan)
             X_full = scale(ds[j] .- xbar, dim_per_field, scale_factors)
 
             # Compute the field-wise basis projector
-            Vr = @view bases["baker_fieldwise"].iVr[:, 1:r]
+            # Vr = @view bases["baker_fieldwise"].iVr[:, 1:r]
 
             # Merged basis
-            Vmerge_r = @view Vmerge[:, 1:r]
-            PX_merge = Vmerge_r * (Vmerge_r' * X_full)
+            # Vmerge_r = @view Vmerge[:, 1:r]
+            # PX_merge = Vmerge_r * (Vmerge_r' * X_full)
 
             # Project full snapshot
-            PX_full = Vr * (Vr' * X_full)
+            PX_full = iVr_tmp * (iVr_tmp' * X_full)
 
             # Extract each field and compute individual errors
             for (field_idx, field_name) in enumerate(field_names)
@@ -631,30 +655,33 @@ for (i, r) in enumerate(fieldwise_rspan)
             norm_per_thread["total"][tid] += tmp
 
             # Compute merged basis error
-            error_per_thread["merge"][tid] += norm(X_full .- PX_merge, 2)
-            norm_per_thread["merge"][tid] += tmp
+            # error_per_thread["merge"][tid] += norm(X_full .- PX_merge, 2)
+            # norm_per_thread["merge"][tid] += tmp
         end
 
         # Reduce across threads for each field
-        for field_name in [ds.fields; "total"; "merge"]
+        for field_name in [ds.fields; "total"]
             total_error = sum(error_per_thread[field_name])
             total_norm = sum(norm_per_thread[field_name])
             
             # Map to the correct index in the original rspan if needed
-            if r == field_rank * length(field_names)  # Full rank case
-                proj_error["baker_fieldwise"][field_name] = total_error / total_norm
-            end
+            # if r == field_rank * length(field_names)  # Full rank case
+            #     proj_error["baker_fieldwise"][field_name] = total_error / total_norm
+            # end
+
+            proj_error["baker_fieldwise"][field_name][i] = total_error / total_norm
             
             @info "Projection error for baker_fieldwise at rank $r, field $field_name: $(total_error / total_norm)"
         end
     end
 end
 
+##
 # Update saves to include field-wise results
 # save(joinpath(FILEPATH, "data/streaming/basis.jld2"), bases)
-save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)
+save(proj_error_file, proj_error)
 
-@info "Field-wise Baker iSVD analysis complete"
+@info "Field-wise Baker iSVD projection error analysis complete"
 
 # #================================#
 # ## Create visualization comparing field-wise vs global approaches
