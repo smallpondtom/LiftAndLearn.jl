@@ -118,7 +118,7 @@ Tikhonov regularization parameters.
 - `C::Real`: the Tikhonov regularization parameter for the constant operator
 - `K::Real`: the Tikhonov regularization parameter for the constant output operator
 """
-@with_kw struct TikhonovParameter
+@with_kw mutable struct TikhonovParameter
     A::Union{Real, AbstractArray{Real}} = 0.0
     A2::Real = 0.0
     A3::Real = 0.0
