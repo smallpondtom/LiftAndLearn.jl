@@ -151,6 +151,136 @@ function compute_mean_multiprocess(ds, dims; batch_size=50, data_path=nothing, i
     return xbar
 end
 
+"""
+    compute_minmax_parallel_threads(ds, dims; batch_size=50)
+
+Compute the minimum and maximum values for each variable field using parallel processing with threads.
+
+# Arguments
+- `ds`: A dataset that supports indexing operations to retrieve snapshots
+- `dims`: Dimensions of a single snapshot (Tuple or dimensions)
+- `fields`: fields in the dataset (default: ["u", "v", "w", "p"])
+- `batch_size`: Number of snapshots to process in each batch (default: 50)
+
+# Returns
+- `x_min`: Vector containing minimum values for each spatial location across all fields
+- `x_max`: Vector containing maximum values for each spatial location across all fields
+
+# Example
+```julia
+# Compute min/max of 3D channel flow fields [u, v, w, p]
+x_min, x_max = compute_minmax_parallel_threads(ds, (Nz*Ny*Nx*4,))
+```
+
+# Notes
+The function assumes the data vector is organized as [u_field; v_field; w_field; p_field]
+where each field has `dim_per_field` spatial locations.
+"""
+function compute_minmax_parallel_threads(ds, dims, fields; batch_size=50)
+    # Get total number of snapshots
+    n = length(ds)
+    
+    # Create thread-local min/max accumulators
+    n_threads = Threads.nthreads()
+    thread_mins = [fill(Inf, dims...) for _ in 1:n_threads]
+    thread_maxs = [fill(-Inf, dims...) for _ in 1:n_threads]
+    
+    # Use batch processing to reduce overhead
+    num_batches = ceil(Int, n / batch_size)
+    batch_results = fill(false, num_batches)  # Track completed batches
+    
+    # Disable logging during parallel execution
+    old_logger = global_logger(NullLogger())
+    
+    # Parallel batch processing
+    Threads.@threads for batch in 1:num_batches
+        tid = Threads.threadid()
+        start_idx = (batch-1) * batch_size + 1
+        end_idx = min(batch * batch_size, n)
+        
+        # Pre-allocate thread-local storage to reduce GC pressure
+        batch_min = fill(Inf, size(thread_mins[1]))
+        batch_max = fill(-Inf, size(thread_maxs[1]))
+        
+        # Process each snapshot in this batch
+        for i in start_idx:end_idx
+            snapshot = ds[i]  # Get snapshot only once
+            
+            # Update min/max element-wise
+            @inbounds for j in eachindex(snapshot)
+                val = snapshot[j]
+                if val < batch_min[j]
+                    batch_min[j] = val
+                end
+                if val > batch_max[j]
+                    batch_max[j] = val
+                end
+            end
+        end
+        
+        # Update thread min/max once per batch
+        @inbounds for j in eachindex(thread_mins[tid])
+            if batch_min[j] < thread_mins[tid][j]
+                thread_mins[tid][j] = batch_min[j]
+            end
+            if batch_max[j] > thread_maxs[tid][j]
+                thread_maxs[tid][j] = batch_max[j]
+            end
+        end
+        
+        batch_results[batch] = true
+    end
+    
+    # Restore logger
+    global_logger(old_logger)
+    
+    # Combine results from all threads
+    x_min = fill(Inf, dims...)
+    x_max = fill(-Inf, dims...)
+    
+    for tid in 1:n_threads
+        @inbounds for j in eachindex(x_min)
+            if thread_mins[tid][j] < x_min[j]
+                x_min[j] = thread_mins[tid][j]
+            end
+            if thread_maxs[tid][j] > x_max[j]
+                x_max[j] = thread_maxs[tid][j]
+            end
+        end
+    end
+    
+    # Report processing summary
+    @info "Processed $(sum(batch_results) * batch_size) snapshots across $(count(batch_results)) batches"
+    @info "Min/Max computation complete for $(length(x_min)) spatial locations"
+    
+    num_fields = length(fields)
+    x_glob_mins = [0.0 for _ in 1:num_fields]
+    x_glob_maxs = [0.0 for _ in 1:num_fields]
+
+    try
+        # Ensure we have at least one field
+        @assert num_fields > 0 "No fields provided for min/max computation"
+        # Report field-wise statistics if we know the field structure
+        if length(dims) == 1 && dims[1] % 4 == 0
+            dim_per_field = dims[1] ÷ 4
+            
+            @info "Field-wise min/max statistics:"
+            for (i, field_name) in enumerate(fields)
+                start_idx = (i-1) * dim_per_field + 1
+                end_idx = i * dim_per_field
+                x_glob_mins[i] = minimum(x_min[start_idx:end_idx])
+                x_glob_maxs[i] = maximum(x_max[start_idx:end_idx])
+                @info "  Field $field_name: min = $(x_glob_mins[i]), max = $(x_glob_maxs[i])"
+            end
+        end
+    catch e
+        @error "Error in min/max computation: $(e)"
+        return x_min, x_max
+    end
+
+    return x_glob_mins, x_glob_maxs
+end
+
 function right_ssm!(selected_rank::Int, 
                     Σ1::AbstractArray{T}, Σ2::AbstractArray{T},
                     W1::AbstractMatrix{T}, W2::AbstractMatrix{T}; 

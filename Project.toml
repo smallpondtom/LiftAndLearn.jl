@@ -24,7 +24,7 @@ UniqueKronecker = "dd29a912-d12a-442e-ae57-6933397c0393"
 
 [compat]
 BlockDiagonals = "0.1"
-CUDA = "5.6.1"
+CUDA = "5.6, 5.7, 5.8"
 Combinatorics = "1.0.2"
 DocStringExtensions = "0.9"
 Ipopt = "1.5, 1.6, 1.7"

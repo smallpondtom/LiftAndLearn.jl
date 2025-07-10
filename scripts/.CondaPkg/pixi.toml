@@ -1,5 +1,5 @@
 [dependencies]
-openssl = ">=3, <3.1"
+openssl = ">=3, <3.6"
 
     [dependencies.python]
     channel = "conda-forge"

@@ -33,27 +33,64 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::R
     # values are below the tolerance level are truncated to zero and the rest are 
     # filled with zeros. This is a manual way to truncate the singular values.
     let 
+        # if tol_flag
+        #     try
+        #         # Define the key quantities
+        #         M = A' * A + Γ     # (desired norm: || Γ^(1/2)*O ||_2)
+        #         bhat = A' * b
+
+        #         # Perform SVD-based truncation if singular values are below tol
+        #         M_svd = svd(M)
+        #         sing_idx = findfirst(M_svd.S .< tol)
+        #         if sing_idx !== nothing
+        #             @warn "Rank deficient, rank = $(sing_idx), tol = $(M_svd.S[sing_idx])."
+        #             invSV = [1 ./ M_svd.S[1:sing_idx-1]; zeros(length(M_svd.S[sing_idx:end]))]
+        #             pinvM = M_svd.Vt' * Diagonal(invSV) * M_svd.U'
+        #             return pinvM * bhat
+        #         else
+        #             @info "No singular values below the threshold. Fall back to standard solve."
+        #         end
+        #     catch e
+        #         if isa(e, OutOfMemoryError)
+        #             @warn string("OutOfMemory encountered when `with_tol=true`. Switching to backslash methods vector. ", 
+        #                          "Truncation based on singular values will no longer be performed.")
+        #         else
+        #             rethrow(e)
+        #         end
+        #     end 
+        # end
+
         if tol_flag
             try
                 # Define the key quantities
                 M = A' * A + Γ     # (desired norm: || Γ^(1/2)*O ||_2)
                 bhat = A' * b
 
-                # Perform SVD-based truncation if singular values are below tol
+                # Use a more numerically stable SVD approach
                 M_svd = svd(M)
-                sing_idx = findfirst(M_svd.S .< tol)
-                if sing_idx !== nothing
-                    @warn "Rank deficient, rank = $(sing_idx), tol = $(M_svd.S[sing_idx])."
-                    invSV = [1 ./ M_svd.S[1:sing_idx-1]; zeros(length(M_svd.S[sing_idx:end]))]
-                    pinvM = M_svd.Vt' * Diagonal(invSV) * M_svd.U'
-                    return pinvM * bhat
+                
+                # Find the effective rank using relative tolerance
+                max_sv = M_svd.S[1]
+                effective_rank = count(s -> s > tol * max_sv, M_svd.S)
+                
+                if effective_rank < length(M_svd.S)
+                    @warn "Rank deficient, effective rank = $effective_rank/$(length(M_svd.S)), relative tol = $(tol)."
+                    
+                    # More stable pseudoinverse using only significant singular values
+                    inv_S = zeros(length(M_svd.S))
+                    inv_S[1:effective_rank] = 1 ./ M_svd.S[1:effective_rank]
+                    
+                    # Compute pseudoinverse more efficiently
+                    # pinvM = V * Diagonal(inv_S) * U'
+                    # pinvM * bhat = V * (inv_S .* (U' * bhat))
+                    return M_svd.V * (inv_S .* (M_svd.U' * bhat))
                 else
                     @info "No singular values below the threshold. Fall back to standard solve."
                 end
             catch e
                 if isa(e, OutOfMemoryError)
-                    @warn string("OutOfMemory encountered when `with_tol=true`. Switching to backslash methods vector. ", 
-                                 "Truncation based on singular values will no longer be performed.")
+                    @warn string("OutOfMemory encountered when `with_tol=true`. Switching to backslash methods. ", 
+                                "Truncation based on singular values will no longer be performed.")
                 else
                     rethrow(e)
                 end

@@ -13,6 +13,7 @@ using Printf
 using UniqueKronecker
 using BlockDiagonals
 using SparseArrays
+using Statistics
 import LiftAndLearn as LnL
 
 #================================#
@@ -37,21 +38,36 @@ include(joinpath(FILEPATH, "derivative.jl"))
 include(joinpath(FILEPATH, "../utilities/extract_operators.jl"))
 include(joinpath(FILEPATH, "../utilities/interpolate.jl"))
 
-#==========================#
-## Load the mean velocity
-#==========================#
-xbar = load(joinpath(FILEPATH, "data/streaming/mean.jld2"))["xbar"]
-
 #=============================#
 ## Load the training dataset
 #=============================#
 ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 Nz, Ny, Nx, n_fields, n = ds.dims
 dim_per_field = Nz * Ny * Nx
+
+
+#==========================#
+## Load the mean velocity
+#==========================#
+xbar = load(joinpath(FILEPATH, "data/streaming/mean.jld2"))["xbar"]
+# minmax = load(joinpath(FILEPATH, "data/streaming/minmax.jld2"))["minmax"]
+# xbar = minmax["xbar"]
+# scale_factors = minmax["scale_factors"]
+# minmax = nothing
+
 dPdx = 0.001722
 # scale_factors = [sqrt(dPdx), sqrt(dPdx), sqrt(dPdx), dPdx]
 # scale_factors = [1.0, 0.1, 0.01]
 scale_factors = [1.0, 0.01, 0.01, dPdx]
+
+##
+# ubar = sum(abs, xbar[1:dim_per_field]) / dim_per_field
+# vbar = sum(abs, xbar[dim_per_field+1:dim_per_field*2]) / dim_per_field
+# wbar = sum(abs, xbar[dim_per_field*2+1:dim_per_field*3]) / dim_per_field
+# pbar = sum(abs, xbar[dim_per_field*3+1:dim_per_field*4]) / dim_per_field
+# scale_factors = [
+#     1.0, vbar / ubar, wbar / ubar, pbar / ubar
+# ]
 
 #===================#
 ## Setup the options
@@ -81,33 +97,38 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
 #=================#
 ## Load the bases 
 #=================#
-basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
-# basis_data = load(basis_file)
-field_results = load(basis_file)["field_results"]
-# rmax = 300
-# iVrmax = basis_data["bases"]["baker"].iVr[:,1:rmax]  # choose Baker's iSVD basis
-# iVrmax = basis_data["merged_basis"].iVr[:,1:rmax]  # choose Baker's iSVD basis
-# iVrmax = basis_data["bases"]["baker_fieldwise"].iVr[:,1:rmax]  # choose Baker's iSVD basis
+# Standard basis
+basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
+basis_data = load(basis_file)
+rmax = 300
+iVrmax = basis_data["bases"]["baker"].iVr[:,1:rmax]  # choose Baker's iSVD basis
 
-rmax = 100
-iVr_u = field_results[1].Q[:, 1:rmax]  # u-component basis
-iVr_v = field_results[2].Q[:, 1:rmax]  # v-component basis
-iVr_w = field_results[3].Q[:, 1:rmax]  # w-component basis
-iVr_p = field_results[4].Q[:, 1:rmax]  # p-component basis
-field_results = nothing  # Free memory
-iVrmax = sparse(BlockDiagonal([iVr_u, iVr_v, iVr_w, iVr_p]))
+# Fieldwise basis
+# basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
+# field_results = load(basis_file)["field_results"]
+# rmax = 50
+# iVr_u = field_results[1].Q[:, 1:rmax]  # u-component basis
+# iVr_v = field_results[2].Q[:, 1:rmax]  # v-component basis
+# iVr_w = field_results[3].Q[:, 1:rmax]  # w-component basis
+# iVr_p = field_results[4].Q[:, 1:rmax]  # p-component basis
+# field_results = nothing  # Free memory
+# GC.gc()
+# iVrmax = sparse(BlockDiagonal([iVr_u, iVr_v, iVr_w, iVr_p]))
+# iVr_u, iVr_v, iVr_w, iVr_p = nothing, nothing, nothing, nothing  
+# GC.gc()
+
 
 #=========================#
 ## Load reduced data
 #=========================#
 Xhat = load(joinpath(FILEPATH, "data/streaming/reduced_data_discrete_r$(rmax).jld2"))["Xhat"]
 # Xhatdot = load(joinpath(FILEPATH, "data/streaming/reduced_data.jld2"))["Xhatdot"]
-Xhatdot = Xhat[:, 2:end]
-Xhat = Xhat[:, 1:end-1]  
+Xhat2 = Xhat[:, 2:end]
+Xhat1 = Xhat[:, 1:end-1]  
 # U = load(joinpath(FILEPATH, "data/streaming/reduced_data.jld2"))["U"]
-# U = dPdx * ones(size(Xhat,2))
+# U = ones(size(Xhat1,2))
 
-size(Xhat,1) != rmax && @warn "Xhat has a different number of \
+size(Xhat1,1) != rmax && @warn "Xhat has a different number of \
     rows than the basis. This might lead to unexpected results."
 
 #=========================#
@@ -115,7 +136,7 @@ size(Xhat,1) != rmax && @warn "Xhat has a different number of \
 #=========================#
 # OpInf
 options.with_reg = false
-op_inf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
 
 ##
 # ops = Dict("opinf" => op_inf)
@@ -124,8 +145,10 @@ op_inf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 ## Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e-15, A2=1e-8, K=1e-15)
-op_trinf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+options.with_tol = true
+options.pinv_tol = 1e-12
+options.λ = LnL.TikhonovParameter(A=1e-3, A2=1e-1, K=1e-3)
+op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
 
 # ops["tropinf"] = op_trinf
 # save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
@@ -133,6 +156,120 @@ op_trinf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 ## Keep the reference batch model to compare with the streaming models
 Ostar = op_trinf.O'
 # Ostar = ops["tropinf"].O'
+
+
+#========================================#
+## Grid Search Regularization Parameters
+#========================================#
+function solve_opinf_difference_model(init_cond, n_steps, reduced_model)
+    Qhat = zeros(length(init_cond), n_steps)
+    contains_nan = false
+    Qhat[:, 1] = init_cond
+    final_idx = 0
+    for i in 2:n_steps
+        Qhat[:, i] = reduced_model(Qhat[:, i-1])
+        if any(isnan.(Qhat[:, i]))
+            contains_nan = true
+            final_idx = i - 1
+            break
+        end
+    end
+    return contains_nan, Qhat, final_idx
+end
+
+function find_best_opinf_model(
+    reg_pairs, Xhat, Xhat1, Xhat2, 
+    n_time, n_time_pred, max_growth, opinf_options)
+
+    @assert options.with_reg == true "Regularization must be enabled in options."
+    
+    best_train_err = 1e20
+    best_beta1, best_beta2 = nothing, nothing
+    best_final_idx = 0
+    Xtilde_opt = nothing
+    eval_time_opt = nothing
+
+    mean_Xhat = mean(Xhat, dims=2)
+    max_diff_Xhat = maximum(abs.(Xhat .- mean_Xhat), dims=2)
+    
+    # Loop over all regularization pairs
+    @showprogress for (beta1, beta2) in reg_pairs
+        
+        # Construct a regularizer that penalizes the linear and constant reduced
+        # operators using beta1 and the quadratic operator using beta2
+        reg = LnL.TikhonovParameter(A=beta1, A2=beta2, K=beta1)
+        opinf_options.λ = reg
+        
+        # Solve the regularized OpInf problem
+        ops = LnL.opinf(Xhat1, opinf_options; Xhatdot=Xhat2)
+        
+        # Define the OpInf reduced model
+        opinf_reduced_model = x -> ops.A * x + ops.A2u * (x ⊘ x) + ops.K
+
+        # Extract the reduced initial condition from Qhat_1
+        xhat0 = Xhat1[:,1]
+        
+        # Compute the reduced solution over the trial time horizon
+        start_eval_time = time()
+        contains_nans, Xtilde, fidx = solve_opinf_difference_model(
+            xhat0, n_time_pred, opinf_reduced_model)
+        end_eval_time = time()
+        time_opinf_eval = end_eval_time - start_eval_time
+        
+        # If the model produced an unstable solution, move on to the next
+        # regularization candidates
+        if contains_nans
+            continue
+        end
+        
+        # If the ratio of the maximum coefficient growth exceeds the allowed
+        # threshold, move on to the next regularization candidates
+        max_diff_Xhat_trial = maximum(abs.(Xtilde .- mean_Xhat), dims=2)
+        max_growth_trial = maximum(max_diff_Xhat_trial) / maximum(max_diff_Xhat)
+        if max_growth_trial > max_growth
+            continue
+        end
+        
+        # At this point we know the model produced a stable solution without too
+        # much growth. Compute the training error and, if it's better than the
+        # current best error, save the regularization, reduced solution, and
+        # the learning times
+        train_err = norm(
+                Xhat[:, 1:n_time] - Xtilde[:, 1:n_time]
+            )^2 / norm(Xhat[:, 1:n_time])^2
+        if train_err < best_train_err
+            best_beta1 = beta1
+            best_beta2 = beta2
+            best_train_err = train_err
+            Xtilde_opt = Xtilde
+            eval_time_opt = time_opinf_eval
+        end
+
+        if best_final_idx < fidx
+            best_final_idx = fidx
+        end
+    end
+
+    if isnothing(Xtilde_opt)
+        @error "No suitable OpInf model found with the given regularization pairs."
+    else
+        @info "Best OpInf model found with β1 = $best_beta1, β2 = $best_beta2, \
+               training error = $best_train_err, evaluation time = $eval_time_opt"
+    end
+
+    return best_beta1, best_beta2, best_train_err, Xtilde_opt, eval_time_opt, best_final_idx
+end
+
+##
+B1 = 10.0 .^ range(-10.0, 0.0, length=8)
+B2 = 10.0 .^ range(-4.0, 4.0, length=8)
+reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
+n_reg_global = length(reg_pairs_global)
+max_growth = 1.2
+options.with_reg = true
+best_beta1, best_beta2, best_train_err, op_trinf, eval_time, fidx = 
+    find_best_opinf_model(reg_pairs_global, Xhat, Xhat1, Xhat2,
+                          n, Int(n+(n // 10)), max_growth, options)
 
 #=========================#
 ## Train streaming model
@@ -408,15 +545,22 @@ save(joinpath(FILEPATH, "data/streamwise/training_errors.jld2"),
     "rspan", rspan
 )
 
-##
-reduced_model = (x) -> op_inf.A * x + op_inf.A2u * (x ⊘ x) + op_inf.K 
+
+#====================================#
+## Simulate the reduced model
+#====================================#
+reduced_model = (x) -> op_inf.A * x + op_inf.A2u * (x ⊘ x) + op_inf.K
 
 ##
 tspan = ds["times"][:] .- ds["times"][1]
-states = zeros(4*rmax, length(tspan))
+states = zeros(rmax, length(tspan))
 states[:,1] = Xhat[:,1]
 for i in 2:length(tspan)
     states[:,i] = reduced_model(states[:,i-1])
+    if any(isnan.(states[:, i]))
+        @info "Reduced model produced NaN at time step $i"
+        break
+    end
 end
 
 ## Plot the states 
@@ -429,13 +573,43 @@ with_theme(theme_latexfonts()) do
     # Select 3 time steps (beginning, middle, end)
     time_indices = [50, 1000, length(tspan)÷2, length(tspan)]
 
-    all_full_data = nothing
-    all_rom_data = nothing
-    all_error_data = nothing
+    # Pre-calculate all data for colorbar scaling
+    all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
+    all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
+    all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
 
-    # Reconstruct full states from reduced states
-    # Create 1x3 subplot layout
+    # Collect all data first
     for (i, t_idx) in enumerate(time_indices)
+        # Get full data
+        u_full_field = reshape(ds[t_idx][1:dim_per_field], Nx, Ny, Nz)
+        all_full_data[i] = u_full_field[:, :, z_mid]
+        
+        # Get ROM data
+        x_rom_t = iVrmax * states[:, t_idx]
+        x_rom_t = unscale(x_rom_t, dim_per_field, scale_factors) + xbar
+        u_rom_field = reshape(x_rom_t[1:dim_per_field], Nx, Ny, Nz)
+        all_rom_data[i] = u_rom_field[:, :, z_mid]
+
+        # Compute error
+        all_error_data[i] = abs.(all_full_data[i] - all_rom_data[i]) 
+    end
+
+    # Calculate global min/max for each row type
+    full_min, full_max = extrema(vcat(all_full_data...))
+    rom_min, rom_max = extrema(vcat(all_rom_data...))
+    error_min, error_max = extrema(vcat(all_error_data...))
+
+    # Align the color ranges for first and second rows (full and ROM)
+    common_min = min(full_min, rom_min)
+    common_max = max(full_max, rom_max)
+
+    # Create axes and heatmaps
+    hm_full = nothing
+    hm_rom = nothing
+    hm_error = nothing
+
+    for (i, t_idx) in enumerate(time_indices)
+        # Create axes
         ax_full = Axis(fig[1, i], 
             title = L"$t$ = %$(round(tspan[t_idx], digits=2))",
             ylabel = i == 1 ? L"$y$" : "", 
@@ -449,73 +623,26 @@ with_theme(theme_latexfonts()) do
             xticklabelsize=25, yticklabelsize=25,
         )
         ax_error = Axis(fig[3, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
+            ylabel = i == 1 ? L"$y$" : "", 
             xlabel = L"$x$",
             xlabelsize=30, ylabelsize=30, 
             xticklabelsize=25, yticklabelsize=25,
         )
 
-        # Get data 
-        u_full_field = reshape(ds[t_idx][1:dim_per_field], Nx, Ny, Nz)
-        u_full_slice = u_full_field[:, :, z_mid]
-        
-        # Reconstruct rom full state for this time step only
-        x_rom_t = iVrmax * states[:, t_idx]
-        x_rom_t = unscale(x_rom_t, dim_per_field, scale_factors) + xbar
-        
-        # Extract velocity field at z_mid for time t_idx
-        # Assuming first field is u-velocity
-        u_rom_field = reshape(x_rom_t[1:dim_per_field], Nx, Ny, Nz)
-        u_rom_slice = u_rom_field[:, :, z_mid]
-
-        # Compute the error between full and ROM states
-        u_error = u_full_slice - u_rom_slice
-        
-        # Collect data for colorbar scaling
-        if i == 1
-            all_full_data = [u_full_slice]
-            all_rom_data = [u_rom_slice]
-            all_error_data = [u_error]
-        else
-            push!(all_full_data, u_full_slice)
-            push!(all_rom_data, u_rom_slice)
-            push!(all_error_data, u_error)
-        end
-        
-        # Create heatmaps with consistent color limits
-        if i == length(time_indices)
-            # Calculate global min/max for each row
-            full_min, full_max = extrema(vcat(all_full_data...))
-            rom_min, rom_max = extrema(vcat(all_rom_data...))
-            error_min, error_max = extrema(vcat(all_error_data...))
-
-            hm_full = nothing
-            hm_rom = nothing
-            hm_error = nothing
-            
-            # Create heatmaps with consistent color limits
-            for (j, t_idx_j) in enumerate(time_indices)
-                # Recalculate data for each time step
-                u_full_j = reshape(ds[t_idx_j][1:dim_per_field], Nx, Ny, Nz)[:, :, z_mid]
-                x_rom_j = iVrmax * states[:, t_idx_j]
-                x_rom_j = unscale(x_rom_j, dim_per_field, scale_factors) + xbar
-                u_rom_j = reshape(x_rom_j[1:dim_per_field], Nx, Ny, Nz)[:, :, z_mid]
-                u_error_j = u_full_j - u_rom_j
-                
-                hm_full = heatmap!(fig[1, j], ds["x"][:], ds["y"][:], u_full_j, 
-                    colormap = :viridis, colorrange = (full_min, full_max))
-                hm_rom = heatmap!(fig[2, j], ds["x"][:], ds["y"][:], u_rom_j, 
-                    colormap = :viridis, colorrange = (rom_min, rom_max))
-                hm_error = heatmap!(fig[3, j], ds["x"][:], ds["y"][:], u_error_j, 
-                    colormap = :thermal, colorrange = (error_min, error_max))
-            end
-            
-            # Add colorbars at the end of each row
-            Colorbar(fig[1, length(time_indices) + 1], hm_full)
-            Colorbar(fig[2, length(time_indices) + 1], hm_rom)
-            Colorbar(fig[3, length(time_indices) + 1], hm_error)
-        end
+        # Create heatmaps with aligned color ranges
+        hm_full = heatmap!(ax_full, ds["x"][:], ds["y"][:], all_full_data[i], 
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_rom = heatmap!(ax_rom, ds["x"][:], ds["y"][:], all_rom_data[i], 
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_error = heatmap!(ax_error, ds["x"][:], ds["y"][:], all_error_data[i], 
+            colormap = :matter, colorrange = (error_min, error_max))
     end
+    
+    # Add colorbars at the end of each row
+    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
+    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Rel. Error", labelsize=20)
+    
     display(fig)
 end
 
@@ -531,7 +658,7 @@ with_theme(theme_latexfonts()) do
     
     field_indices = [idx_u, idx_v, idx_w, idx_p]
     field_names = ["u", "v", "w", "p"]
-    field_colors = [:blue, :red, :green, :orange]
+    field_colors = [:orange, :orange, :orange, :orange]
     
     # Pre-extract basis rows for each field (much more efficient)
     basis_rows = [iVrmax[idx, :] for idx in field_indices]
@@ -561,6 +688,8 @@ with_theme(theme_latexfonts()) do
         mean_val = xbar[idx]
         
         # Vectorized operations for efficiency
+        tmp = ds[name][]
+
         for t in 1:length(tspan)
             # True state (direct indexing)
             true_field[t] = ds[t][idx]
@@ -571,8 +700,10 @@ with_theme(theme_latexfonts()) do
         end
         
         # Plot true vs reconstructed
-        lines!(ax, tspan, true_field, color=:black, linewidth=2, label="True")
-        lines!(ax, tspan, rom_field, color=color, linewidth=2, linestyle=:dash, label="ROM")
+        lines!(ax, tspan, true_field, color=:black, linewidth=2, 
+               labelsize=25, label="True")
+        lines!(ax, tspan, rom_field, color=color, linewidth=2, linestyle=:dash,
+               labelsize=25, label="ROM")
         
         # Add legend only to the top subplot
         if i == 1

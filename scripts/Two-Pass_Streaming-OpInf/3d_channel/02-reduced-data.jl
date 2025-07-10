@@ -6,6 +6,7 @@ Generate the reduced data using the reduced basis from the iSVD.
 ## Load Packages
 #================#
 using FileIO
+using FLoops
 using JLD2
 using LinearAlgebra
 using ProgressMeter
@@ -51,22 +52,35 @@ U = dPdx * ones(1,n)
 ## Load the mean velocity
 #==========================#
 xbar = load(joinpath(FILEPATH, "data/streaming/mean.jld2"))["xbar"]
+# minmax = load(joinpath(FILEPATH, "data/streaming/minmax.jld2"))["minmax"]
+# xbar = minmax["xbar"]
+# scale_factors = minmax["scale_factors"]
+# minmax = nothing
 
 #=================#
 ## Load the bases 
 #=================#
-basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
+basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
+iVrmax = load(basis_file)["bases"]["baker"].iVr
+
 # basis_data = load(basis_file)
-field_results = load(basis_file)["field_results"]
 # rmax = 1000
 # iVrmax = sparse(basis_data["bases"]["baker_fieldwise"].iVr[:,1:rmax])  # choose Baker's iSVD basis
 # iVrmax = sparse(basis_data["merged_basis"].iVr[:,1:rmax])  # choose Baker's iSVD basis
-r = 250
-iVr_u = field_results[1].Q[:, 1:r]  # u-component basis
-iVr_v = field_results[2].Q[:, 1:r]  # v-component basis
-iVr_w = field_results[3].Q[:, 1:r]  # w-component basis
-iVr_p = field_results[4].Q[:, 1:r]  # p-component basis
-field_results = nothing  # Free memory
+
+# field_results = load(basis_file)["field_results"]
+# r = 100
+# iVr_u = field_results[1].Q[:, 1:r]  # u-component basis
+# iVr_v = field_results[2].Q[:, 1:r]  # v-component basis
+# iVr_w = field_results[3].Q[:, 1:r]  # w-component basis
+# iVr_p = field_results[4].Q[:, 1:r]  # p-component basis
+
+# iΣr_u = field_results[1].Σ
+# iΣr_v = field_results[2].Σ
+# iΣr_w = field_results[3].Σ
+# iΣr_p = field_results[4].Σ
+
+# field_results = nothing  # Free memory
 
 #=============================#
 ## Generate the reduced data 
@@ -252,35 +266,90 @@ if TYPE == "continuous"
         @info "Completed processing $n snapshots"
     end
 else
-    # Process snapshots in parallel batches
-    const BATCH_SIZE = 100  # Adjust based on available memory
-    num_batches = ceil(Int, n / BATCH_SIZE)
-    Xhat = Array{Float64}(undef, r*4, n)  # Preallocate the reduced data matrix
+    # for r in [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+    #     # field_results = load(basis_file)["field_results"]
+    #     # iVr_u = field_results[1].Q[:, 1:r]  # u-component basis
+    #     # iVr_v = field_results[2].Q[:, 1:r]  # v-component basis
+    #     # iVr_w = field_results[3].Q[:, 1:r]  # w-component basis
+    #     # iVr_p = field_results[4].Q[:, 1:r]  # p-component basis
+    #     # field_results = nothing  # Free memory
 
-    # Compose basis
-    iVr = BlockDiagonal([ iVr_u, iVr_v, iVr_w, iVr_p ])
+    #     # Process snapshots in parallel batches
+    #     const BATCH_SIZE = 100  # Adjust based on available memory
+    #     num_batches = ceil(Int, n / BATCH_SIZE)
+    #     # Xhat = Array{Float64}(undef, r*4, n)  # Preallocate the reduced data matrix
+    #     Xhat = Array{Float64}(undef, r, n)  # Preallocate the reduced data matrix
 
-    @info "Processing $n snapshots in $num_batches batches using $(Threads.nthreads()) threads"
-    @time begin
-        Threads.@threads for batch in 1:num_batches
+    #     # Compose basis
+    #     # iVr = BlockDiagonal([ iVr_u, iVr_v, iVr_w, iVr_p ])
+    #     iVr = view(iVrmax, :, 1:r) 
+
+    #     @info "Processing $n snapshots in $num_batches batches using $(Threads.nthreads()) threads"
+    #     @time begin
+    #         # Use atomic indices to ensure thread safety
+    #         batch_indices = collect(1:num_batches)
+
+    #         Threads.@threads for batch in batch_indices
+    #             start_idx = (batch-1) * BATCH_SIZE + 1
+    #             end_idx = min(start_idx + BATCH_SIZE - 1, n)
+                
+    #             # Pre-allocate batch array for this thread
+    #             batch_size = end_idx - start_idx + 1
+    #             # batch_xhat = Matrix{Float64}(undef, r*4, batch_size)
+    #             batch_xhat = Matrix{Float64}(undef, r, batch_size)
+
+    #             # Process batch
+    #             for (local_idx, i) in enumerate(start_idx:end_idx)
+    #                 batch_xhat[:, local_idx] = iVr' * scale(ds[i] .- xbar, dim_per_field, scale_factors)
+    #             end
+                
+    #             # Thread-safe assignment to non-overlapping region
+    #             @views Xhat[:, start_idx:end_idx] .= batch_xhat
+    #         end
+
+    #         reduced_data_file = joinpath(FILEPATH, "data/streaming/reduced_data_discrete_r$r.jld2")
+    #         @info "Saving reduced data for r=$(r) to $reduced_data_file"
+    #         save(reduced_data_file, "Xhat", Xhat)
+    #     end
+    # end
+
+    for r in [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+        # Process snapshots in parallel batches
+        const BATCH_SIZE = 100  # Adjust based on available memory
+        num_batches = ceil(Int, n / BATCH_SIZE)
+        Xhat = Array{Float64}(undef, r, n)  # Preallocate the reduced data matrix
+
+        # Compose basis
+        iVr = view(iVrmax, :, 1:r) 
+
+        # Create a lock for thread-safe data source access
+        data_lock = ReentrantLock()
+
+        @info "Processing $n snapshots in $num_batches batches using $(Threads.nthreads()) threads"
+
+        # Use FLoops for better thread management
+        @floop ThreadedEx() for batch in 1:num_batches
             start_idx = (batch-1) * BATCH_SIZE + 1
             end_idx = min(start_idx + BATCH_SIZE - 1, n)
             
             # Pre-allocate batch array for this thread
             batch_size = end_idx - start_idx + 1
-            batch_xhat = Matrix{Float64}(undef, r*4, batch_size)
+            batch_xhat = Matrix{Float64}(undef, r, batch_size)
 
-            # Process batch
+            # Process batch sequentially within each thread
             for (local_idx, i) in enumerate(start_idx:end_idx)
-                batch_xhat[:, local_idx] = iVr' * scale(ds[i] .- xbar, dim_per_field, scale_factors)
+                # Each thread processes its batch independently
+                @lock data_lock scaled_snapshot = scale(
+                    ds[i] .- xbar, dim_per_field, scale_factors)
+                batch_xhat[:, local_idx] = iVr' * scaled_snapshot
             end
             
-            # Copy batch results to global array
-            Xhat[:, start_idx:end_idx] = batch_xhat
+            # Thread-safe assignment to non-overlapping region
+            @views Xhat[:, start_idx:end_idx] .= batch_xhat
         end
 
         reduced_data_file = joinpath(FILEPATH, "data/streaming/reduced_data_discrete_r$r.jld2")
-        @info "Saving reduced data for r=$(r*4) to $reduced_data_file"
+        @info "Saving reduced data for r=$(r) to $reduced_data_file"
         save(reduced_data_file, "Xhat", Xhat)
     end
 end

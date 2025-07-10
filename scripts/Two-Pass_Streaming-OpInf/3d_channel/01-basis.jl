@@ -41,15 +41,20 @@ ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 Nz, Ny, Nx, n_fields, n = ds.dims
 dim_per_field = Nz * Ny * Nx
 dPdx = 0.001722
-# scale_factors = [sqrt(dPdx), sqrt(dPdx), sqrt(dPdx), dPdx]
-scale_factors = [1.0, 0.01, 0.01, dPdx]
 
-#========================================#
-## Compute the mean velocity for shiting
-#========================================#
-SHIFT_MEAN = true
-xbar = nothing # preallocate
-if SHIFT_MEAN
+#================================================================#
+## Compute preprocessing parameters (mean and/or minmax scaling)
+#================================================================#
+COMPUTE_MEAN = true
+COMPUTE_MINMAX = true
+
+# Initialize preprocessing variables
+xbar = 0.0
+scale_factors = [1.0, 0.01, 0.01, dPdx]  # Default scale factors
+# scale_factors = [sqrt(dPdx), sqrt(dPdx), sqrt(dPdx), dPdx]
+
+if COMPUTE_MEAN && COMPUTE_MINMAX
+    @info "Computing mean and min/max for preprocessing"
     mean_file = joinpath(FILEPATH, "data/streaming/mean.jld2")
     if isfile(mean_file)
         @info "Loading existing mean from file"
@@ -57,173 +62,242 @@ if SHIFT_MEAN
     else
         @info "Starting mean computation with $(Threads.nthreads()) threads"
         @time begin
-            xbar = compute_mean_parallel_threads(ds, (Nz*Ny*Nx*3,); batch_size=100)
+            xbar = compute_mean_parallel_threads(ds, (Nz*Ny*Nx*4,); batch_size=100)
         end
         @info "Mean computation complete"
         save(mean_file, "xbar", xbar)
     end
+
+    minmax_file = joinpath(FILEPATH, "data/streaming/minmax.jld2")
+    if isfile(minmax_file)
+        @info "Loading existing minmax parameters from file"
+        minmax_data = load(minmax_file, "minmax")
+        scale_factors = minmax_data["scale_factors"]
+    else
+        @info "Starting min/max computation with $(Threads.nthreads()) threads"
+        @time begin
+            x_min, x_max = compute_minmax_parallel_threads(
+                ds, (Nz*Ny*Nx*4,), ["u", "v", "w", "p"]; batch_size=100)
+        end
+        # Compute minmax scaling parameters
+        scale_factors = x_max .- x_min
+        xshift = reduce(vcat, [xm * ones(Nz*Ny*Nx) for xm in x_min])
+        @info "Min/max computation complete"
+        save(minmax_file, "minmax", Dict(
+            "x_min" => x_min, "x_max" => x_max,
+            "xbar" => xshift, "scale_factors" => scale_factors
+        ))
+    end
+elseif COMPUTE_MEAN
+    @info "Computing mean for mean-shift preprocessing"
+    mean_file = joinpath(FILEPATH, "data/streaming/mean.jld2")
+    if isfile(mean_file)
+        @info "Loading existing mean from file"
+        xbar = load(mean_file, "xbar")
+    else
+        @info "Starting mean computation with $(Threads.nthreads()) threads"
+        @time begin
+            xbar = compute_mean_parallel_threads(ds, (Nz*Ny*Nx*4,); batch_size=100)
+        end
+        @info "Mean computation complete"
+        save(mean_file, "xbar", xbar)
+    end
+elseif COMPUTE_MINMAX
+    @info "Computing min/max for minmax shift-and-scale preprocessing"
+    minmax_file = joinpath(FILEPATH, "data/streaming/minmax.jld2")
+    if isfile(minmax_file)
+        @info "Loading existing minmax parameters from file"
+        minmax_data = load(minmax_file, "minmax")
+        xbar = minmax_data["xbar"]
+        scale_factors = minmax_data["scale_factors"]
+    else
+        @info "Starting min/max computation with $(Threads.nthreads()) threads"
+        @time begin
+            x_min, x_max = compute_minmax_parallel_threads(
+                ds, (Nz*Ny*Nx*4,), ["u", "v", "w", "p"]; batch_size=100)
+        end
+        # Compute minmax scaling parameters
+        scale_factors = x_max .- x_min
+        xbar = reduce(vcat, [xm * ones(Nz*Ny*Nx) for xm in x_min])
+        @info "Min/max computation complete"
+        save(minmax_file, "minmax", Dict(
+            "x_min" => x_min, "x_max" => x_max,
+            "xbar" => xbar, "scale_factors" => scale_factors
+        ))
+    end
 else
-    @info "Skipping mean computation, using zero mean"
+    @info "Skipping preprocessing, using default scaling and zero mean"
     xbar = 0.0
 end
 
-#============================================================#
-## Generate the POD basis using specified algorithms
-#============================================================#
-# Specify which algorithms to run
-algorithms = ["baker"]  # Can be extended to ["baker", "brand", "sketchy", "batch"]
 
-# Settings
-rmax = 400
-bases = Dict()
-execution_times = Dict()
+##
 
-# Run each specified algorithm
-for algo in algorithms
-    @info "Running $algo algorithm..."
+basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise1.jld2")
+field_results = load(basis_file)["field_results"]
+r = 100
+iΣr_u1 = field_results[1].Σ
+iΣr_v1 = field_results[2].Σ
+iΣr_w1 = field_results[3].Σ
+iΣr_p1 = field_results[4].Σ
+
+# #============================================================#
+# ## Generate the POD basis using specified algorithms
+# #============================================================#
+# # Specify which algorithms to run
+# algorithms = ["baker"]  # Can be extended to ["baker", "brand", "sketchy", "batch"]
+
+# # Settings
+# rmax = 400
+# bases = Dict()
+# execution_times = Dict()
+
+# # Run each specified algorithm
+# for algo in algorithms
+#     @info "Running $algo algorithm..."
     
-    if algo == "baker"
-        time_data = []
+#     if algo == "baker"
+#         time_data = []
 
-        # Run once with dummy data for JIT compilation
-        Xdummy = rand(30, 200)
-        baker_dummy = iSVD(x1=Xdummy[:,1], algo=:baker, max_rank=4) 
-        full_increment!(baker_dummy, Xdummy, verbose=true, runtime=true)
+#         # Run once with dummy data for JIT compilation
+#         Xdummy = rand(30, 200)
+#         baker_dummy = iSVD(x1=Xdummy[:,1], algo=:baker, max_rank=4) 
+#         full_increment!(baker_dummy, Xdummy, verbose=true, runtime=true)
         
-        # Initialize
-        tmp = @elapsed baker = iSVD(
-            x1=scale(ds[1] .- xbar, dim_per_field, scale_factors), 
-            algo=:baker, max_rank=rmax)
-        push!(time_data, tmp)
+#         # Initialize
+#         tmp = @elapsed baker = iSVD(
+#             x1=scale(ds[1] .- xbar, dim_per_field, scale_factors), 
+#             algo=:baker, max_rank=rmax)
+#         push!(time_data, tmp)
         
-        # Incremental updates
-        @showprogress for i in 2:n 
-            tmp = @elapsed increment!(
-                baker, scale(ds[i] .- xbar, dim_per_field, scale_factors))
-            push!(time_data, tmp)
-        end
+#         # Incremental updates
+#         @showprogress for i in 2:n 
+#             tmp = @elapsed increment!(
+#                 baker, scale(ds[i] .- xbar, dim_per_field, scale_factors))
+#             push!(time_data, tmp)
+#         end
         
-        # Store results
-        bases[algo] = (iVr=baker.Q[:,1:rmax], iΣr=baker.Σ[1:rmax])
-        execution_times[algo] = reduce(vcat, time_data)
+#         # Store results
+#         bases[algo] = (iVr=baker.Q[:,1:rmax], iΣr=baker.Σ[1:rmax])
+#         execution_times[algo] = reduce(vcat, time_data)
         
-    elseif algo == "brand"
-        time_data = []
+#     elseif algo == "brand"
+#         time_data = []
 
-        # Run once with dummy data for JIT compilation
-        Xdummy = rand(30, 200)
-        brand = iSVD(x1=Xdummy[:,1], algo=:brand1, reorth_method=:qr, max_rank=4)
-        full_increment!(brand, Xdummy, verbose=true, tol=1e-10, runtime=true)
+#         # Run once with dummy data for JIT compilation
+#         Xdummy = rand(30, 200)
+#         brand = iSVD(x1=Xdummy[:,1], algo=:brand1, reorth_method=:qr, max_rank=4)
+#         full_increment!(brand, Xdummy, verbose=true, tol=1e-10, runtime=true)
         
-        # Initialize
-        tmp = @elapsed brand = iSVD(
-            x1=scale(ds[1] .- xbar, dim_per_field, scale_factors), 
-            algo=:brand1, reorth_method=:gramschmidt, max_rank=rmax)
-        push!(time_data, tmp)
+#         # Initialize
+#         tmp = @elapsed brand = iSVD(
+#             x1=scale(ds[1] .- xbar, dim_per_field, scale_factors), 
+#             algo=:brand1, reorth_method=:gramschmidt, max_rank=rmax)
+#         push!(time_data, tmp)
         
-        # Incremental updates
-        @showprogress for i in 2:n 
-            tmp = @elapsed increment!(
-                brand, scale(ds[i] .- xbar, dim_per_field, scale_factors), tol=1e-10)
-            push!(time_data, tmp)
-        end
+#         # Incremental updates
+#         @showprogress for i in 2:n 
+#             tmp = @elapsed increment!(
+#                 brand, scale(ds[i] .- xbar, dim_per_field, scale_factors), tol=1e-10)
+#             push!(time_data, tmp)
+#         end
         
-        # Store results
-        bases[algo] = (iVr=brand.Q[:,1:rmax], iΣr=brand.Σ[1:rmax])
-        execution_times[algo] = reduce(vcat, time_data)
+#         # Store results
+#         bases[algo] = (iVr=brand.Q[:,1:rmax], iΣr=brand.Σ[1:rmax])
+#         execution_times[algo] = reduce(vcat, time_data)
         
-    elseif algo == "sketchy"
-        time_data = []
+#     elseif algo == "sketchy"
+#         time_data = []
 
-        # Run once with dummy data for JIT compilation
-        Xdummy = rand(30, 200)
-        sketchy = iSVD(algo=:sketchy; m=size(Xdummy,1), n=size(Xdummy,2), r=4, ReduxMap=:Sparse)
-        full_increment!(sketchy, Xdummy, verbose=true, runtime=true, dump_all=true)
+#         # Run once with dummy data for JIT compilation
+#         Xdummy = rand(30, 200)
+#         sketchy = iSVD(algo=:sketchy; m=size(Xdummy,1), n=size(Xdummy,2), r=4, ReduxMap=:Sparse)
+#         full_increment!(sketchy, Xdummy, verbose=true, runtime=true, dump_all=true)
         
-        # Initialize
-        tmp = @elapsed sketchy = iSVD(
-            algo=:sketchy; 
-            m=Nz*Ny*Nx*3,  # Excluding pressure field
-            n=n, 
-            r=rmax, 
-            ReduxMap=:Sparse)
-        push!(time_data, tmp)
+#         # Initialize
+#         tmp = @elapsed sketchy = iSVD(
+#             algo=:sketchy; 
+#             m=Nz*Ny*Nx*3,  # Excluding pressure field
+#             n=n, 
+#             r=rmax, 
+#             ReduxMap=:Sparse)
+#         push!(time_data, tmp)
         
-        # Process in batches
-        X = spzeros(Nz*Ny*Nx*3, n)
-        @showprogress for i in 1:(n ÷ 10)
-            idx = 10*(i-1)+1:10*i
-            X[:,idx] .= [scale(ds[j] .- xbar, dim_per_field, scale_factors) for j in idx]
-            sketchy.X .+= sketchy.Ξ * X
-            sketchy.Y .+= X * sketchy.Ω'
-            sketchy.Z .+= (sketchy.Φ * X) * sketchy.Ψ'
-            push!(time_data, tmp)
-            fill!(X, 0)
-            dropzeros!(X)
-        end
-        IncrementalSVD.terminate!(sketchy, false, false)
+#         # Process in batches
+#         X = spzeros(Nz*Ny*Nx*3, n)
+#         @showprogress for i in 1:(n ÷ 10)
+#             idx = 10*(i-1)+1:10*i
+#             X[:,idx] .= [scale(ds[j] .- xbar, dim_per_field, scale_factors) for j in idx]
+#             sketchy.X .+= sketchy.Ξ * X
+#             sketchy.Y .+= X * sketchy.Ω'
+#             sketchy.Z .+= (sketchy.Φ * X) * sketchy.Ψ'
+#             push!(time_data, tmp)
+#             fill!(X, 0)
+#             dropzeros!(X)
+#         end
+#         IncrementalSVD.terminate!(sketchy, false, false)
         
-        # Store results
-        bases[algo] = (iVr=sketchy.Q[:,1:rmax], iΣr=sketchy.Σ[1:rmax])
-        execution_times[algo] = reduce(vcat, time_data)
+#         # Store results
+#         bases[algo] = (iVr=sketchy.Q[:,1:rmax], iΣr=sketchy.Σ[1:rmax])
+#         execution_times[algo] = reduce(vcat, time_data)
         
-    elseif algo == "batch"
-        @info "Running batch SVD..."
+#     elseif algo == "batch"
+#         @info "Running batch SVD..."
 
-        # Run once with dummy data for JIT compilation
-        Xdummy = rand(30, 200)
-        svd(Xdummy)
+#         # Run once with dummy data for JIT compilation
+#         Xdummy = rand(30, 200)
+#         svd(Xdummy)
 
-        try
-            time_batch = @elapsed F = svd([scale(ds[j] .- xbar, dim_per_field, scale_factors) for j in 1:n])
-            bases[algo] = (Vr=F.U[:,1:rmax], Σr=F.S[1:rmax])
-            execution_times[algo] = [time_batch]
-        catch e
-            if isa(e, OutOfMemoryError)
-                @error "Out of memory error during SVD computation. Using randomized SVD."
-                try
-                    time_batch = @elapsed F = rsvd([scale(ds[j] .- xbar, dim_per_field, scale_factors) for j in 1:n], rmax, p=10)
-                    bases[algo] = (Vr=F.U[:,1:rmax], Σr=F.S[1:rmax])
-                    execution_times[algo] = [time_batch]
-                catch e2
-                    @error "Out of memory for randomized SVD as well. Skipping batch method."
-                    continue
-                end
-            else
-                @error "Error in batch SVD: $e"
-                continue
-            end
-        end
-    else
-        @warn "Unknown algorithm: $algo. Skipping."
-        continue
-    end
+#         try
+#             time_batch = @elapsed F = svd([scale(ds[j] .- xbar, dim_per_field, scale_factors) for j in 1:n])
+#             bases[algo] = (Vr=F.U[:,1:rmax], Σr=F.S[1:rmax])
+#             execution_times[algo] = [time_batch]
+#         catch e
+#             if isa(e, OutOfMemoryError)
+#                 @error "Out of memory error during SVD computation. Using randomized SVD."
+#                 try
+#                     time_batch = @elapsed F = rsvd([scale(ds[j] .- xbar, dim_per_field, scale_factors) for j in 1:n], rmax, p=10)
+#                     bases[algo] = (Vr=F.U[:,1:rmax], Σr=F.S[1:rmax])
+#                     execution_times[algo] = [time_batch]
+#                 catch e2
+#                     @error "Out of memory for randomized SVD as well. Skipping batch method."
+#                     continue
+#                 end
+#             else
+#                 @error "Error in batch SVD: $e"
+#                 continue
+#             end
+#         end
+#     else
+#         @warn "Unknown algorithm: $algo. Skipping."
+#         continue
+#     end
     
-    @info "Completed $algo algorithm"
-end
+#     @info "Completed $algo algorithm"
+# end
 
-#=====================================================================#
-## Save the POD basis and singular values
-#=====================================================================#
-if isfile(joinpath(FILEPATH, "data/streaming/basis.jld2"))
-    @info "Loading existing basis file to update"
-    existing_data = load(joinpath(FILEPATH, "data/streaming/basis.jld2"))
-    existing_bases = get(existing_data, "bases", Dict())
-    for (algo, basis) in bases
-        if haskey(existing_bases, algo)
-            @info "Updating existing basis for algorithm $algo"
-            existing_bases[algo].iVr = basis.iVr
-            existing_bases[algo].iΣr = basis.iΣr
-        else
-            @info "Adding new basis for algorithm $algo"
-            existing_bases[algo] = basis
-        end
-    end
-    save(joinpath(FILEPATH, "data/streaming/basis.jld2"), "bases", existing_bases)
-else
-    @info "Creating new basis file"
-    save(joinpath(FILEPATH, "data/streaming/basis.jld2"), "bases", bases)
-end
+# #=====================================================================#
+# ## Save the POD basis and singular values
+# #=====================================================================#
+# if isfile(joinpath(FILEPATH, "data/streaming/basis.jld2"))
+#     @info "Loading existing basis file to update"
+#     existing_data = load(joinpath(FILEPATH, "data/streaming/basis.jld2"))
+#     existing_bases = get(existing_data, "bases", Dict())
+#     for (algo, basis) in bases
+#         if haskey(existing_bases, algo)
+#             @info "Updating existing basis for algorithm $algo"
+#             existing_bases[algo].iVr = basis.iVr
+#             existing_bases[algo].iΣr = basis.iΣr
+#         else
+#             @info "Adding new basis for algorithm $algo"
+#             existing_bases[algo] = basis
+#         end
+#     end
+#     save(joinpath(FILEPATH, "data/streaming/basis.jld2"), "bases", existing_bases)
+# else
+#     @info "Creating new basis file"
+#     save(joinpath(FILEPATH, "data/streaming/basis.jld2"), "bases", bases)
+# end
 
 # #============================================================#
 # ## Save the runtime of the algorithms
@@ -336,7 +410,7 @@ end
 @everywhere include(joinpath(@__DIR__, "datasource.jl"))
 
 ## Parameters
-field_rank = 250  # Rank for each field
+field_rank = 200  # Rank for each field
 field_names = ds.fields  # ["u", "v", "w", "p"]
 # field_names = ["u", "v", "w"]
 N = dim_per_field
@@ -479,40 +553,40 @@ for result in field_results
     @info "  $(result.field_name): $(result.Σ[1:min(5, length(result.Σ))])"
 end
 
-## Merge the singular subspaces into a single one 
-# Merge the singular subspaces into a single one efficiently
-@info "Merging field-wise bases into unified subspace..."
+# ## Merge the singular subspaces into a single one 
+# # Merge the singular subspaces into a single one efficiently
+# @info "Merging field-wise bases into unified subspace..."
 
-# Pre-allocate matrices with exact sizes
-Z = Matrix{Float64}(undef, length(field_names) * field_rank, n)
-Vmerge = Matrix{Float64}(undef, total_dim, length(field_names) * field_rank)
+# # Pre-allocate matrices with exact sizes
+# Z = Matrix{Float64}(undef, length(field_names) * field_rank, n)
+# Vmerge = Matrix{Float64}(undef, total_dim, length(field_names) * field_rank)
 
-# Build Z matrix and Vmerge simultaneously with fewer allocations
-Threads.@threads for i in eachindex(sorted_field_results)
-    result = sorted_field_results[i]
+# # Build Z matrix and Vmerge simultaneously with fewer allocations
+# Threads.@threads for i in eachindex(sorted_field_results)
+#     result = sorted_field_results[i]
     
-    # Calculate indices once
-    z_start = (i - 1) * field_rank + 1
-    z_end = i * field_rank
-    v_start = (i - 1) * N + 1
-    v_end = i * N
+#     # Calculate indices once
+#     z_start = (i - 1) * field_rank + 1
+#     z_end = i * field_rank
+#     v_start = (i - 1) * N + 1
+#     v_end = i * N
     
-    # Use views and BLAS operations for efficiency
-    mul!(view(Z, z_start:z_end, :), 
-         Diagonal(@view result.Σ[1:field_rank]), 
-         (@view result.W[:, 1:field_rank])')
+#     # Use views and BLAS operations for efficiency
+#     mul!(view(Z, z_start:z_end, :), 
+#          Diagonal(@view result.Σ[1:field_rank]), 
+#          (@view result.W[:, 1:field_rank])')
     
-    # Store Q block in Vmerge for later use
-    Vmerge[v_start:v_end, z_start:z_end] .= @view result.Q[:, 1:field_rank]
-end
+#     # Store Q block in Vmerge for later use
+#     Vmerge[v_start:v_end, z_start:z_end] .= @view result.Q[:, 1:field_rank]
+# end
 
-# Compute SVD of the much smaller Z matrix
-PP, SS, JJ = svd(Z)
+# # Compute SVD of the much smaller Z matrix
+# PP, SS, JJ = svd(Z)
 
-# Final transformation: Vmerge = Q_blocks * PP efficiently
-temp_Vmerge = copy(Vmerge)
-mul!(Vmerge, temp_Vmerge, PP)
-Σmerge = SS
+# # Final transformation: Vmerge = Q_blocks * PP efficiently
+# temp_Vmerge = copy(Vmerge)
+# mul!(Vmerge, temp_Vmerge, PP)
+# Σmerge = SS
 
 ## Save field-wise results
 if isfile(joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2"))
@@ -564,6 +638,7 @@ end
 basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
 field_results = load(basis_file)["field_results"]
 
+##
 rmax = field_rank
 iVr_u = field_results[1].Q[:, 1:rmax]  # u-component basis
 iVr_v = field_results[2].Q[:, 1:rmax]  # v-component basis
@@ -573,7 +648,7 @@ field_results = nothing  # Free memory
 
 # Test different ranks (multiples of field_rank up to total available)
 # fieldwise_rspan = field_rank:field_rank:(length(field_names) * field_rank)
-fieldwise_rspan = [50, 100, 150, 200, 250]
+fieldwise_rspan = [50, 100, 150, 200]
 
 # Add field-wise to projection error dictionary
 proj_error["baker_fieldwise"] = Dict(
@@ -623,17 +698,24 @@ for (i, r) in enumerate(fieldwise_rspan)
             tid = Threads.threadid()
 
             # Extract full snapshot X = ds[j] - xbar
-            X_full = scale(ds[j] .- xbar, dim_per_field, scale_factors)
+            X_full = ds[j]
+
+            # Shift and scale the full snapshot
+            X_full_ss = scale(X_full .- xbar, dim_per_field, scale_factors)
 
             # Compute the field-wise basis projector
             # Vr = @view bases["baker_fieldwise"].iVr[:, 1:r]
 
             # Merged basis
             # Vmerge_r = @view Vmerge[:, 1:r]
-            # PX_merge = Vmerge_r * (Vmerge_r' * X_full)
+            # PX_merge = Vmerge_r * (Vmerge_r' l* X_full)
 
             # Project full snapshot
-            PX_full = iVr_tmp * (iVr_tmp' * X_full)
+            PX_full = iVr_tmp * (iVr_tmp' * X_full_ss)
+            X_full_ss = nothing
+
+            # Unscale and unshift the projected data
+            PX_full = unscale(PX_full, dim_per_field, scale_factors) .+ xbar
 
             # Extract each field and compute individual errors
             for (field_idx, field_name) in enumerate(field_names)
