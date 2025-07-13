@@ -1,17 +1,23 @@
 """
 $(SIGNATURES)
 
-Update the streaming operator inference with new data by solving a recursive least-squares problem via 
-the standard Recursive Least-Squares (RLS) algorithm with regularization.
+Update the streaming operator inference with new data by solving a recursive 
+least-squares problem via the standard Recursive Least-Squares (RLS) algorithm 
+with regularization.
 
 # Note 
-- For the RLS algorithm, the regularization term is updated if `variable_regularization` is enabled
-- The RLS algorithm also allows for rank-k update if the data-stream `X` is rank higher than 1
+- For the RLS algorithm, the regularization term is updated if 
+  `variable_regularization` is enabled
+- The RLS algorithm also allows for rank-k update if the data-stream `X` is rank
+  higher than 1
 - The RLS algorithm also permits noise in terms of a noise covariance matrix `Q`
 """
-function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::AbstractArray{T}=T[], 
-                 Q::Union{T,AbstractArray{<:Real}}=size(X,2)==1 ? 1.0 : 1.0I(size(X,2)),
-                 Γs::Union{Real,AbstractArray{<:Real}}=0.0, final_step::Bool=false) where T<:Number
+function stream!(
+    obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; 
+    U::AbstractArray{T}=T[], 
+    Q::Union{T,AbstractArray{<:Real}}=size(X,2)==1 ? 1.0 : 1.0I(size(X,2)),
+    Γs::Union{Real,AbstractArray{<:Real}}=0.0, 
+    ) where T<:Number
 
     tdim = size(X, 2)  # number of data points (time dimension)
 
@@ -19,50 +25,20 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
     foo, bar = checksize(U) 
     if foo == obj.dims[:m] && bar == tdim
         if foo == bar && foo != 1
-            @warn "Transposing while assuming the row dim is the input dim and the column dim is the number of data points."
+            @warn "Transposing while assuming the row dim is the input dim " *
+              "and the column dim is the number of data points."
         end
-        # if iszero(obj.cache.counter)
-        #     D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
-        #     obj.termination_settings[:dims] = operator_dims
-        #     obj.termination_settings[:syms] = operator_symbols
-        # else
-        #     D = get_data_matrix(X, U', obj.options; verbose=false)
-        # end
-
         D = get_data_matrix(X, U', obj.options; verbose=false)
-
-        # if final_step
-        #     D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
-        #     obj.termination_settings[:dims] = operator_dims
-        #     obj.termination_settings[:syms] = operator_symbols
-        # else
-        #     D = get_data_matrix(X, U', obj.options; verbose=false)
-        # end
     else
-        # if iszero(obj.cache.counter)
-        #     D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
-        #     obj.termination_settings[:dims] = operator_dims
-        #     obj.termination_settings[:syms] = operator_symbols
-        # else
-        #     D = get_data_matrix(X, U, obj.options; verbose=false)
-        # end
-
         D = get_data_matrix(X, U, obj.options; verbose=false)
-
-        # if final_step
-        #     D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
-        #     obj.termination_settings[:dims] = operator_dims
-        #     obj.termination_settings[:syms] = operator_symbols
-        # else
-        #     D = get_data_matrix(X, U, obj.options; verbose=false)
-        # end
     end
 
     # Reorganize the dimension of the derivative data matrix
     foo, bar = checksize(R)
     if foo == obj.dims[:n] && bar == tdim
         if foo == bar
-            @warn "Transposing while assuming the row dim is the state dim and the column dim is the number of data points."
+            @warn "Transposing while assuming the row dim is the state dim " * 
+                "and the column dim is the number of data points."
         end
         R = R'
     end
@@ -81,9 +57,6 @@ function stream!(obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::Abs
             rls!(obj.cache, D, R, Q)
         end
     end
-
-    # Update the counter
-    # obj.cache.counter += 1
 
     return D
 end

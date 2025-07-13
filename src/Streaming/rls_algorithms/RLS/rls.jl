@@ -1,38 +1,69 @@
 """
 $(TYPEDEF)
 
-Recursive Least-Squares (RLS) cache struct to solve for DO = R.
+Maintain the state for a Recursive Least-Squares (RLS) update
+of an (N x n)-dimensional operator matrix `O`, forgetting factor λ,
+and optional regularization Γ (scalar or N x N). 
 """
-@with_kw mutable struct RLSCache{T<:Real}
-    N::Int                                  # Number of features (total dimension of operators)
-    M::Int                                  # Number of data points
-    n::Int                                  # Number of outputs (residual dimension)
-    O::Array{T,2} = zeros(T,N,n)            # Operator matrix (N x n)
-    P::AbstractArray{T,2}                   # Inverse correlation matrix (N x N)
-    K::Array{T,2} = zeros(T,N,M)            # Kalman gain matrix (N x M)
-    ξpre::Array{T,2} = zeros(T,M,n)         # A priori error matrix (M x n)
-    ξpost::Array{T,2} = zeros(T,M,n)        # A posteriori error matrix (M x n)
-    C::Array{T,2} = zeros(T,M,M)            # Conversion factor (M x M)
-    J::Array{T,2} = zeros(T,M,M)            # Cost (scalar)
-    Γ::Union{T,AbstractArray{T,2}}          # Regularization term (matrix or constant)
-    λ::T                                    # Forgetting factor
+mutable struct RLSCache{T<:Real}
+    N::Int                           # number of features
+    M::Int                           # number of data points (or block size)
+    n::Int                           # number of outputs
+    λ::T                             # forgetting factor
 
-    # Preallocated temporary variables
-    u::Array{T,1} = zeros(T,N)              # For rank-1 update (N x 1)
-    temp_DP::Array{T,2} = zeros(T,M,N)      # Temporary matrix D * P (M x N)
-    temp_PD::Array{T,2} = zeros(T,N,M)      # Temporary matrix P * D' (N x M)
-    temp_update::Array{T,2} = zeros(T,N,N)  # Temporary matrix (N x N)
-    temp_Ke::Array{T,2} = zeros(T,N,n)      # For updating O (N x n)
+    O::Matrix{T}                     # N × n operator
+    P::Symmetric{T,Matrix{T}}        # N × N inverse‐covariance (symmetric)
+    K::Matrix{T}                     # N × M Kalman gain (M=1 or block size)
+    ξpre::Matrix{T}                  # M × n a‐priori error
+    ξpost::Matrix{T}                 # M × n a‐posteriori error
+    C::Matrix{T}                     # M × M intermediate (covariance)
+    J::Matrix{T}                     # M × M cost
 
-    # Update counter
-    # counter::Int = 0
+    # temporaries (pre‐allocated)
+    u::Vector{T}                     # length N
+    temp_DP::Matrix{T}               # M × N
+    temp_PD::Matrix{T}               # N × M
+    temp_update::Matrix{T}           # N × N
+    temp_Ke::Matrix{T}               # N × n
 end
 
-"""
-Recursive Least Squares (RLS) algorithm for the Operator Inference problem.
 
-This function updates the operator inference state within the `RLSCache` struct,
-performing computations in-place and minimizing memory allocations.
+"""
+RLSCache constructor
+"""
+function RLSCache{T}(;N::Int=1, M::Int=1, n::Int=1, λ::T=one(T), 
+                      P::AbstractMatrix=Matrix{T}(I, N, N)) where T<:Real
+    λ        = T(λ)
+    P_T      = convert(AbstractMatrix{T}, P)
+
+    O        = zeros(T,N,n)
+    P        = Symmetric(P_T, :U)
+    K        = zeros(T,N,M)
+    ξpre     = zeros(T,M,n)
+    ξpost    = zeros(T,M,n)
+    C        = zeros(T,M,M)
+    J        = zeros(T,M,M)
+
+    u        = zeros(T,N)
+    temp_DP  = zeros(T,M,N)
+    temp_PD  = zeros(T,N,M)
+    temp_up  = zeros(T,N,N)
+    temp_Ke  = zeros(T,N,n)
+
+    return RLSCache{T}(
+        N, M, n, λ, O, P, K, 
+        ξpre, ξpost, C, J, u,
+        temp_DP, temp_PD, temp_up, temp_Ke)
+end
+
+
+"""
+    rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractArray{T}, 
+         Q::Union{T,AbstractMatrix{T}}) where T<:Real
+
+Perform one or block RLS update:
+- If `D` is M x N with M>1, does block update of size M.
+- If `D` is 1 x N, does rank-1 update.
 
 # Arguments:
 - `obj`: RLSCache object containing the state and preallocated variables.
@@ -40,112 +71,80 @@ performing computations in-place and minimizing memory allocations.
 - `R`: Response matrix (M x n), where each row corresponds to the output for a data point.
 - `Q`: Noise covariance (scalar or matrix).
 
-# Notes:
-The function updates the following fields in `obj`:
-- `O`, `P`, `K`, `ξpre`, `ξpost`, `C`, `J`.
+# Note:
+`R` is M x n; `Q` is scalar or M x M noise covariance.
 """
-function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractMatrix{T}, 
-              Q::Union{Real, AbstractMatrix{T}}) where T<:Real
-    M, N = size(D)   # M: number of data points, N: number of features
-    n = size(R, 2)   # n: residual dimension (state dimemsion)
- 
-    # Compute a priori error: ξpre = R - D * O
+function rls!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractArray{T},
+              Q::Union{T,AbstractMatrix{T}}) where T<:Real
+    M = size(D,1) # M data points
+
+    # 1) a‐priori error: ξpre = R – D*O
     obj.ξpre .= R
-    mul!(obj.ξpre, D, obj.O, -1.0, 1.0)  # ξpre = R - D * O
+    mul!(obj.ξpre, D, obj.O, -1.0, 1.0)
 
-    # Update inverse correlation matrix P_k
-    if M == 1  # Rank-1 update
-        # Compute u = P * D'
-        # D[1, :] is 1 x N, D[1, :]' is N x 1
-        # or D[1, :]' could be just D[:]
-        mul!(obj.u, obj.P, D[:], 1.0, 0.0)  # obj.u: N x 1
+    # 2) update Kalman gain and inverse‐covariance P 
+    if M == 1
+        # == rank‐1 update ==
+        d = view(D,1,:)
+        mul!(obj.u, obj.P, d, 1.0, 0.0)  # u = P * d'
+        denom = (isa(Q, Number) ? Q : Q[1,1]) * obj.λ + dot(d,obj.u)
+        obj.C[1,1] = inv(denom)
 
-        # Compute denominator: denom = Q + D * u / λ or λ * Q + D * u
-        # denom = Q + dot(D, obj.u) / obj.λ  # scalar
-        denom = Q*obj.λ + dot(D, obj.u)  # scalar
-
-        # Compute conversion factor: C = 1 / denom
-        obj.C .= 1 / denom  # obj.C is 1 x 1 in rank-1 case
-
-        # Compute Kalman gain: K = P(i-1) * Dᵗ * C / Q / λ or P(i-1) * Dᵗ * C
+        # Kalman gain K[:,1] = (P*d') * (1/Q) * C
         if isa(Q, Number)
-            Q_inv = 1 / Q
-            # mul!(obj.K, obj.P, D[:], obj.C[1,1] * (Q_inv / obj.λ), 0.0)  # K: N x 1
-            mul!(obj.K, obj.P, D[:], obj.C[1,1] * Q_inv, 0.0)  # K: N x 1
+            mul!(view(obj.K, :, 1), obj.P, d, obj.C[1,1]/Q, 0.0)
         else
-            Q_inv = Q \ I
-            # mul!(obj.K, obj.P, D[:], obj.C[1,1] / obj.λ, 0.0)
-            mul!(obj.K, obj.P, D[:], obj.C[1,1], 0.0)
-            obj.K .= Q_inv * obj.K
+            # Q is 1×1 matrix
+            mul!(view(obj.K, :, 1), obj.P, d, obj.C[1,1], 0.0)
+            obj.K .*= inv(Q)
         end
 
-        # Update P: P = (P - (u * uᵗ) / denom / λ) / λ
-        # NOTE: syr only updates the upper triangular part of the matrix
-        # BLAS.syr!('U', -1.0 / denom / obj.λ, obj.u, obj.P)
-        BLAS.syr!('U', -1.0 / denom, obj.u, obj.P)
-        obj.P ./= obj.λ
+        # P ← (P – u*uᵀ/denom) / λ via BLAS
+        # NOTE: 
+        # 1) syr only updates the upper triangular part of the matrix
+        # 2) P is set to `Symmetric` so symmetry is ensured
+        BLAS.syr!('U', -1.0/denom, obj.u, obj.P.data)
+        BLAS.scal!(1/obj.λ, obj.P.data)
 
-        # Ensure symmetry of P
-        @inbounds for i in 1:N, j in i+1:N
-            obj.P[j, i] = obj.P[i, j]
-        end
+    else
+        # == block update ==
+        # temp_DP = D * P / λ
+        mul!(obj.temp_DP, D, obj.P, 1/obj.λ, 0.0)  # M×N
 
-        # # Compute Kalman gain: K = P(i) * Dᵗ / Q / λ
-        # if isa(Q, Number)
-        #     Q_inv = 1 / Q
-        #     mul!(obj.K, obj.P, D[:], Q_inv / obj.λ, 0.0)  # K: N x 1
-        # else
-        #     Q_inv = Q \ I
-        #     mul!(obj.K, obj.P, D[:], 1.0 / obj.λ, 0.0)
-        #     mul!(obj.K, Q_inv, obj.K)
-        # end
-    else  # Block (rank-M) update
-        # Compute temp_DP = D * P / λ or 
-        mul!(obj.temp_DP, D, obj.P, 1 / obj.λ, 0.0)  # temp_DP: M x N
+        # C = temp_DP * Dᵀ  + Q
+        mul!(obj.C, obj.temp_DP, D', 1.0, 0.0)   # M×M
+        obj.C .+= Q
 
-        # Compute S = Q + (D * P * Dᵗ) / λ
-        mul!(obj.C, obj.temp_DP, D', 1.0, 0.0)  # C: M x M
+        # factor C once
+        F = cholesky(Symmetric(obj.C, :U))
 
-        if isa(Q, Number)
-            @. obj.C += Q
-        else
-            obj.C .+= Q
-        end
+        # temp_PD = P * Dᵀ
+        mul!(obj.temp_PD, obj.P, D', 1.0, 0.0)   # N×M
 
-        # Compute inverse of S
-        S_inv = obj.C \ I
+        # K = (temp_PD/λ) * inv(C) via two triangular solves
+        BLAS.scal!(1/obj.λ, obj.temp_PD)
+        BLAS.trsm!('L','U','N','N', 1.0, F.L, obj.temp_PD) # solve L * X = temp_PD
+        BLAS.trsm!('U','U','T','N', 1.0, F.U, obj.temp_PD) # solve Uᵀ * X = prev
+        copy!(obj.K, obj.temp_PD)                          # N×M
 
-        # Compute temp_PD = P * D'
-        mul!(obj.temp_PD, obj.P, D', 1.0, 0.0)  # temp_PD: N x M
+        # P ← (P – K * (D*P)) / λ
+        # note D*P = (temp_DP)
+        BLAS.syrk!('U', 'N', -1.0, obj.temp_PD, 1.0, obj.P.data) # P -= K * Kᵀ
+        BLAS.scal!(1/obj.λ, obj.P.data)
 
-        # # Compute Kalman gain: K = P * Dᵗ * S_inv / λ
-        mul!(obj.K, obj.P, D', 1.0 / obj.λ, 0.0)
-        obj.K *= S_inv
-
-        # Update P: P = (P - temp_PD * S_inv * temp_PDᵗ) / λ
-        mul!(obj.temp_update, temp_PD, S_inv)
-        mul!(obj.temp_update, obj.temp_update, temp_PD', 1.0 / obj.λ, 0.0)
-        obj.P .-= obj.temp_update
-        obj.P ./= obj.λ
-
-        # Ensure symmetry of P
-        for i in 1:N, j in i+1:N
-            obj.P[j, i] = obj.P[i, j]
-        end
-
-        # # Compute Kalman gain: K = P * Dᵗ * S_inv / λ
-        # mul!(obj.K, obj.P, D', 1.0 / obj.λ, 0.0)
     end
 
-    # Update O: O += K * ξpre
-    mul!(obj.O, obj.K, obj.ξpre, 1.0, 1.0)  # temp_Ke: N x n
+    # 3) update operator: O += K * ξpre
+    mul!(obj.temp_Ke, obj.K, obj.ξpre, 1.0, 0.0)
+    obj.O .+= obj.temp_Ke
 
-    # Compute a posteriori error: ξpost = R - D * O
+    # 4) a‐posteriori error: ξpost = R – D*O
     obj.ξpost .= R
-    mul!(obj.ξpost, D, obj.O, -1.0, 1.0)  # ξpost = R - D * O
+    mul!(obj.ξpost, D, obj.O, -1.0, 1.0)
 
-    # Update the cost J: J = λ * J + ξpre' .* ξpost
-    obj.J = obj.λ * obj.J + obj.ξpre * obj.ξpost'
+    # 5) update cost: J = λ*J + ξpre*ξpostᵀ
+    obj.J .*= obj.λ
+    obj.J .+= obj.ξpre * obj.ξpost'
 
     return nothing
 end
@@ -153,6 +152,8 @@ end
 
 """
 Variable-regularization RLS.
+
+WARNING: Experimental, not yet tested.
 """
 function vrrls!(obj::RLSCache{T}, D::AbstractMatrix{T}, R::AbstractMatrix{T},
                 Q::Union{Real,AbstractMatrix{T}}, γ_k::Real, γ_km1::Real) where T<:Number
