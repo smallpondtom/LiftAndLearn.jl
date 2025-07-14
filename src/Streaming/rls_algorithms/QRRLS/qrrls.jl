@@ -3,31 +3,60 @@ $(TYPEDEF)
 
 QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = R.
 """
-@with_kw mutable struct QRRLSCache{T<:Real}
-    N::Int                                # Number of features (total dimension of operators)
-    n::Int                                # Number of outputs (residual dimension)
-    O::Array{T,2} = zeros(T,N,n)          # Operator matrix (N x n)
-    P::Array{T,2}                         # Inverse correlation matrix (N x N)
-    K::Array{T,2} = zeros(T,N,1)          # Kalman gain matrix (N x 1)
-    Φsq::AbstractArray{T,2}               # Square-root correlation matrix (upper triangular, N x N)
-    q::Array{T,2} = zeros(T,N,n)          # Auxiliary matrix (N x n)
-    ξpre::Array{T,2} = zeros(T,1,n)       # A priori error vector (1 x n)
-    ξpost::Array{T,2} = zeros(T,1,n)      # A posteriori error vector (1 x n)
-    C::T = zero(T)                        # Conversion factor (scalar)
-    J::T = zero(T)                        # Cost (scalar)
-    λ::T                                  # Forgetting factor
+mutable struct QRRLSCache{T<:Real}
+    N::Int                              # Number of features (total dimension of operators)
+    n::Int                              # Number of outputs (residual dimension)
+    λ::T                                # Forgetting factor
+    O::Matrix{T}                        # Operator matrix (N x n)
+    P::Symmetric{T,Matrix{T}}           # Inverse correlation matrix (N x N)
+    K::Matrix{T}                        # Kalman gain matrix (N x 1)
+    Φsq::UpperTriangular{T,Matrix{T}}   # Square-root correlation matrix (lower triangular, N x N)
+    q::Matrix{T}                        # Auxiliary matrix (N x n)
+    ξpre::Matrix{T}                     # A priori error vector (1 x n)
+    ξpost::Matrix{T}                    # A posteriori error vector (1 x n)
+    C::T                                # Conversion factor (scalar)
+    J::T                                # Cost (scalar)
 
     # Preallocated temporary variables
-    A::Array{T,2} = zeros(T,N+n+1,N+n+1)  # Temporary matrix for QR factorization ((N + n + 1) x (N + n + 1))
-    temp_dO::Array{T,2} = zeros(T,1,n)    # Temporary vector for d * O (1 x n)
-    temp_Kd::Array{T,2} = zeros(T,N,1)    # Temporary matrix for P * d' (N x 1)
+    A::Matrix{T}                        # Temporary matrix for QR factorization ((N + n + 1) x (N + n + 1))
+    temp_dO::Matrix{T}                  # Temporary vector for d * O (1 x n)
+    temp_Kd::Matrix{T}                  # Temporary matrix for P * d' (N x 1)
 
-    # Update counter
-    # counter::Int = 0
+    mthd::Symbol                        # method used for updates, default is :qr
 end
 
 
-function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) where T<:Real
+"""
+Constructor: initialize all fields
+"""
+function QRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T), 
+                        P::AbstractMatrix{T}=Matrix{T}(I, N, N),
+                        Φsq::AbstractMatrix=Matrix{T}(I, N, N),
+                        method::Symbol=:qr) where T<:Real
+    λ       = T(λ)
+    P_T     = convert(AbstractMatrix{T}, P)
+    Φsq_T   = convert(AbstractMatrix{T}, Φsq)
+
+    O       = zeros(T,N,n)
+    P       = Symmetric(P_T)
+    K       = zeros(T, N, 1)
+    Φsq     = UpperTriangular(Φsq_T)  
+    q       = zeros(T, N, n)
+    ξpre    = zeros(T, 1, n)
+    ξpost   = zeros(T, 1, n)
+    C       = zero(T)
+    J       = zero(T)
+    A       = zeros(T, N+n+1, N+n+1) 
+    temp_dO = zeros(T, 1, n)
+    temp_Kd = zeros(T, N, 1)
+    method  = method in (:givens, :qr) ? method : :qr
+    return QRRLSCache{T}(N, n, λ, O, P, K, Φsq, q, ξpre,
+                         ξpost, C, J, A, temp_dO, temp_Kd, method)
+end
+
+
+function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, 
+                r::AbstractArray{T}) where T<:Real
     # d: 1 x N (row vector)
     # r: 1 x n (row vector)
     N = size(d, 2)  # Number of features
@@ -47,7 +76,7 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
     # A = [λsq * Φsq   λsq * q   zeros(N, 1);
     #      d           r         1]
     A = obj.A
-    A .= 0  # Reset A to zero
+    fill!(A, 0.0)  # Reset A to zero
     # Top-left block: λsq * Φsq
     @views mul!(A[1:N, 1:N], λsq, obj.Φsq)
     # Top-right block: λsq * q
@@ -58,7 +87,11 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
     A[N+1, N+n+1] = T(1)
 
     # Perform in-place QR factorization of A (we want the R matrix)
-    F = qr!(A)  # A is overwritten
+    if obj.mthd == :qr
+        LAPACK.geqrf!(A)  
+    else # Givens rotations
+        qr_givens!(A)
+    end
 
     # Extract Φsq (upper triangular) and q
     obj.Φsq .= @views A[1:N, 1:N]
@@ -68,7 +101,8 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
 
     # Update operator matrix O by solving Φsq * O = q
     # Since Φsq is upper triangular, use back substitution
-    obj.O .= UpperTriangular(obj.Φsq) \ obj.q
+    # obj.O .= UpperTriangular(obj.Φsq) \ obj.q
+    obj.O .= obj.Φsq \ obj.q
 
     # Compute the a posteriori error: ξpost = r - d * O
     mul!(obj.temp_dO, d, obj.O, T(1), T(0))  # temp_dO: 1 x n
@@ -88,13 +122,13 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T}, r::AbstractArray{T}) wh
     obj.K .*= obj.C / obj.λ  # K = K * (C / λ)
 
     # Update P in-place
-    BLAS.syr!('U', -1.0 / (obj.λ * denom), obj.temp_Kd[:,1], obj.P)
-    obj.P ./= obj.λ  # P = P / λ
+    BLAS.syr!('U', -1.0 / (obj.λ * denom), obj.temp_Kd[:,1], obj.P.data)
+    BLAS.scal!(1/obj.λ, obj.P.data)  # Scale P by 1/λ
 
     # Ensure symmetry of P
-    @inbounds for i in 1:N, j in i+1:N
-        obj.P[j, i] = obj.P[i, j]
-    end
+    # @inbounds for i in 1:N, j in i+1:N
+    #     obj.P[j, i] = obj.P[i, j]
+    # end
 
     return nothing
 end

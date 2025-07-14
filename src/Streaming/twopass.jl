@@ -49,54 +49,44 @@ include("rls_algorithms/QRRLS/stream.jl")
 """
 $(TYPEDEF)
 
-Streaming Two-Pass Operator Inference/Lift And Learn
+Streaming Two-Pass Operator Inference/Lift And Learn.
+
+# Arguments:
+- `options::LSOpInfOption`: Standard (Least-Squares) Operator Inference options.
+- `n::Int`: State dimension.
+- `m::Int=0`: Input dimension (default is 0).
+- `l::Int=0`: Output dimension (default is 0).
+- `algorithm::Symbol=:RLS`: Algorithm type, can be `:RLS`, `:QRRLS`, or `:iQRRLS`.
+- `Γs::Union{T,AbstractArray{T}}=0.0`: Regularization term for state regression (default is 0).
+- `Γo::Union{T,AbstractArray{T}}=0.0`: Regularization term for output regression (default is 0).
+- `λ::T=1.0`: Forgetting factor (default is 1).
+- `rank::Int=1`: Rank of the update (default is 1).
+- `variable_regularize::Bool=false`: Variable regularization (only for `:RLS`) flag (default is false). This is experimental.
+- `qr_method::Symbol=:givens`: QR method for `iQRRLS` and `QRRLS` (default is `:givens` or built-in `qr`).
 """
 function TwoPassStreamingOpInf(;
     options::LSOpInfOption,             # Standard (Least-Squares) Operator Inference options
     n::Int, m::Int=0, l::Int=0,         # state (n), input (m), and output (l) dimensions
     algorithm::Symbol=:RLS,             # algorithm type
-    Γs::Union{T,AbstractArray{T}}=0.0,  # regularization term for state regression (regularization ||Γ^(1/2) * O||_F^2)
+    Γs::Union{T,AbstractArray{T}}=0.0,  # regularization term for state regression  (regularization ||Γ^(1/2) * O||_F^2)
     Γo::Union{T,AbstractArray{T}}=0.0,  # regularization term for output regression (regularization ||Γ^(1/2) * O||_F^2)
     λ::T=1.0,                           # forgetting factor
     rank::Int=1,                        # rank of the update (default rank-1 update)
-    variable_regularize::Bool=false     # variable regularization flag
+    variable_regularize::Bool=false,    # variable regularization flag
+    qr_method::Symbol=:givens,          # QR method for iQRRLS (default is :givens)
     ) where {T<:Real}
 
-    # Initialize the dimensions 
-    # dims = Dict(:n => n, :m => m, :l => l)
-    # d = 0  # total dimension of the data matrix
-    # d += sum(i != 0 ? binomial(n+i-1, i) : 0 for i in options.system.state)
-    # d += sum(i != 0 ? binomial(m+i-1, i) : 0 for i in options.system.control)
-    # d += sum(i != 0 ? binomial(n+i-1, i) * m : 0 for i in options.system.coupled_input)
-    # d += iszero(options.system.constant) ? 0 : 1
-    # dims[:d] = d
-
-    # Initialize the dimensions 
-    # dims = Dict(:n => n, :m => m, :l => l)
-    # state_dims = isa(options.system.state, Real) ? [options.system.state] : options.system.state
-    # control_dims = isa(options.system.control, Real) ? [options.system.control] : options.system.control
-    # coupled_input_dims = isa(options.system.coupled_input, Real) ? [options.system.coupled_input] : options.system.coupled_input 
-    # operator_info = vcat(
-    # [
-    #     (
-    #         binomial(n+i-1, i), i == 1 ? :A : 
-    #         (options.optim.nonredundant_operators ? Symbol("A$(i)u") : Symbol("A$(i)"))
-    #     )
-    #     for i in filter(!iszero, state_dims)
-    # ],
-    # [(binomial(m+i-1, i), :B) for i in filter(!iszero, control_dims)],
-    # [(binomial(n+i-1, i) * m, i == 1 ? :N : Symbol("N$(i)")) for i in filter(!iszero, coupled_input_dims)],
-    # options.system.constant != 0 ? [(1, :K)] : []
-    # )
-    # operator_dimensions, operator_symbols = zip(operator_info...) .|> collect
-    # d = sum(operator_dimensions)  # total dimension of the data matrix
-    # dims[:d] = d
+    # Ensure BLAS multi-threading is enabled
+    BLAS.set_num_threads(Sys.CPU_THREADS)
 
     # Initialize the dimensions 
     dims = Dict(:n => n, :m => m, :l => l)
-    state_dims = isa(options.system.state, Real) ? [options.system.state] : options.system.state
-    control_dims = isa(options.system.control, Real) ? [options.system.control] : options.system.control
-    coupled_input_dims = isa(options.system.coupled_input, Real) ? [options.system.coupled_input] : options.system.coupled_input 
+    state_dims = isa(options.system.state, Real) ? [options.system.state] : 
+                 options.system.state
+    control_dims = isa(options.system.control, Real) ? [options.system.control] : 
+                   options.system.control
+    coupled_input_dims = isa(options.system.coupled_input, Real) ? [options.system.coupled_input] : 
+                         options.system.coupled_input 
 
     # Build operator info (!!!! with B after A !!!!)
     operator_info = Vector{Tuple{Int, Symbol}}()
@@ -140,6 +130,10 @@ function TwoPassStreamingOpInf(;
         Γs = spzeros(d)
         tikhonov_matrix!(Γs, operator_dimensions, operator_symbols, options.λ)
         Γs = diagm(0 => Γs)  # convert to sparse diagonal matrix
+    elseif !isa(Γs, Real)
+        @info "We recommend using a sparse Tikhonov matrix for large systems." *
+              " Or use the built-in function to construct the Tikhonov matrix." *
+              " If you want to use a dense Tikhonov matrix, set `with_reg=false`."
     end
 
     # Termination settings
@@ -148,62 +142,122 @@ function TwoPassStreamingOpInf(;
     )
 
     if algorithm == :RLS  # Standard Recursive Least-Squares (RLS)
-        # Initialize the inverse correlation matrices
-        Ps = iszero(Γs) ? Matrix{T}(undef,d,d) : Matrix(Γs \ 1.0I(d))  # State
-        Po = iszero(Γo) ? Matrix{T}(undef,n,n) : Matrix(Γo \ 1.0I(n))  # Output
+        # Initialize the inverse correlation matrices (state)
+        Ps = if iszero(Γs)
+            Matrix{T}(undef, d, d)
+        elseif isa(Γs, UniformScaling) || (isa(Γs, Real) && Γs > 0)
+            # For scalar regularization: P = (1/γ) * I
+            γ_val = isa(Γs, Real) ? Γs : Γs.λ
+            Matrix{T}(I(d) / γ_val)
+        else
+            # Fallback to matrix solve for general case
+            Matrix(Γs \ I(d))
+        end
 
         # State regression
-        state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, Γ=Γs, λ=λ)
+        state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, λ=λ)
         state_rls = RLSOpInf{T}(
-            # state_cache, dims, Dict{Symbol,Any}(), options, 
             state_cache, dims, term_setting, options, 
             variable_regularize, iszero(Γs)
         )
-        if iszero(l)
+        if iszero(l)  # If no output regression, return only state
             return state_rls
         end
 
+        # Initialize the inverse correlation matrices (output)
+        Po = if iszero(Γo)
+            Matrix{T}(undef, n, n)
+        elseif isa(Γo, UniformScaling) || (isa(Γo, Real) && Γo > 0)
+            # For scalar regularization: P = (1/γ) * I
+            γ_val = isa(Γo, Real) ? Γo : Γo.λ
+            Matrix{T}(I(n) / γ_val)
+        else
+            # Fallback to matrix solve for general case
+            Matrix(Γo \ I(n))
+        end
+
         # Output regression
-        output_cache = RLSCache{T}(N=n, M=rank, n=l, P=Po, Γ=Γo, λ=λ)
+        output_cache = RLSCache{T}(N=n, M=rank, n=l, P=Po, λ=λ)
         output_rls = RLSOpInf{T}(
             output_cache, dims, Dict{Symbol,Any}(), options, 
             variable_regularize, iszero(Γo)
         )
         return state_rls, output_rls
+
     elseif algorithm == :QRRLS  # QR Decomposition Recursive Least-Squares (QRRLS)
-        # Initialize the inverse correlation matrices (P) and square-root correlation matrices (Φsq)
-        Ps    = Matrix(Γs \ 1.0I(d))  # State
-        Po    = Matrix(Γo \ 1.0I(n))  # Output
-        Φsqs  = typeof(Γs)<:Real ? Matrix(sqrt(Γs) * 1.0I(d)) : sqrt(Γs) # State 
-        Φsqo  = typeof(Γo)<:Real ? Matrix(sqrt(Γo) * 1.0I(n)) : sqrt(Γo) # Output
+        # Initialize the inverse correlation matrices (P) 
+        # and square-root correlation matrices (Φsq)
+        # for state
+        Ps = if isa(Γs, UniformScaling) || (isa(Γs, Real) && Γs > 0)
+            γ_val = isa(Γs, Real) ? Γs : Γs.λ
+            Matrix{T}(I(d) / γ_val)
+        else
+            Matrix(Γs \ I(d))
+        end
+
+        # Square-root matrices
+        Φsqs = if isa(Γs, UniformScaling) || (isa(Γs, Real) && Γs > 0)
+            γ_val = isa(Γs, Real) ? Γs : Γs.λ
+            Matrix{T}(I(d) * sqrt(γ_val))
+        else
+            Matrix(sqrt(Γs))
+        end
 
         # State regression
         state_cache = QRRLSCache{T}(N=d, n=n, P=Ps, Φsq=Φsqs, λ=λ)
-        # state_qrrls = QRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
         state_qrrls = QRRLSOpInf{T}(state_cache, dims, term_setting, options)
         if iszero(l)
             return state_qrrls
+        end
+
+        # Initialize the inverse correlation matrices (P) 
+        # and square-root correlation matrices (Φsq)
+        # for output
+        Po = if isa(Γo, UniformScaling) || (isa(Γo, Real) && Γo > 0)
+            γ_val = isa(Γo, Real) ? Γo : Γo.λ
+            Matrix{T}(I(n) / γ_val)
+        else
+            Matrix(Γo \ I(n))
+        end
+
+        Φsqo = if isa(Γo, UniformScaling) || (isa(Γo, Real) && Γo > 0)
+            γ_val = isa(Γo, Real) ? Γo : Γo.λ
+            Matrix{T}(I(n) * sqrt(γ_val))
+        else
+            Matrix(sqrt(Γo))
         end
 
         # Output regression
         output_cache = QRRLSCache{T}(N=n, n=l, P=Po, Φsq=Φsqo, λ=λ)
         output_qrrls = QRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_qrrls, output_qrrls
+
     elseif algorithm == :iQRRLS  # Inverse QR Decomposition Recursive Least-Squares (iQRRLS)
-        # Initialize the square-root inverse correlation matrices (Psq)
-        Psqs = Matrix(sqrt(Γs) \ 1.0I(d))  # State
-        Psqo = Matrix(sqrt(Γo) \ 1.0I(n))  # Output
+        # Initialize the square-root inverse correlation matrices (Psq) (state)
+        Psqs = if isa(Γs, UniformScaling) || (isa(Γs, Real) && Γs > 0)
+            γ_val = isa(Γs, Real) ? Γs : Γs.λ
+            Matrix{T}(I(d) / sqrt(γ_val))
+        else
+            Matrix(sqrt(Γs) \ I(d))
+        end
 
         # State regression
-        state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, λ=λ)
-        # state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, Dict{Symbol,Any}(), options)
+        state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, λ=λ, method=qr_method)
         state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, term_setting, options)
         if iszero(l)
             return state_iqrrls
         end
 
+        # Initialize the square-root inverse correlation matrices (Psq) (output)
+        Psqo = if isa(Γo, UniformScaling) || (isa(Γo, Real) && Γo > 0)
+            γ_val = isa(Γo, Real) ? Γo : Γo.λ
+            Matrix{T}(I(n) / sqrt(γ_val))
+        else
+            Matrix(sqrt(Γo) \ I(n))
+        end
+
         # Output regression
-        output_cache = iQRRLSCache{T}(N=n, n=l, Psq=Psqo, λ=λ)
+        output_cache = iQRRLSCache{T}(N=n, n=l, Psq=Psqo, λ=λ, method=qr_method)
         output_iqrrls = iQRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_iqrrls, output_iqrrls
     else
@@ -218,10 +272,12 @@ $(SIGNATURES)
 Update the streaming operator inference continuously with all the data streams using
 the Recursive Least-Squares (RLS) algorithm with regularization.
 """
-function stream_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, R::AbstractArray{<:AbstractArray{T}}; 
+function stream_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, 
+                     R::AbstractArray{<:AbstractArray{T}}; 
                      U::AbstractArray{<:AbstractArray{T}}=Vector{T}[], 
                      Γs::Union{AbstractArray{T},AbstractArray{AbstractArray{T}}}=zeros(length(X)),
-                     Q::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0,verbose::Bool=false) where T<:Real
+                     Q::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0,verbose::Bool=false
+                     ) where T<:Real
     N = length(X)
     D = nothing # initialize the data matrix
     flag = typeof(Q) <: AbstractArray{T}
@@ -231,18 +287,8 @@ function stream_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, R::
     end
     for i in 1:N
         if iszero(Q)
-            # if i == N
-            #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], final_step=true)
-            # else
-            #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i])
-            # end
             D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i])
         else
-            # if i == N
-            #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], Q=flag ? Q : Q[i], final_step=true)
-            # else
-            #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], Q=flag ? Q : Q[i])
-            # end
             D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], Γs=Γs[i], Q=flag ? Q : Q[i])
         end
         if verbose
@@ -259,8 +305,10 @@ $(SIGNATURES)
 Update the streaming operator inference continuously with all the data streams using
 the inverse and QR Decomposition Recursive Least-Squares (iQRRLS/QRRLS) algorithm.
 """
-function stream_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, X::AbstractArray{<:AbstractArray{T}}, 
-                     R::AbstractArray{<:AbstractArray{T}}; U::AbstractArray{<:AbstractArray{T}}=Vector{T}[],
+function stream_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, 
+                     X::AbstractArray{<:AbstractArray{T}}, 
+                     R::AbstractArray{<:AbstractArray{T}}; 
+                     U::AbstractArray{<:AbstractArray{T}}=Vector{T}[],
                      verbose::Bool=false) where T<:Real
     N = length(X)
     D = nothing # initialize the data matrix
@@ -269,11 +317,6 @@ function stream_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, X::AbstractArray{<:A
         p = Progress(N; desc="Streaming data...")
     end
     for i in 1:N
-        # if i == N
-        #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i], final_step=true)
-        # else
-        #     D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i])
-        # end
         D = stream!(stream, X[i], R[i]; U=no_input ? T[] : U[i])
         if verbose
             next!(p)
@@ -318,8 +361,10 @@ $(SIGNATURES)
 Streaming all the data for the output system using the inverse and 
 QR Decomposition Recursive Least-Squares (iQRRLS/QRRLS) algorithm.
 """
-function stream_output_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, X::AbstractArray{<:AbstractArray{T}}, 
-                            Y::AbstractArray{<:AbstractArray{T}}; verbose::Bool=false) where T<:Real
+function stream_output_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, 
+                            X::AbstractArray{<:AbstractArray{T}}, 
+                            Y::AbstractArray{<:AbstractArray{T}}; 
+                            verbose::Bool=false) where T<:Real
     N = length(X)
     if verbose
         p = Progress(N; desc="Streaming data...")
@@ -354,7 +399,8 @@ $(SIGNATURES)
 
 Terminate the streaming operator inference and return the operators (dispatch)
 """
-function terminate_stream(state_obj::TwoPassStreamingOpInf, output_obj::TwoPassStreamingOpInf) 
+function terminate_stream(state_obj::TwoPassStreamingOpInf, 
+                          output_obj::TwoPassStreamingOpInf) 
     # Extract the operators
     operators = Operators(O=obj.cache.O)
     unpack_operators!(

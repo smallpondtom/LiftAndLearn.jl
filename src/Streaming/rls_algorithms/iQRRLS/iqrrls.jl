@@ -17,7 +17,7 @@ mutable struct iQRRLSCache{T<:Real}
     temp_Ke::Matrix{T}                 # temporary for K * ξpre (N×n)
     C::T                               # Conversion factor (scalar)
     J::T                               # cost
-    mthd::Symbol                       # method used for updates, default is :givens
+    mthd::Symbol                       # method used for updates, default is :qr
 end
 
 """
@@ -40,7 +40,7 @@ function iQRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T),
     temp_Ke = zeros(T, N, n)
     C       = zero(T)
     J       = zero(T)
-    method  = method in (:givens, :qr) ? method : :givens
+    method  = method in (:givens, :qr) ? method : :qr
     return iQRRLSCache{T}(N, n, λ, O, Psq, u, K, ξpre,  
                           ξpost, A, temp_dO, temp_Ke, C, J, method)
 end
