@@ -313,7 +313,7 @@ else
     #     end
     # end
 
-    for r in [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+    for r in [360, 370, 380, 390]
         # Process snapshots in parallel batches
         const BATCH_SIZE = 100  # Adjust based on available memory
         num_batches = ceil(Int, n / BATCH_SIZE)
@@ -321,9 +321,6 @@ else
 
         # Compose basis
         iVr = view(iVrmax, :, 1:r) 
-
-        # Create a lock for thread-safe data source access
-        data_lock = ReentrantLock()
 
         @info "Processing $n snapshots in $num_batches batches using $(Threads.nthreads()) threads"
 
@@ -339,8 +336,9 @@ else
             # Process batch sequentially within each thread
             for (local_idx, i) in enumerate(start_idx:end_idx)
                 # Each thread processes its batch independently
-                @lock data_lock scaled_snapshot = scale(
-                    ds[i] .- xbar, dim_per_field, scale_factors)
+                snapshot = ds[i]
+                scaled_snapshot = scale(
+                    snapshot .- xbar, dim_per_field, scale_factors)
                 batch_xhat[:, local_idx] = iVr' * scaled_snapshot
             end
             

@@ -93,6 +93,7 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
         "tspan" => ds["times"][:]
     )
 )
+rmax = 400
 
 #=================#
 ## Load the bases 
@@ -100,8 +101,7 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
 # Standard basis
 basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
 basis_data = load(basis_file)
-rmax = 300
-iVrmax = basis_data["bases"]["baker"].iVr[:,1:rmax]  # choose Baker's iSVD basis
+iVrmax = basis_data["bases"]["baker"].iVr[:, 1:rmax]
 
 # Fieldwise basis
 # basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
@@ -144,11 +144,34 @@ op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
 # ops = load(joinpath(FILEPATH, "data/models", "operators.jld2"))
 
 ## Tikhonov Regularized OpInf
-options.with_reg = true
-options.with_tol = true
-options.pinv_tol = 1e-12
-options.λ = LnL.TikhonovParameter(A=1e-3, A2=1e-1, K=1e-3)
-op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
+# options.with_reg = true
+# options.λ = LnL.TikhonovParameter(A=1e-2, A2=1e-2, K=1e-2)
+# op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
+
+## Manual Computation for memory restrictions
+rmax2 = Int(rmax*(rmax+1)/2)
+nt = n - 1
+D = [Xhat1', (Xhat1 ⨸ Xhat1)', ones(nt,1)]
+D = reduce(hcat, D)
+Γsq = BlockDiagonal(
+    [sqrt(1e-6) * I(rmax), sqrt(1e-4) * I(rmax2), sqrt(1e-6) * I(1)]
+)  # Change these regularization parameters as needed
+D = vcat(D, Γsq)
+R = vcat(Xhat2', zeros(size(Γsq, 1), rmax))
+
+##
+Γsq = nothing
+GC.gc()  # Free memory
+
+##
+
+O = D \ R  # Solve the linear system
+op_inf = LnL.Operators(
+    A=O[1:rmax, :],
+    A2u=O[rmax+1:rmax+rmax2, :],
+    K=O[rmax+rmax2+1:end, :]
+)
+
 
 # ops["tropinf"] = op_trinf
 # save(joinpath(FILEPATH, "data/models", "operators.jld2"), ops)
@@ -219,6 +242,8 @@ function find_best_opinf_model(
         # If the model produced an unstable solution, move on to the next
         # regularization candidates
         if contains_nans
+            ops = nothing
+            GC.gc() 
             continue
         end
         
@@ -227,6 +252,8 @@ function find_best_opinf_model(
         max_diff_Xhat_trial = maximum(abs.(Xtilde .- mean_Xhat), dims=2)
         max_growth_trial = maximum(max_diff_Xhat_trial) / maximum(max_diff_Xhat)
         if max_growth_trial > max_growth
+            ops = nothing
+            GC.gc() 
             continue
         end
         
@@ -248,6 +275,9 @@ function find_best_opinf_model(
         if best_final_idx < fidx
             best_final_idx = fidx
         end
+
+        ops = nothing
+        GC.gc() 
     end
 
     if isnothing(Xtilde_opt)
@@ -261,8 +291,8 @@ function find_best_opinf_model(
 end
 
 ##
-B1 = 10.0 .^ range(-10.0, 0.0, length=8)
-B2 = 10.0 .^ range(-4.0, 4.0, length=8)
+B1 = 10.0 .^ range(-24.0, -20.0, length=8)
+B2 = 10.0 .^ range(-20.0, -8.0, length=8)
 reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
 n_reg_global = length(reg_pairs_global)
 max_growth = 1.2
@@ -271,16 +301,33 @@ best_beta1, best_beta2, best_train_err, op_trinf, eval_time, fidx =
     find_best_opinf_model(reg_pairs_global, Xhat, Xhat1, Xhat2,
                           n, Int(n+(n // 10)), max_growth, options)
 
+
+#=========================#
+## Train streaming model
+#=========================#
+rmax2 = Int(rmax*(rmax+1)/2)
+options.with_reg = true
+options.λ = LnL.TikhonovParameter(A=1e-6, A2=1e-4, K=1e-6)
+rls_stream  = LnL.TwoPassStreamingOpInf(
+    options=options, n=rmax, m=0, algorithm=:RLS, qr_method=:givens) 
+start_time = time()
+for i in 1:n-1
+    xhat1_i = @views Xhat1[:,i]
+    xhat2_i = @views Xhat2[:,i]  
+    LnL.stream!(rls_stream, xhat1_i, xhat2_i)
+
+    @info "Processed $i snapshots in $(time() - start_time) seconds"
+    start_time = time()
+end
+op_stream_rls = LnL.terminate_stream(rls_stream)
+
 #=========================#
 ## Train streaming model
 #=========================#
 # The reduced dimensions to evaluate on
 rspan = [rmax ÷ 2, rmax]
 
-# The time span to integrate the reduced model
-tspan = 1:0.01:n
-
-num_of_streams = n  
+num_of_streams = n - 1
 tmp_res = (
     stream_err  = zeros(length(rspan), num_of_streams),
     rse         = zeros(length(rspan), num_of_streams),
@@ -297,9 +344,12 @@ stream_res = Dict(
 )
 
 ## Initialize the streaming OpInfs
-rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS) 
-# iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γ)
-# qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γ)
+rls_stream  = LnL.TwoPassStreamingOpInf(
+    options=options, n=rmax, m=0, algorithm=:RLS, Γs=Γsq) 
+# iqrrls_stream = LnL.TwoPassStreamingOpInf(
+#     options=options, n=rmax, m=0, algorithm=:iQRRLS, Γs=Γsq)
+# qrrls_stream = LnL.TwoPassStreamingOpInf(
+#     options=options, n=rmax, m=0, algorithm=:QRRLS, Γs=Γsq)
 
 ## Preallocate a dictionary to store the streaming results
 Eps = Dict{Symbol, Matrix{Float64}}(
@@ -313,7 +363,7 @@ Eps = Dict{Symbol, Matrix{Float64}}(
     # Get the i-th snapshot
     # x_i = ds[i]  
     # xhat_i = iVrmax' * x_i  # Project the snapshot onto the basis
-    xhat_i = Xhat[:,i]
+    xhat1_i = Xhat1[:,i]
     
     # # Compute the i-th time derivative 
     # if i == 1
@@ -339,15 +389,12 @@ Eps = Dict{Symbol, Matrix{Float64}}(
     # end
     # xhatdot_i = iVrmax' * xdot_i  # Project the time derivative onto the basis
 
-    xhatdot_i = Xhatdot[:,i]  # Use the precomputed time derivative
-
-    # Get the i-th input 
-    u_i = U[i]
+    xhat2_i = Xhat2[:,i]  # Use the precomputed time derivative
 
     # Stream, update, and get data matrix for the state system
-    LnL.stream!(rls_stream, xhat_i, xhatdot_i, U=[u_i])      # RLS
-    # LnL.stream!(iqrrls_stream, xhat_i, xhatdot_i, U=[u_i])   # iQRRLS
-    # LnL.stream!(qrrls_stream, xhat_i, xhatdot_i, U=[u_i])    # QRRLS
+    LnL.stream!(rls_stream, xhat1_i, xhat2_i)      # RLS
+    # LnL.stream!(iqrrls_stream, xhat_i, xhatdot_i)   # iQRRLS
+    # LnL.stream!(qrrls_stream, xhat_i, xhatdot_i)    # QRRLS
 
     # Streaming errors (cannot be computed since we don't have Ostar)
     if i == 1
@@ -402,9 +449,6 @@ Eps = Dict{Symbol, Matrix{Float64}}(
             key = algo_keys[k]
             # iterate through the reduced dimensions
             Threads.@threads for (j, rj) in collect(enumerate(rspan))
-                #################
-                ## INFO: Relative state error isn't really a good measure here
-                #################
                 # # Extract the quadratic matrix for lower dimensions
                 # F_extract = UniqueKronecker.extractF(op_tmp[key].A2u, rj)
                 # # Integrate to reconstruct the state
@@ -641,7 +685,7 @@ with_theme(theme_latexfonts()) do
     # Add colorbars at the end of each row
     Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
     Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Rel. Error", labelsize=20)
+    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
     
     display(fig)
 end
