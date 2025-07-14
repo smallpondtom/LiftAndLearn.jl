@@ -48,10 +48,10 @@ function time_derivative_approx(X::VecOrMat, options::AbstractOption)
         dXdt = hcat(
             fwd4(X[:, 1:5], options.data.Δt, true),
             fwd4(X[:, 1:5], options.data.Δt, false),
-            (      X[:,3:end-5] 
-             - 8 * X[:,4:end-4] 
-             + 8 * X[:,5:end-3] 
-             -     X[:,6:end-2]) / (12*options.data.Δt),
+            (      X[:,1:end-4] 
+             - 8 * X[:,2:end-3] 
+             + 8 * X[:,4:end-1] 
+             -     X[:,5:end]) / (12*options.data.Δt),
             bwd4(X[:, end-4:end], options.data.Δt, false),
             bwd4(X[:, end-4:end], options.data.Δt, true)
         )
