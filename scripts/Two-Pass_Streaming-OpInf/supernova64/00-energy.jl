@@ -2,7 +2,9 @@
 ## Load packages ##
 #=================#
 using LinearAlgebra
+using FileIO
 using HDF5
+using JLD2
 
 #=============#
 ## Load data ##
@@ -23,36 +25,64 @@ xspan = h5read(fn, "dimensions")["x"]
 yspan = h5read(fn, "dimensions")["y"]
 zspan = h5read(fn, "dimensions")["z"]
 tspan = h5read(fn, "dimensions")["time"]
-Nx, Ny, Nz, n_time, num_of_traj = size(Xp)
+nx, ny, nz, n_time, n_traj = size(Xp)
 Xvel = nothing
 
 #====================#
 ## Preprocess data  ##
 #====================#
 n = n_time * num_of_traj
-Xp = reshape(Xp, Nx, Ny, Nz, n)
+Xp = reshape(Xp, nx, ny, nz, n)
 Xp = reshape(Xp, :, n)
-Xd = reshape(Xd, Nx, Ny, Nz, n)
+Xd = reshape(Xd, nx, ny, nz, n)
 Xd = reshape(Xd, :, n)
 Xz = 1 ./ Xd # specific volume
-Xu = reshape(Xu, Nx, Ny, Nz, n)
+Xu = reshape(Xu, nx, ny, nz, n)
 Xu = reshape(Xu, :, n)
-Xv = reshape(Xv, Nx, Ny, Nz, n)
+Xv = reshape(Xv, nx, ny, nz, n)
 Xv = reshape(Xv, :, n)
-Xw = reshape(Xw, Nx, Ny, Nz, n)
+Xw = reshape(Xw, nx, ny, nz, n)
 Xw = reshape(Xw, :, n)
 
 # Normalize to [0,1] with minmax scaling
 function minmax_shift_scale(X)
     X_min = minimum(X, dims=2)
     X_max = maximum(X, dims=2)
-    return (X .- X_min) ./ (X_max .- X_min)
+    return (X .- X_min) ./ (X_max .- X_min), Xmin, Xmax
 end
-Xp = minmax_shift_scale(Xp)
-Xz = minmax_shift_scale(Xz)
-Xu = minmax_shift_scale(Xu)
-Xv = minmax_shift_scale(Xv)
-Xw = minmax_shift_scale(Xw)
+Xp, Xp_min, Xp_max = minmax_shift_scale(Xp)
+Xz, Xz_min, Xz_max = minmax_shift_scale(Xz)
+Xu, Xu_min, Xu_max = minmax_shift_scale(Xu)
+Xv, Xv_min, Xv_max = minmax_shift_scale(Xv)
+Xw, Xw_min, Xw_max = minmax_shift_scale(Xw)
+
+# Save preprocessed data
+preprocessed_file = joinpath(FILEPATH, "data/preprocessed_data.jld2")
+save(preprocessed_file, 
+    "X", Dict(
+        "p" => Xp, "z" => Xz, "u" => Xu, "v" => Xv, "w" => Xw
+    ),
+    "dimensions", Dict(
+        "x" => xspan, "y" => yspan, "z" => zspan, "t" => tspan,
+    ),
+    "shape", Dict(
+        "nx" => nx, "ny" => ny, "nz" => nz, 
+        "n_time" => n_time, "n_traj" => n_traj
+    ),
+)
+
+# Save shift and scaling 
+shift_scale_file = joinpath(FILEPATH, "data/shift_scale.jld2")
+save(shift_scale_file, 
+    "shift", Dict(
+       "p" => Xp_min, "z" => Xz_min,
+       "u" => Xu_min, "v" => Xv_min, "w" => Xw_min
+    ),
+    "scale", Dict(
+       "p" => Xp_max - Xp_min, "z" => Xz_max - Xz_min,
+       "u" => Xu_max - Xu_min, "v" => Xv_max - Xv_min, "w" => Xw_max - Xw_min
+    ),
+)
 
 #=========================#
 ## Check singular values ##
@@ -98,6 +128,10 @@ target_energy = 0.95
 for (key, svals) in zip(keys(spectrum), [sp, sz, su, sv, sw])
     spectrum[key], target_r[key] = check_energy_retainment(svals, target_energy)
 end
+
+# Save target ranks
+target_r_file = joinpath(FILEPATH, "data/target_ranks.jld2")
+save(target_r_file, "target_ranks", target_r)
 
 #============================#
 ## Plot the energy spectrum ##
