@@ -17,6 +17,19 @@ using JuMP
 using Ipopt, SCS
 using DocStringExtensions
 using UniqueKronecker
+using LoopVectorization: @turbo
+
+# BLAS, LAPACK, and other linear algebra library upgrades based on CPU 
+cpu_model = Sys.cpu_info()[1].model
+if occursin("Intel", cpu_model)
+    using MKL
+elseif occursin("Apple", cpu_model)
+    using AppleAccelerate
+elseif occursin("AMD", cpu_model)
+    @info "Using OpenBLAS for AMD CPUs" 
+else
+    @info "CPU vendor not recognized, using default BLAS"
+end
 
 # GPU support
 if Sys.isapple()  # macOS
