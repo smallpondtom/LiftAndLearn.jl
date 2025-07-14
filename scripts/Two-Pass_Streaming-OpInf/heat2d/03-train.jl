@@ -12,12 +12,14 @@ using ProgressMeter
 using PolynomialModelReductionDataset: Heat2DModel
 using Printf
 using Random
+using Revise
 import LiftAndLearn as LnL
 
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
+FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : 
+                                        joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
 
 #======================================#
 ## Obtain all the saved training files
@@ -120,9 +122,12 @@ for (file_idx, data_file) in enumerate(training_data_files)
         @assert foo == num_of_streams "Wrong number of streams"
 
         # Initialize the streaming OpInfs
-        rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γ) 
-        iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ)
-        qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ)
+        rls_stream  = LnL.TwoPassStreamingOpInf(
+            options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γ) 
+        iqrrls_stream = LnL.TwoPassStreamingOpInf(
+            options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ, qr_method=:givens)
+        qrrls_stream = LnL.TwoPassStreamingOpInf(
+            options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ, qr_method=:givens)
 
         # Preallocate a dictionary to store the streaming results
         # error_factors = Dict{Symbol, Matrix{Float64}}(
@@ -145,9 +150,9 @@ for (file_idx, data_file) in enumerate(training_data_files)
             u_i    = U_stream[i]
 
             # Stream, update, and get data matrix for the state system
-            LnL.stream!(rls_stream, x_i, xdot_i; U=u_i)  # RLS
-            LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i)   # iQRRLS
-            LnL.stream!(qrrls_stream, x_i, xdot_i; U=u_i)    # QRRLS
+            LnL.stream!(rls_stream, x_i, xdot_i; U=u_i)     # RLS
+            LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i)  # iQRRLS
+            LnL.stream!(qrrls_stream, x_i, xdot_i; U=u_i)   # QRRLS
 
             # Compute the error factor 
             # error_factors[:rls]    = 1.0I - rls_stream.cache.K * d

@@ -355,7 +355,7 @@ with_theme(theme_latexfonts()) do
     # Standard RLS
     ax1 = Axis(fig[1, 1], 
         xlabel=L"$k$-th stream", 
-        ylabel="meann relative streaming errors", 
+        ylabel="mean relative streaming errors", 
         title="RLS", 
         yscale=log10, 
         xticks=xtick_vals, titlesize=30, 
