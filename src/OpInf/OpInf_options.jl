@@ -158,8 +158,14 @@ Standard least-squares Operator Inference.
     with_tol::Bool = false      # This options makes it way slower
     with_reg::Bool = false      # tikhonov regularization
     pinv_tol::Real = 1e-6       # tolerance for the least square pseudo inverse
-    use_gpu::Bool = false       # use GPU for least-squares solve
+
+    use_gpu::Bool = false                         # use GPU for least-squares solve
+    use_normal_equations::Bool = false            # use normal equations method
+    chunk_size::Int = 1000                        # batch size for LS memory management
+    tolerance::Real = 1e-12                       # numerical tolerance for LS solve
+    algorithm::Union{Function,Nothing} = nothing  # custom solver method
     use_backslash::Bool = true  # use backslash for least-squares solve
+    estimate_memory::Bool = false   # estimate memory usage for the LS
 end
 
 

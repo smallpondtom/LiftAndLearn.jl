@@ -6,10 +6,13 @@ include("get_data_matrix.jl")
 include("unpack_operators.jl")
 include("tikhonov.jl")
 include("reproject.jl")
+include("leastsquares.jl")
 
 """
-    leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Y::AbstractArray, Xhat_t::AbstractArray, 
-             dims::AbstractArray, operator_symbols::AbstractArray, options::AbstractOption)
+    leastsquares_solve(D::AbstractArray, Rt::AbstractArray, 
+                       Y::AbstractArray, Xhat_t::AbstractArray, 
+                       dims::AbstractArray, operator_symbols::AbstractArray, 
+                       options::AbstractOption)
 
 Solve the standard Operator Inference with/without regularization
 
@@ -25,8 +28,11 @@ Solve the standard Operator Inference with/without regularization
 ## Returns
 - `operators::Operators`: All learned operators
 """
-function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Yt::AbstractArray, Xhat_t::AbstractArray, 
-                            dims::AbstractArray, operator_symbols::AbstractArray, options::AbstractOption)
+function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, 
+                            Yt::AbstractArray, Xhat_t::AbstractArray, 
+                            dims::AbstractArray, operator_symbols::AbstractArray, 
+                            options::AbstractOption)
+
     # compute least squares (pseudo inverse)
     if options.with_reg 
         # Preallocate the Tikhonov weight Matrix
@@ -36,11 +42,20 @@ function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, Yt::AbstractArr
         tikhonov_matrix!(Γ, dims, operator_symbols, options.λ)
         Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
-        Ot = tikhonov(Rt, D, Γ, options.pinv_tol; tol_flag=options.with_tol, use_gpu=options.use_gpu, 
+        Ot = tikhonov(Rt, D, Γ, options.pinv_tol; 
+                      tol_flag=options.with_tol, 
+                      use_gpu=options.use_gpu, 
                       use_backslash=options.use_backslash)
     else
         # Ot = D \ Rt  # INFO: This is not optimal
-        Ot = standard_least_squares(D, Rt; use_gpu=options.use_gpu, use_backslash=options.use_backslash)
+        Ot = standard_least_squares(D, Rt; 
+                                    use_gpu=options.use_gpu, 
+                                    use_normal_equations=options.use_normal_equations,
+                                    chunk_size=options.chunk_size,
+                                    tolerance=options.tolerance,
+                                    use_backslash=options.use_backslash,
+                                    algorithm=options.algorithm,
+                                    estimate_memory=options.estimate_memory)
     end
 
     # Extract the operators from the operator matrix O
@@ -177,117 +192,3 @@ function opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options:
     end
 end
 
-
-"""
-    standard_least_squares(D::AbstractArray, Rt::AbstractArray; use_gpu::Bool=false, 
-                           use_backslash::Bool=false)
-
-Solve the standard least squares problem. Finds O such that D*O ≈ Rt. 
-
-## Features
-- This function utilizes the LinearSolve.jl package to solve the least squares problem. 
-- If the direct solve fails due to memory issues, it switches to the iterative approach (Krylov GMRES).
-- The function also supports GPU acceleration using CUDA.jl (Windows/Linux) or Metal.jl (Apple M series).
-  To enable GPU acceleration, set `use_gpu=true`.
-- The function also supports using the backslash operator for the least-squares solve (default: true).
-  To enable this feature, set `use_backslash=true`.
-- Note that when using GPU acceleration, the function uses the backslash operator for the least-squares solve.
-  But the computation is done on the GPU. This is due to some implementation issues using LinearSolve.jl.
-
-## Arguments
-- `D::AbstractArray`: data matrix
-- `Rt::AbstractArray`: derivative data matrix
-- `use_gpu::Bool`: use GPU for least-squares solve (default: false)
-- `use_backslash::Bool`: use backslash operator for least-squares solve (default: true)
-
-## Returns
-- operator matrix solution `O`
-"""
-function standard_least_squares(D::AbstractArray, Rt::AbstractArray; 
-                                use_gpu::Bool=false, use_backslash::Bool=true)
-    if use_gpu
-        if Sys.isapple()
-            @info "GPU least squares requested on macOS. Using Metal.jl."
-            metal_devs = Metal.devices()
-            has_compatible = any(dev -> occursin("Apple M", string(dev)), metal_devs)
-            @assert has_compatible "Metal.jl is only available for Apple M series GPUs."
-            D = Metal.MetalArray(D)
-            Rt = Metal.MetalArray(Rt)
-        else
-            @info "GPU least squares requested. Using CUDA.jl."
-            if CUDA.has_cuda()
-                D = CUDA.CuArray(D)
-                Rt = CUDA.CuArray(Rt)
-            else
-                @warn "CUDA GPU not available on this machine. Falling back to CPU"
-                use_gpu = false
-            end
-        end
-    end
-
-    # Solve using the backslash operator
-    # Works for CUDA/Metal as well
-    if use_backslash || use_gpu
-        try 
-            if use_gpu
-                O = D \ Rt  # Operator matrix solution
-                return Array(O)
-            else
-                return D \ Rt  # Operator matrix solution
-            end
-        catch e 
-            if isa(e, OutOfMemoryError)
-                @warn "OutOfMemory with backslash least squares solve. Switching to LinearSolve.jl approach."
-                @assert !use_gpu "Disable `use_gpu` to switch to LinearSolve.jl approach."
-            else
-                rethrow(e)
-            end
-        end
-    end
-
-    # Solve using LinearSolve.jl 
-    O = similar(D, size(D, 2), size(Rt, 2))
-    try
-        # Try solving the least squares problem directly:
-        # Finds O such that D*O ≈ Rt.
-        # ATTENTION: LinearSolve.jl works for only vector right-hand side
-        # so we need to solve for each column of Rt separately in a loop.
-        ls = nothing
-        for i in axes(Rt, 2)  
-            if i == 1
-                prob = LinearSolve.LinearProblem(D, view(Rt, :, i))
-                ls = LinearSolve.init(prob)
-            else # reuse the linear problem
-                ls.b .= view(Rt, :, i)
-            end
-            sol = LinearSolve.solve(ls)
-            O[:,i] .= sol.u
-        end
-    catch e
-        if isa(e, OutOfMemoryError) 
-            @warn "OutOfMemory in direct least squares solve. Switching to memory-efficient vector version."
-            # Solve normal equations: (D' * D) x = D' * Rt.
-            btilde = D' * Rt
-            n = size(D, 2)
-            op = let  # construct a linear operator to reduce memory usage
-                f = (u,p,t) -> D' * (D * u)
-                f = (du,u,p,t) -> (mul!(du,D,u); du .= D' * du)
-                SciMLOperators.FunctionOperator(f, spzeros(n), spzeros(n))
-            end
-            ls2 = nothing
-            for i in axes(btilde, 2)
-                if i == 1
-                    prob2 = LinearSolve.LinearProblem(op, view(btilde, :, i))
-                    ls2 = LinearSolve.init(prob2)
-                else
-                    ls2.b .= view(btilde, :, i)
-                end
-                sol2 = LinearSolve.solve(ls2, LinearSolve.KrylovJL_GMRES())
-                O[:,i] .= sol2.u
-            end
-        else
-            rethrow(e)
-        end
-    end
-    return O  # Operator matrix solution
-end
