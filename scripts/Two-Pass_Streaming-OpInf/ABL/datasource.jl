@@ -166,6 +166,22 @@ function Base.getindex(ds::ChannelDataSource, index...)
         
         # Return vector for single snapshots
         return length(time_idx) == 1 ? vec(result) : result
+    elseif length(index) == 5
+        # 5D indexing with bounds and sampling support
+        x_idx, y_idx, z_idx, f_idx, t_idx = index
+        
+        # Single HDF5 read with correct indices
+        h5f = h5open(ds.hfname, "r") do f
+            dset = f["data"]
+            
+            # Create HDF5 index array [z,y,x,field,time]
+            h5_idx = [z_idx, y_idx, x_idx, f_idx, t_idx]
+            
+            # Read data in one operation and permute
+            dset[h5_idx...]
+        end
+        
+        return h5f
     else
         error("Invalid indexing. Expected 1 or 2 indices, got $(length(index)).")
     end
