@@ -230,3 +230,6 @@ octave-workspace
 # VSCode
 .vscode/
 .qodo
+
+# vidoe
+*.mp4
