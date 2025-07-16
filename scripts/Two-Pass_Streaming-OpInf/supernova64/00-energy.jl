@@ -3,76 +3,104 @@
 #=================#
 using LinearAlgebra
 using FileIO
-using HDF5
 using JLD2
+using Statistics
 
 #=============#
 ## Load data ##
 #=============#
-FILEPATH = occursin("scripts", @__DIR__) ? 
-           joinpath(@__DIR__, "Two-Pass_Streaming-OpInf/supernova") : 
-           joinpath(@__DIR__, "scripts/Two-Pass_Streaming-OpInf/supernova")
+# Get paths and data file name
+FILEPATH = occursin("scripts", pwd()) ? 
+           joinpath(pwd(), "Two-Pass_Streaming-OpInf/supernova64") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/supernova64")
 DATAPATH = "../../../../DATA/THE_WELL/supernova_explosion_64/train"
 train_files = readdir(DATAPATH, join=true)
 fn = train_files[1]
-Xp = h5read(fn, "t0_fields")["pressure"] # pressure field data
-Xd = h5read(fn, "t0_fields")["density"]  # density field data
-Xvel = h5read(fn, "t1_fields")["velocity"] # velocity field data
-Xu = Xvel[1, :, :, :, :, :]
-Xv = Xvel[2, :, :, :, :, :]
-Xw = Xvel[3, :, :, :, :, :]
-xspan = h5read(fn, "dimensions")["x"]
-yspan = h5read(fn, "dimensions")["y"]
-zspan = h5read(fn, "dimensions")["z"]
-tspan = h5read(fn, "dimensions")["time"]
-nx, ny, nz, n_time, n_traj = size(Xp)
-Xvel = nothing
+
+# Include the data sourcing module for data access
+include(joinpath(FILEPATH, "datasource.jl"))
+
+# Load data source 
+ds = DataSource(fn)
+nx, ny, nz, n_fields, n_time, n_traj = ds.dims
+nxyz = nx * ny * nz
+
+# Flag for float64
+USE_FLOAT64 = false
 
 #====================#
 ## Preprocess data  ##
 #====================#
-n = n_time * num_of_traj
-Xp = reshape(Xp, nx, ny, nz, n)
-Xp = reshape(Xp, :, n)
-Xd = reshape(Xd, nx, ny, nz, n)
-Xd = reshape(Xd, :, n)
-Xz = 1 ./ Xd # specific volume
-Xu = reshape(Xu, nx, ny, nz, n)
-Xu = reshape(Xu, :, n)
-Xv = reshape(Xv, nx, ny, nz, n)
-Xv = reshape(Xv, :, n)
-Xw = reshape(Xw, nx, ny, nz, n)
-Xw = reshape(Xw, :, n)
+n = n_time * n_traj
+if USE_FLOAT64
+    Xp = Float64.(reshape(ds["p"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+    Xz = Float64.(reshape(ds["z"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+    Xu = Float64.(reshape(ds["u"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+    Xv = Float64.(reshape(ds["v"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+    Xw = Float64.(reshape(ds["w"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+else
+    Xp = Float32.(reshape(ds["p"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+    Xz = Float32.(reshape(ds["z"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+    Xu = Float32.(reshape(ds["u"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+    Xv = Float32.(reshape(ds["v"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+    Xw = Float32.(reshape(ds["w"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
+end
 
-# Normalize to [0,1] with minmax scaling
-function minmax_shift_scale(X)
+## Save unscaled/unshifted data
+original_file = joinpath(FILEPATH, "data/original_data.jld2")
+# if !isfile(original_file)
+    save(original_file, 
+        "X", Dict(
+            "p" => Xp, "z" => Xz, "u" => Xu, "v" => Xv, "w" => Xw,
+            "all" => vcat(Xp, Xz, Xu, Xv, Xw)
+        ),
+    )
+# end
+
+## Center the data
+Xpbar = mean(Xp, dims=2)
+Xzbar = mean(Xz, dims=2)
+Xubar = mean(Xu, dims=2)
+Xvbar = mean(Xv, dims=2)
+Xwbar = mean(Xw, dims=2)
+
+Xp .-= Xpbar
+Xz .-= Xzbar
+Xu .-= Xubar
+Xv .-= Xvbar
+Xw .-= Xwbar
+
+save(joinpath(FILEPATH, "data/mean.jld2"),
+    "mean", Dict(
+        "p" => Xpbar, "z" => Xzbar, 
+        "u" => Xubar, "v" => Xvbar, "w" => Xwbar
+    )
+)
+
+## Normalize to [0,1] with (row-wise) minmax scaling
+function minmax_shift_scale!(X)
     X_min = minimum(X, dims=2)
     X_max = maximum(X, dims=2)
-    return (X .- X_min) ./ (X_max .- X_min), Xmin, Xmax
+    X .-= X_min 
+    X ./= (X_max - X_min)
+    return X_min, X_max
 end
-Xp, Xp_min, Xp_max = minmax_shift_scale(Xp)
-Xz, Xz_min, Xz_max = minmax_shift_scale(Xz)
-Xu, Xu_min, Xu_max = minmax_shift_scale(Xu)
-Xv, Xv_min, Xv_max = minmax_shift_scale(Xv)
-Xw, Xw_min, Xw_max = minmax_shift_scale(Xw)
+Xp_min, Xp_max = minmax_shift_scale!(Xp)
+Xz_min, Xz_max = minmax_shift_scale!(Xz)
+Xu_min, Xu_max = minmax_shift_scale!(Xu)
+Xv_min, Xv_max = minmax_shift_scale!(Xv)
+Xw_min, Xw_max = minmax_shift_scale!(Xw)
 
-# Save preprocessed data
+## Save preprocessed data
 preprocessed_file = joinpath(FILEPATH, "data/preprocessed_data.jld2")
 save(preprocessed_file, 
     "X", Dict(
         "p" => Xp, "z" => Xz, "u" => Xu, "v" => Xv, "w" => Xw
-    ),
-    "dimensions", Dict(
-        "x" => xspan, "y" => yspan, "z" => zspan, "t" => tspan,
-    ),
-    "shape", Dict(
-        "nx" => nx, "ny" => ny, "nz" => nz, 
-        "n_time" => n_time, "n_traj" => n_traj
-    ),
+    )
 )
 
-# Save shift and scaling 
-shift_scale_file = joinpath(FILEPATH, "data/shift_scale.jld2")
+## Save shift and scaling 
+shift_scale_file = joinpath(FILEPATH, "data/minmax.jld2")
 save(shift_scale_file, 
     "shift", Dict(
        "p" => Xp_min, "z" => Xz_min,
@@ -84,9 +112,10 @@ save(shift_scale_file,
     ),
 )
 
-#=========================#
-## Check singular values ##
-#=========================#
+#===========================#
+## Compute singular values ##
+#===========================#
+singular_values = Dict(fn => zeros(n) for fn in ds.fields)
 sp = svdvals(Xp)
 sz = svdvals(Xz)
 su = svdvals(Xu)
@@ -103,35 +132,18 @@ function check_energy_retainment(svals, target=0.999)
     return energy_ret, r
 end
 
-field_names = [
-    "pressure", "specific volume", "u-velocity", 
-    "v-velocity", "w-velocity"
-]
+spectrum = Dict(fn => zeros(length(sp)) for fn in ds.fields)
+target_r = Dict(fn => 0 for fn in ds.fields)
 
-spectrum = Dict(
-    "pressure" => zeros(length(sp)),
-    "specific volume" => zeros(length(sz)),
-    "u-velocity" => zeros(length(su)),
-    "v-velocity" => zeros(length(sv)),
-    "w-velocity" => zeros(length(sw))
-)
-
-target_r = Dict(
-    "pressure" => 0,
-    "specific volume" => 0,
-    "u-velocity" => 0,
-    "v-velocity" => 0,
-    "w-velocity" => 0
-)
-
-target_energy = 0.95
-for (key, svals) in zip(keys(spectrum), [sp, sz, su, sv, sw])
-    spectrum[key], target_r[key] = check_energy_retainment(svals, target_energy)
+target_energy = 0.99
+for (field, svals) in zip(ds.fields, [sp, sz, su, sv, sw])
+    spectrum[field], target_r[field] = check_energy_retainment(svals, target_energy)
 end
 
 # Save target ranks
 target_r_file = joinpath(FILEPATH, "data/target_ranks.jld2")
 save(target_r_file, "target_ranks", target_r)
+
 
 #============================#
 ## Plot the energy spectrum ##
@@ -143,7 +155,7 @@ with_theme(theme_latexfonts()) do
     ax1 = Axis(
         fig[2, 1], # xlabel=L"singular value index, $i$", 
         ylabel="energy retainment",
-        limits=(-50, length(spectrum["pressure"])+10, nothing, nothing),
+        limits=(-50, length(spectrum["p"])+10, nothing, nothing),
         # xgridvisible=false, ygridvisible=false,
         topspinevisible=false, rightspinevisible=false,
         titlesize=30, xlabelsize=30, ylabelsize=30, 
@@ -154,14 +166,14 @@ with_theme(theme_latexfonts()) do
 
     colors = Dict(
         key => color for (key, color) in zip(
-            field_names, Makie.wong_colors()[1:5]
+            ds.fields, Makie.wong_colors()[1:5]
         )
     )
 
     # Plot energy retainment for each field
-    for (key, svals) in zip(keys(spectrum), [sp, sz, su, sv, sw])
-        lines!(ax1, 1:length(svals), spectrum[key], 
-               linewidth=4, color=colors[key])
+    for (fld, svals) in zip(ds.fields, [sp, sz, su, sv, sw])
+        lines!(ax1, 1:length(svals), spectrum[fld], 
+               linewidth=4, color=colors[fld])
     end
 
     # Add horizontal line at 99.9% energy retention
@@ -172,14 +184,14 @@ with_theme(theme_latexfonts()) do
         # xgridvisible=false, ygridvisible=false,
         ylabel="singular value", yscale=log10,
         topspinevisible=false, rightspinevisible=false, ylabelpadding=30,
-        limits=(-50, length(spectrum["pressure"])+10, nothing, nothing),
+        limits=(-50, length(spectrum["p"])+10, nothing, nothing),
         titlesize=30, xlabelsize=30, ylabelsize=30, 
         xticklabelsize=25, yticklabelsize=25,
     )
 
-    for (key, svals) in zip(keys(spectrum), [sp, sz, su, sv, sw])
-        lines!(ax2, 1:length(svals), svals, label=key, linewidth=4, 
-               color=colors[key])
+    for (fld, svals) in zip(ds.fields, [sp, sz, su, sv, sw])
+        lines!(ax2, 1:length(svals), svals, label=fld, linewidth=4, 
+               color=colors[fld])
     end
 
     # Add vertical lines for target ranks
@@ -196,7 +208,7 @@ with_theme(theme_latexfonts()) do
     # Legend(fig[:, 2], ax1, framevisible=false, labelsize=25)
     line_elements = [
         [LineElement(color=colors[fn], linewidth=5)]
-        for fn in field_names
+        for fn in ds.fields
     ]
     Legend(fig[1, :],
         line_elements,
@@ -207,5 +219,5 @@ with_theme(theme_latexfonts()) do
     
     # Display figure
     display(fig)
-    save(joinpath(FILEPATH, "plots/energy_spectrum.pdf"), fig, px_per_inch=200)
+    save(joinpath(FILEPATH, "plots/energy_spectrum.png"), fig, px_per_inch=200)
 end
