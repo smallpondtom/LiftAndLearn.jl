@@ -189,7 +189,7 @@ function standard_least_squares(D::AbstractArray{T}, Rt::AbstractArray{T};
                                 use_normal_equations::Bool=false,
                                 chunk_size::Int=400,
                                 tolerance::Real=1e-12,
-                                use_backslash::Bool=true,
+                                use_backslash::Bool=false,
                                 algorithm::Union{Function,Nothing}=nothing,
                                 estimate_memory::Bool=false) where T
     
@@ -218,16 +218,20 @@ function standard_least_squares(D::AbstractArray{T}, Rt::AbstractArray{T};
         
         if gpu_active || use_backslash 
             # GPU: Use built-in backslash operator (most efficient)
+            @info "Using backslash for least squares solve"
             O = D_compute \ Rt_compute
             return Array(O)
         elseif use_normal_equations || (m > 3n)  # Overdetermined system
             # Use normal equations for very overdetermined systems
+            @info "Using normal equations method for overdetermined system"
             O = solve_normal_equations(D_compute, Rt_compute, solver)
         elseif p > chunk_size  # Many right-hand sides
             # Use QR with batching for multiple RHS
+            @info "Using QR decomposition with batching for multiple RHS"
             O = solve_qr_batch(D_compute, Rt_compute, solver)
         else
             # Use direct method with LinearSolve.jl for small to medium problems
+            @info "Using direct method with batching for least squares solve"
             O = solve_direct_batch(D_compute, Rt_compute, solver)
         end
         
@@ -249,9 +253,23 @@ function standard_least_squares(D::AbstractArray{T}, Rt::AbstractArray{T};
     end
 end
 
+# # Convenience method for different numeric types
+# standard_least_squares(D::AbstractArray, Rt::AbstractArray; kwargs...) = 
+#     standard_least_squares(convert_to_compatible_types(D, Rt)...; kwargs...)
+
 # Convenience method for different numeric types
-standard_least_squares(D::AbstractArray, Rt::AbstractArray; kwargs...) = 
-    standard_least_squares(promote(D, Rt)...; kwargs...)
+function standard_least_squares(D::AbstractArray, Rt::AbstractArray; kwargs...)
+    # Convert Adjoint to Matrix to avoid promotion issues
+    D_matrix = D isa Adjoint ? Matrix(D) : D
+    Rt_matrix = Rt isa Adjoint ? Matrix(Rt) : Rt
+    
+    # Promote element types
+    T = promote_type(eltype(D_matrix), eltype(Rt_matrix))
+    D_promoted = convert(AbstractMatrix{T}, D_matrix)
+    Rt_promoted = convert(AbstractMatrix{T}, Rt_matrix)
+    
+    return standard_least_squares(D_promoted, Rt_promoted; kwargs...)
+end
 
 """
     estimate_memory_usage(D, Rt)

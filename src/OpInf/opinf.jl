@@ -4,9 +4,9 @@ export opinf
 include("time_derivative_approx.jl")
 include("get_data_matrix.jl")
 include("unpack_operators.jl")
+include("leastsquares.jl")
 include("tikhonov.jl")
 include("reproject.jl")
-include("leastsquares.jl")
 
 """
     leastsquares_solve(D::AbstractArray, Rt::AbstractArray, 
@@ -40,12 +40,18 @@ function leastsquares_solve(D::AbstractArray, Rt::AbstractArray,
 
         # Construct the Tikhonov matrix
         tikhonov_matrix!(Γ, dims, operator_symbols, options.λ)
-        Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
+        Γ = diagm(0 => Γ)  # convert to sparse diagonal matrix
 
-        Ot = tikhonov(Rt, D, Γ, options.pinv_tol; 
-                      tol_flag=options.with_tol, 
-                      use_gpu=options.use_gpu, 
-                      use_backslash=options.use_backslash)
+        Ot = tikhonov(Rt, D, Γ;
+                      tol=options.tolerance,
+                      use_gpu=options.use_gpu,
+                      use_normal_form=options.use_normal_equations,
+                      use_svd_truncation=options.use_svd_truncation,
+                      use_backslash=options.use_backslash,
+                      chunk_size=options.chunk_size,
+                      max_iterations=options.max_iterations,
+                      estimate_memory=options.estimate_memory,
+                      preconditioning=options.preconditioning,)
     else
         # Ot = D \ Rt  # INFO: This is not optimal
         Ot = standard_least_squares(D, Rt; 

@@ -155,17 +155,20 @@ Standard least-squares Operator Inference.
     data::DataStructure = DataStructure()
     optim::OptimizationSetting = OptimizationSetting()
     λ::TikhonovParameter = TikhonovParameter()
-    with_tol::Bool = false      # This options makes it way slower
+    # with_tol::Bool = false      # This options makes it way slower
     with_reg::Bool = false      # tikhonov regularization
-    pinv_tol::Real = 1e-6       # tolerance for the least square pseudo inverse
+    # pinv_tol::Real = 1e-6       # tolerance for the least square pseudo inverse
 
     use_gpu::Bool = false                         # use GPU for least-squares solve
     use_normal_equations::Bool = false            # use normal equations method
+    use_svd_truncation::Bool = false              # use SVD-based truncation
     chunk_size::Int = 1000                        # batch size for LS memory management
     tolerance::Real = 1e-12                       # numerical tolerance for LS solve
     algorithm::Union{Function,Nothing} = nothing  # custom solver method
-    use_backslash::Bool = true  # use backslash for least-squares solve
+    use_backslash::Bool = false  # use backslash for least-squares solve
     estimate_memory::Bool = false   # estimate memory usage for the LS
+    max_iterations::Int = 1000  # maximum iterations for iterative methods
+    preconditioning::Bool = false  # use preconditioning for the LS solve
 end
 
 
