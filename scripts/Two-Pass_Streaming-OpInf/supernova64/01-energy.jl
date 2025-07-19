@@ -1,3 +1,7 @@
+"""
+Supernova 64^3 example: Computing the energy spectrum
+"""
+
 #=================#
 ## Load packages ##
 #=================#
@@ -24,103 +28,23 @@ include(joinpath(FILEPATH, "datasource.jl"))
 ds = DataSource(fn)
 nx, ny, nz, n_fields, n_time, n_traj = ds.dims
 nxyz = nx * ny * nz
-
-# Flag for float64
-USE_FLOAT64 = false
-
-#====================#
-## Preprocess data  ##
-#====================#
 n = n_time * n_traj
-if USE_FLOAT64
-    Xp = Float64.(reshape(ds["p"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-    Xz = Float64.(reshape(ds["z"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-    Xu = Float64.(reshape(ds["u"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-    Xv = Float64.(reshape(ds["v"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-    Xw = Float64.(reshape(ds["w"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-else
-    Xp = Float32.(reshape(ds["p"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-    Xz = Float32.(reshape(ds["z"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-    Xu = Float32.(reshape(ds["u"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-    Xv = Float32.(reshape(ds["v"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-    Xw = Float32.(reshape(ds["w"][1:nxyz, 1:n_time, 1:n_traj], nxyz, n))
-end
 
-## Save unscaled/unshifted data
-original_file = joinpath(FILEPATH, "data/original_data.jld2")
-# if !isfile(original_file)
-    save(original_file, 
-        "X", Dict(
-            "p" => Xp, "z" => Xz, "u" => Xu, "v" => Xv, "w" => Xw,
-            "all" => vcat(Xp, Xz, Xu, Xv, Xw)
-        ),
-    )
-# end
-
-## Center the data
-Xpbar = mean(Xp, dims=2)
-Xzbar = mean(Xz, dims=2)
-Xubar = mean(Xu, dims=2)
-Xvbar = mean(Xv, dims=2)
-Xwbar = mean(Xw, dims=2)
-
-Xp .-= Xpbar
-Xz .-= Xzbar
-Xu .-= Xubar
-Xv .-= Xvbar
-Xw .-= Xwbar
-
-save(joinpath(FILEPATH, "data/mean.jld2"),
-    "mean", Dict(
-        "p" => Xpbar, "z" => Xzbar, 
-        "u" => Xubar, "v" => Xvbar, "w" => Xwbar
-    )
-)
-
-## Normalize to [0,1] with (row-wise) minmax scaling
-function minmax_shift_scale!(X)
-    X_min = minimum(X, dims=2)
-    X_max = maximum(X, dims=2)
-    X .-= X_min 
-    X ./= (X_max - X_min)
-    return X_min, X_max
-end
-Xp_min, Xp_max = minmax_shift_scale!(Xp)
-Xz_min, Xz_max = minmax_shift_scale!(Xz)
-Xu_min, Xu_max = minmax_shift_scale!(Xu)
-Xv_min, Xv_max = minmax_shift_scale!(Xv)
-Xw_min, Xw_max = minmax_shift_scale!(Xw)
-
-## Save preprocessed data
+#=============#
+## Load data ##
+#=============#
 preprocessed_file = joinpath(FILEPATH, "data/preprocessed_data.jld2")
-save(preprocessed_file, 
-    "X", Dict(
-        "p" => Xp, "z" => Xz, "u" => Xu, "v" => Xv, "w" => Xw
-    )
-)
-
-## Save shift and scaling 
-shift_scale_file = joinpath(FILEPATH, "data/minmax.jld2")
-save(shift_scale_file, 
-    "shift", Dict(
-       "p" => Xp_min, "z" => Xz_min,
-       "u" => Xu_min, "v" => Xv_min, "w" => Xw_min
-    ),
-    "scale", Dict(
-       "p" => Xp_max - Xp_min, "z" => Xz_max - Xz_min,
-       "u" => Xu_max - Xu_min, "v" => Xv_max - Xv_min, "w" => Xw_max - Xw_min
-    ),
-)
+X = load(preprocessed_file, "X")
 
 #===========================#
 ## Compute singular values ##
 #===========================#
 singular_values = Dict(fn => zeros(n) for fn in ds.fields)
-sp = svdvals(Xp)
-sz = svdvals(Xz)
-su = svdvals(Xu)
-sv = svdvals(Xv)
-sw = svdvals(Xw)
+sp = svdvals(X["p"])
+sz = svdvals(X["z"])
+su = svdvals(X["u"])
+sv = svdvals(X["v"])
+sw = svdvals(X["w"])
 
 #===============================#
 ## Check the energy retainment ##
