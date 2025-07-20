@@ -298,30 +298,58 @@ function solve_svd_truncation(A::AbstractMatrix{T},
                               b::AbstractArray{T}, 
                               Γ::AbstractMatrix{T}, 
                               solver::TikhonovSolver{T}) where T
-    # Form normal equations matrix
-    M = A' * A + Γ
-    rhs = A' * b
-    
-    # Compute SVD
-    U, S, Vt = svd(M)
-    
-    # Determine effective rank using relative tolerance
-    σ_max = S[1]
-    effective_rank = count(σ -> σ > solver.tolerance * σ_max, S)
-    
-    if effective_rank < length(S)
-        @info "Rank deficient system detected. Effective rank: \
-                 $effective_rank/$(length(S))"
+    try 
+        n = size(A,2)
+        p = size(b,2)
+
+        # Convert Adjoint to contiguous matrix if needed
+        b = b isa Adjoint ? Matrix(b) : b
         
-        # Stable pseudoinverse computation
-        inv_S = zeros(T, length(S))
-        inv_S[1:effective_rank] = 1 ./ S[1:effective_rank]
+        # Pre-allocate matrices for BLAS operations
+        M = Matrix{T}(undef, n, n)
+        rhs = Matrix{T}(undef, n, p)
         
-        # Efficient computation: V * (inv_S .* (U' * rhs))
-        return Vt' * (inv_S .* (U' * rhs))
-    else
-        # Full rank, use standard solve
-        return M \ rhs
+        # Use BLAS level 3 operations
+        LinearAlgebra.BLAS.gemm!('T', 'N', one(T), A, A, zero(T), M)
+        M .+= Γ
+        LinearAlgebra.BLAS.gemm!('T', 'N', one(T), A, b, zero(T), rhs)
+        
+        # Compute SVD
+        U, S, Vt = svd(M)
+        
+        # Determine effective rank using relative tolerance
+        σ_max = S[1]
+        effective_rank = count(σ -> σ > solver.tolerance * σ_max, S)
+        
+        if effective_rank < length(S)
+            @info "Rank deficient system detected. Effective rank: \
+                    $effective_rank/$(length(S))"
+            
+            # Stable pseudoinverse computation
+            inv_S = zeros(T, length(S))
+            inv_S[1:effective_rank] = 1 ./ S[1:effective_rank]
+            
+            # Efficient computation: V * (inv_S .* (U' * rhs))
+            return Vt' * (inv_S .* (U' * rhs))
+        else
+            # Full rank, use standard solve
+            return M \ rhs
+        end
+    catch e
+        if isa(e, OutOfMemoryError)
+            @warn "Out of memory. Using LAPACK.gelsd! routine."
+            # Convert to contiguous matrices for LAPACK
+            A = A isa Adjoint ? Matrix(A) : A
+            b = b isa Adjoint ? Matrix(b) : b
+            x, rank = LAPACK.gelsd!(A, b, solver.tolerance)
+            if rank < size(A, 2)
+                @info "Rank deficient system detected. Effective rank: \
+                        $rank/$(size(A,2))"
+            end
+            return x
+        else
+            rethrow(e)
+        end
     end
 end
 

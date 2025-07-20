@@ -40,7 +40,7 @@ function leastsquares_solve(D::AbstractArray, Rt::AbstractArray,
 
         # Construct the Tikhonov matrix
         tikhonov_matrix!(Γ, dims, operator_symbols, options.λ)
-        Γ = diagm(0 => Γ)  # convert to sparse diagonal matrix
+        Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
         Ot = tikhonov(Rt, D, Γ;
                       tol=options.tolerance,

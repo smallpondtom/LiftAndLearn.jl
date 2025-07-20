@@ -12,7 +12,6 @@ using ProgressMeter
 using PolynomialModelReductionDataset: Heat2DModel
 using Printf
 using Random
-using Revise
 import LiftAndLearn as LnL
 
 #================================#
