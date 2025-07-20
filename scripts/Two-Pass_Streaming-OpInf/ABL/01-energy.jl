@@ -49,8 +49,8 @@ nxyz = nz * ny * nx
 ## Load the mean and scalings
 #=============================#
 means  = load(joinpath(FILEPATH, "data/mean.jld2"))["xbar"]
-shifts = load(joinpath(FILEPATH, "data/minmax.jld2"))["shifts"]
-scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["scales"]
+shifts = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["shifts"]
+scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 
 #===========================#
 ## Compute singular values ##
@@ -67,8 +67,7 @@ for (i, fld) in enumerate(ds.fields)
     centered_data = center!(field_data, means[nxyz*(i-1)+1:nxyz*i])
     
     # Normalize the data
-    normalized_data = normalize!(centered_data, 
-                                 shifts[idx_start:idx_end], 
+    normalized_data = scale!(centered_data, shifts[idx_start:idx_end], 
                                  scales[idx_start:idx_end])
     
     # Compute singular values

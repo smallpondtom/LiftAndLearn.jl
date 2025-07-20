@@ -1,5 +1,15 @@
 using Logging
 
+function preprocess!(data::Vector{T}, means::Vector{T}, 
+                     shifts::Vector{T}, scales::Vector{T}) where T<:Real
+    return scale!(center!(data, means), shifts, scales)
+end
+
+function unprocess!(data::Vector{T}, means::Vector{T}, 
+                    shifts::Vector{T}, scales::Vector{T}) where T<:Real
+    return uncenter!(unscale!(data, shifts, scales), means)
+end
+
 function center!(data::Matrix{T}, means::Vector{T}) where T<:Real
     @assert length(means) == size(data,1) "Number of means must match number of rows"
     data .-= means
@@ -24,7 +34,7 @@ function uncenter!(data::Vector{T}, means::Vector{T}) where T<:Real
     return data
 end
 
-function normalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function scale!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
     rows = length(data)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
@@ -40,7 +50,7 @@ function normalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where
     return data
 end
 
-function normalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function scale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
     rows = size(data, 1)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
@@ -56,7 +66,7 @@ function normalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where
     return data
 end
 
-function unnormalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function unscale!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
     rows = length(data)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
@@ -72,7 +82,7 @@ function unnormalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) whe
     return data
 end
 
-function unnormalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function unscale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
     rows = size(data, 1)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
