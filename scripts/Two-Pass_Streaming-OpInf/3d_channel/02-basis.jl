@@ -51,7 +51,6 @@ COMPUTE_MINMAX = true
 # Initialize preprocessing variables
 xbar = 0.0
 scale_factors = [1.0, 0.01, 0.01, dPdx]  # Default scale factors
-# scale_factors = [sqrt(dPdx), sqrt(dPdx), sqrt(dPdx), dPdx]
 
 if COMPUTE_MEAN && COMPUTE_MINMAX
     @info "Computing mean and min/max for preprocessing"
@@ -80,12 +79,10 @@ if COMPUTE_MEAN && COMPUTE_MINMAX
                 ds, (Nz*Ny*Nx*4,), ["u", "v", "w", "p"]; batch_size=100)
         end
         # Compute minmax scaling parameters
-        scale_factors = x_max .- x_min
-        xshift = reduce(vcat, [xm * ones(Nz*Ny*Nx) for xm in x_min])
         @info "Min/max computation complete"
         save(minmax_file, "minmax", Dict(
-            "x_min" => x_min, "x_max" => x_max,
-            "xbar" => xshift, "scale_factors" => scale_factors
+            "min" => x_min, "max" => x_max,
+            "shifts" => x_min, "scales" => x_max .- x_min
         ))
     end
 elseif COMPUTE_MEAN
@@ -117,12 +114,10 @@ elseif COMPUTE_MINMAX
                 ds, (Nz*Ny*Nx*4,), ["u", "v", "w", "p"]; batch_size=100)
         end
         # Compute minmax scaling parameters
-        scale_factors = x_max .- x_min
-        xbar = reduce(vcat, [xm * ones(Nz*Ny*Nx) for xm in x_min])
         @info "Min/max computation complete"
         save(minmax_file, "minmax", Dict(
-            "x_min" => x_min, "x_max" => x_max,
-            "xbar" => xbar, "scale_factors" => scale_factors
+            "min" => x_min, "max" => x_max,
+            "shift" => x_min, "scales" => x_max .- x_min
         ))
     end
 else

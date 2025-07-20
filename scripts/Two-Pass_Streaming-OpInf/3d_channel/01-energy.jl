@@ -47,7 +47,7 @@ field_names = ["u", "v", "w", "p"]
 SHIFT_MEAN = true
 xbar = nothing # preallocate
 if SHIFT_MEAN
-    mean_file = joinpath(FILEPATH, "data/streaming/mean.jld2")
+    mean_file = joinpath(FILEPATH, "data/mean.jld2")
     if isfile(mean_file)
         @info "Loading existing mean from file"
         xbar = load(mean_file, "xbar")

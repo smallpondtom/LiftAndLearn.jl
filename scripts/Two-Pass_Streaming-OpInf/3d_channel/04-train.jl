@@ -14,6 +14,7 @@ using UniqueKronecker
 using BlockDiagonals
 using SparseArrays
 using Statistics
+using Revise
 import LiftAndLearn as LnL
 
 #================================#
@@ -45,6 +46,58 @@ ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 Nz, Ny, Nx, n_fields, n = ds.dims
 dim_per_field = Nz * Ny * Nx
 
+
+# ##
+# function linear_to_4d_index(linear_idx, Nx, Ny, Nz, num_fields)
+#     # Convert to 0-based index for easier calculation
+#     idx = linear_idx - 1
+    
+#     # Calculate dimensions
+#     spatial_size = Nx * Ny * Nz
+    
+#     # Extract field index
+#     f = (idx ÷ spatial_size) + 1
+    
+#     # Extract spatial index within the field
+#     spatial_idx = idx % spatial_size
+    
+#     # Extract x, y, z coordinates from spatial index
+#     # Assuming column-major ordering: idx = a + b*Nx + c*Nx*Ny
+#     a = (spatial_idx % Nx) + 1
+#     b = ((spatial_idx ÷ Nx) % Ny) + 1  
+#     c = (spatial_idx ÷ (Nx * Ny)) + 1
+    
+#     return (a, b, c, f)
+# end
+
+# function get_4d_coordinates(ds::ChannelDataSource, linear_idx)
+#     Nz, Ny, Nx, num_fields, _ = ds.dims
+#     return linear_to_4d_index(linear_idx, Nx, Ny, Nz, num_fields)
+# end
+
+# function verify_index_mapping(ds::ChannelDataSource, time_idx, linear_idx)
+#     # Get 4D coordinates
+#     a, b, c, f = get_4d_coordinates(ds, linear_idx)
+    
+#     # Get values using both methods
+#     value1 = ds[time_idx][linear_idx]
+#     value2 = ds[a, b, c, f, time_idx]
+    
+#     println("Linear index $linear_idx maps to (c=$c, b=$b, a=$a, f=$f)")
+#     println("ds[$time_idx][$linear_idx] = $value1")
+#     println("ds[$c, $b, $a, $f, $time_idx] = $value2")
+#     println("Match: $(value1 == value2)")
+    
+#     return value1 == value2
+# end
+
+# ## Test with your example
+# verify_index_mapping(ds, rand(1:n), rand(1:(Nx*Ny*Nz*4)))
+
+# ##
+# h = (i) -> 2*(i-1) + 1
+
+# h.(1:16)
 
 #==========================#
 ## Load the mean velocity
@@ -82,6 +135,9 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
+    use_backslash=true,
+    # use_svd_truncation=false,
+    # tolerance=1e-22
 )
 save(joinpath(FILEPATH, "data/setup.jld2"), 
     "options", options,
@@ -93,7 +149,7 @@ save(joinpath(FILEPATH, "data/setup.jld2"),
         "tspan" => ds["times"][:]
     )
 )
-rmax = 400
+rmax = 500
 
 #=================#
 ## Load the bases 
@@ -144,9 +200,13 @@ op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
 # ops = load(joinpath(FILEPATH, "data/models", "operators.jld2"))
 
 ## Tikhonov Regularized OpInf
-# options.with_reg = true
-# options.λ = LnL.TikhonovParameter(A=1e-2, A2=1e-2, K=1e-2)
-# op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
+options.with_reg = true
+options.λ = LnL.TikhonovParameter(A=1e-12, A2=1e-6, K=1e-8)
+op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
+
+##
+save(joinpath(FILEPATH, "data/models", "operators_tol1e-12.jld2"), 
+    "opinf", op_inf)
 
 ## Manual Computation for memory restrictions
 rmax2 = Int(rmax*(rmax+1)/2)
@@ -598,7 +658,7 @@ reduced_model = (x) -> op_inf.A * x + op_inf.A2u * (x ⊘ x) + op_inf.K
 ##
 tspan = ds["times"][:] .- ds["times"][1]
 states = zeros(rmax, length(tspan))
-states[:,1] = Xhat[:,1]
+states[:,1] = Xhat1[:,1]
 for i in 2:length(tspan)
     states[:,i] = reduced_model(states[:,i-1])
     if any(isnan.(states[:, i]))
