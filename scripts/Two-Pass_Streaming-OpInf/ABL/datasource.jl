@@ -225,7 +225,8 @@ function Base.getindex(fp::FieldProxy, indices...)
         
         # Apply bounds and subsampling transformations
         spatial_idx = _apply_spatial_transform(fp.ds, spatial_idx)
-        time_idx = _apply_time_transform(fp.ds, time_idx)
+        orig_time = _apply_time_transform(fp.ds, time_idx)
+        orig_time = _to_range_or_indices(orig_time)
         
         # Get transformed dimensions
         Nz, Ny, Nx = fp.ds.dims[1:3]
@@ -252,7 +253,6 @@ function Base.getindex(fp::FieldProxy, indices...)
                 orig_a = fp.ds.x_indices[a]
                 orig_b = fp.ds.y_indices[b]
                 orig_c = fp.ds.z_indices[c]
-                orig_time = fp.ds.time_indices[time_idx]
                 
                 # Extract data for this spatial point across all time indices
                 # HDF5 indexing: [z, y, x, field, time]
@@ -262,7 +262,7 @@ function Base.getindex(fp::FieldProxy, indices...)
                 ]
                 
                 # Reshape to remove singleton dimensions
-                spatial_data = reshape(spatial_data, length(time_idx))
+                spatial_data = reshape(spatial_data, :, length(time_idx))
                 push!(result_data, spatial_data)
             end
         end
@@ -271,7 +271,7 @@ function Base.getindex(fp::FieldProxy, indices...)
         if length(spatial_idx) == 1
             return length(time_idx) == 1 ? result_data[1][1] : result_data[1]
         else
-            return hcat(result_data...)
+            return reduce(vcat, result_data)
         end
         
     else

@@ -34,11 +34,10 @@ include(joinpath(FILEPATH, "preprocess.jl"))
 #=============================#
 ds = ChannelDataSource(
     datafile, ["z", "y", "x", "fields", "times"],
-    # x_bounds=(1, 300), 
-    # y_bounds=(1, 120), 
-    # time_bounds=(1, 7000),
-    # x_subsample=2, 
-    # y_subsample=2, 
+    x_subsample=3, 
+    y_subsample=3, 
+    z_subsample=2,
+    time_downsample=10,
 )
 nz, ny, nx, n_fields, n = ds.dims
 
@@ -58,7 +57,7 @@ if COMPUTE_MEAN && COMPUTE_MINMAX
     else
         @info "Starting mean computation with $(Threads.nthreads()) threads"
         @time begin
-            xbar = compute_mean_parallel_threads_locked(ds, (Nz*Ny*Nx*4,); batch_size=100)
+            xbar = compute_mean_parallel_threads_locked(ds, (nz*ny*nx*4,); batch_size=100)
         end
         @info "Mean computation complete"
         save(mean_file, "xbar", xbar)
@@ -102,7 +101,7 @@ elseif COMPUTE_MEAN
     else
         @info "Starting mean computation with $(Threads.nthreads()) threads"
         @time begin
-            xbar = compute_mean_parallel_threads_locked(ds, (Nz*Ny*Nx*4,); batch_size=100)
+            xbar = compute_mean_parallel_threads_locked(ds, (nz*ny*nx*4,); batch_size=100)
         end
         @info "Mean computation complete"
         save(mean_file, "xbar", xbar)

@@ -34,13 +34,10 @@ include(joinpath(FILEPATH, "preprocess.jl"))
 #=============================#
 ds = ChannelDataSource(
     datafile, ["z", "y", "x", "fields", "times"],
-    x_bounds=(1, 300), 
-    y_bounds=(1, 120), 
-    z_bounds=(1, 32),
-    time_bounds=(1, 8000),
-    x_subsample=2, 
-    y_subsample=2, 
-    time_subsample=4,
+    x_subsample=3, 
+    y_subsample=3, 
+    z_subsample=2,
+    time_downsample=10,
 )
 nz, ny, nx, n_fields, nt = ds.dims
 nxyz = nz * ny * nx
@@ -57,21 +54,32 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 #===========================#
 singular_values = Dict()
 for (i, fld) in enumerate(ds.fields)
+    t1 = time()
     idx_start = nxyz * (i - 1) + 1
     idx_end = nxyz * i
 
     # Extract field data
-    field_data = ds[idx_start:idx_end, :]
+    field_data = ds[fld][1:nxyz, 1:nt]
+    @info "Loading field: $fld, size: $(size(field_data))"
     
     # Center the data
-    centered_data = center!(field_data, means[nxyz*(i-1)+1:nxyz*i])
+    centered_data = center!(field_data, means[idx_start:idx_end])
+    # centered_data = center!(field_data, means)
+    @info "Centered data for field: $fld"
     
     # Normalize the data
-    normalized_data = scale!(centered_data, shifts[idx_start:idx_end], 
-                                 scales[idx_start:idx_end])
+    scaled_data = scale!(centered_data, shifts[idx_start:idx_end], 
+                         scales[idx_start:idx_end])
+    # scaled_data = scale!(centered_data, shifts, scales)
+    @info "Scaled data for field: $fld"
     
     # Compute singular values
-    singular_values[fld] = svdvals(normalized_data)
+    singular_values[fld] = svdvals(scaled_data)
+    @info "Computed singular values for field: $fld"
+
+    t2 = time()
+    @info "Time taken for field $fld: $(t2 - t1) seconds"
+    GC.gc()  # Force garbage collection to free memory
 end
 
 # save the singular values
@@ -88,10 +96,10 @@ function check_energy_retainment(svals, target=0.999)
     return energy_ret, r
 end
 
-spectrum = Dict(fld => zeros(length(sp)) for fld in ds.fields)
+spectrum = Dict(fld => zeros(length(singular_values["u"])) for fld in ds.fields)
 target_r = Dict(fld => 0 for fld in ds.fields)
 
-target_energy = 0.80
+target_energy = 0.99
 for fld in ds.fields
     svals = singular_values[fld]
     spectrum[fld], target_r[fld] = check_energy_retainment(svals, target_energy)
@@ -128,7 +136,8 @@ with_theme(theme_latexfonts()) do
     )
 
     # Plot energy retainment for each field
-    for (fld, svals) in zip(ds.fields, [sp, sz, su, sv, sw])
+    for fld in ds.fields
+        svals = spectrum[fld]
         lines!(ax1, 1:length(svals), spectrum[fld], 
                linewidth=4, color=colors[fld])
     end
@@ -146,7 +155,8 @@ with_theme(theme_latexfonts()) do
         xticklabelsize=25, yticklabelsize=25,
     )
 
-    for (fld, svals) in zip(ds.fields, [sp, sz, su, sv, sw])
+    for fld in ds.fields
+        svals = singular_values[fld]
         lines!(ax2, 1:length(svals), svals, label=fld, linewidth=4, 
                color=colors[fld])
     end
@@ -167,9 +177,11 @@ with_theme(theme_latexfonts()) do
         [LineElement(color=colors[fn], linewidth=5)]
         for fn in ds.fields
     ]
+    labels = [
+        L"$%$(fld)$" for fld in ds.fields
+    ]
     Legend(fig[1, :],
-        line_elements,
-        [L"$p$", L"$\zeta$", L"$u_x$", L"$u_y$", L"$u_z$"],
+        line_elements, labels,
         framevisible=false, patchsize=(70, 20),
         labelsize=40, rowgap=10, colgap=50, orientation=:horizontal,
     )

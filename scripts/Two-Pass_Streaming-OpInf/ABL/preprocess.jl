@@ -1,47 +1,58 @@
 using Logging
 
-function preprocess!(data::Vector{T}, means::Vector{T}, 
-                     shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function preprocess!(data::Vector{T}, means::Union{T,Vector{T}}, 
+                     shifts::Union{T,Vector{T}}, 
+                     scales::Union{T,Vector{T}}) where T<:Real
     return scale!(center!(data, means), shifts, scales)
 end
 
-function unprocess!(data::Vector{T}, means::Vector{T}, 
-                    shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function unprocess!(data::Vector{T}, means::Union{T,Vector{T}}, 
+                    shifts::Union{T,Vector{T}}, 
+                    scales::Union{T,Vector{T}}) where T<:Real
     return uncenter!(unscale!(data, shifts, scales), means)
 end
 
-function center!(data::Matrix{T}, means::Vector{T}) where T<:Real
-    @assert length(means) == size(data,1) "Number of means must match number of rows"
+function center!(data::Matrix{T}, means::Union{T,Vector{T}}) where T<:Real
+    if length(means) != 1
+        @assert length(means) == size(data,1) "Number of means must match number of rows"
+    end
     data .-= means
     return data
 end
 
-function uncenter!(data::Matrix{T}, means::Vector{T}) where T<:Real
-    @assert length(means) == size(data,1) "Number of means must match number of rows"
+function uncenter!(data::Matrix{T}, means::Union{T,Vector{T}}) where T<:Real
+    if length(means) != 1
+        @assert length(means) == size(data,1) "Number of means must match number of rows"
+    end
     data .+= means
     return data
 end
 
-function center!(data::Vector{T}, means::Vector{T}) where T<:Real
-    @assert length(means) == length(data) "Number of means must match number of rows"
+function center!(data::Vector{T}, means::Union{T,Vector{T}}) where T<:Real
+    if length(means) != 1
+        @assert length(means) == length(data) "Number of means must match number of rows"
+    end
     data .-= means
     return data
 end
 
-function uncenter!(data::Vector{T}, means::Vector{T}) where T<:Real
-    @assert length(means) == length(data) "Number of means must match number of rows"
+function uncenter!(data::Vector{T}, means::Union{T,Vector{T}}) where T<:Real
+    if length(means) != 1
+        @assert length(means) == length(data) "Number of means must match number of rows"
+    end
     data .+= means
     return data
 end
 
-function scale!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function scale!(data::Vector{T}, shifts::Union{T,Vector{T}}, 
+                scales::Union{T,Vector{T}}) where T<:Real
     rows = length(data)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
         data .-= shifts
         data ./= scales
     else
-        dim = row ÷ length(shifts)
+        dim = rows ÷ length(shifts)
         for (i, (sh,sc)) in enumerate(zip(shifts, scales))
             data[dim*(i-1)+1:dim*i] .-= sh
             data[dim*(i-1)+1:dim*i] ./= sc
@@ -50,14 +61,15 @@ function scale!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:
     return data
 end
 
-function scale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function scale!(data::Matrix{T}, shifts::Union{T,Vector{T}}, 
+                scales::Union{T,Vector{T}}) where T<:Real
     rows = size(data, 1)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
         data .-= shifts
         data ./= scales
     else
-        dim = row ÷ length(shifts)
+        dim = rows ÷ length(shifts)
         for (i, (sh,sc)) in enumerate(zip(shifts, scales))
             data[dim*(i-1)+1:dim*i, :] .-= sh
             data[dim*(i-1)+1:dim*i, :] ./= sc
@@ -66,14 +78,15 @@ function scale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:
     return data
 end
 
-function unscale!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function unscale!(data::Vector{T}, shifts::Union{T,Vector{T}}, 
+                  scales::Union{T,Vector{T}}) where T<:Real
     rows = length(data)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
         data .*= scales
         data .+= shifts
     else
-        dim = row ÷ length(shifts)
+        dim = rows ÷ length(shifts)
         for (i, (sh,sc)) in enumerate(zip(shifts, scales))
             data[dim*(i-1)+1:dim*i] .*= sc
             data[dim*(i-1)+1:dim*i] .+= sh
@@ -82,7 +95,8 @@ function unscale!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T
     return data
 end
 
-function unscale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function unscale!(data::Matrix{T}, shifts::Union{T,Vector{T}}, 
+                  scales::Union{T,Vector{T}}) where T<:Real
     rows = size(data, 1)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
@@ -91,7 +105,7 @@ function unscale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T
             data .+= shifts
         end
     else
-        dim = row ÷ length(shifts)
+        dim = rows ÷ length(shifts)
         for (i, (sh,sc)) in enumerate(zip(shifts, scales))
             data[dim*(i-1)+1:dim*i, :] .*= sc
             data[dim*(i-1)+1:dim*i, :] .+= sh
