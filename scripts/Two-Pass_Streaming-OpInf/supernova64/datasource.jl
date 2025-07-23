@@ -1,8 +1,5 @@
 using HDF5
 
-# Map velocity component names to index
-VelComp = Dict("u" => 1, "v" => 2, "w" => 3)
-
 """
 Lightweight descriptor for an HDF5-based supernova dataset.
 Supports lazy slicing of individual fields via FieldProxy,
@@ -14,6 +11,7 @@ struct DataSource
     fields::Vector{String}
     links::Dict{String, String}
     dims::NTuple{6, Int}  # (nx, ny, nz, nfields, nt, ntraj)
+    VelComp::Dict{String, Int}
 end
 
 """
@@ -38,8 +36,12 @@ function DataSource(hfname::String)
     pshape = size(h5[links["p"]])  # (nx, ny, nz, nt, ntraj)
     nx, ny, nz, nt, ntraj = pshape
     dims = (nx, ny, nz, length(fields), nt, ntraj)
+
+    # Map velocity component names to index
+    VelComp = Dict("u" => 1, "v" => 2, "w" => 3)
+
     close(h5)
-    return DataSource(hfname, grid, fields, links, dims)
+    return DataSource(hfname, grid, fields, links, dims, VelComp)
 end
 
 # total snapshots
@@ -89,7 +91,7 @@ function Base.getindex(fp::FieldProxy, spatial, time, traj=1)
     tidx = collect(time)
     rtrj = collect(traj)
     link = ds.links[fp.name]
-    isvel = haskey(VelComp, fp.name)
+    isvel = haskey(ds.VelComp, fp.name)
 
     return h5open(ds.hfname, "r") do h5
         dset = h5[link]
@@ -100,7 +102,7 @@ function Base.getindex(fp::FieldProxy, spatial, time, traj=1)
         traj_range = trmin:trmax
         # read block
         block = if isvel
-            c = VelComp[fp.name]
+            c = ds.VelComp[fp.name]
             dset[c, :, :, :, time_range, traj_range]
         else
             data = dset[:, :, :, time_range, traj_range]

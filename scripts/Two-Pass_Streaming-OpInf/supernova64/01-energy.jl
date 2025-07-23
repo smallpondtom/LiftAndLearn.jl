@@ -39,12 +39,9 @@ X = load(preprocessed_file, "X")
 #===========================#
 ## Compute singular values ##
 #===========================#
-singular_values = Dict(fn => zeros(n) for fn in ds.fields)
-sp = svdvals(X["p"])
-sz = svdvals(X["z"])
-su = svdvals(X["u"])
-sv = svdvals(X["v"])
-sw = svdvals(X["w"])
+singular_values = Dict(
+    fld => svdvals(X[fld]) for fld in ds.fields
+)
 
 #===============================#
 ## Check the energy retainment ##
@@ -60,8 +57,9 @@ spectrum = Dict(fn => zeros(length(sp)) for fn in ds.fields)
 target_r = Dict(fn => 0 for fn in ds.fields)
 
 target_energy = 0.99
-for (field, svals) in zip(ds.fields, [sp, sz, su, sv, sw])
-    spectrum[field], target_r[field] = check_energy_retainment(svals, target_energy)
+for fld in ds.fields
+    svals = singular_values[fld]
+    spectrum[fld], target_r[fld] = check_energy_retainment(svals, target_energy)
 end
 
 # Save target ranks
@@ -90,12 +88,13 @@ with_theme(theme_latexfonts()) do
 
     colors = Dict(
         key => color for (key, color) in zip(
-            ds.fields, Makie.wong_colors()[1:5]
+            ds.fields, Makie.wong_colors()[1:length(ds.fields)]
         )
     )
 
     # Plot energy retainment for each field
-    for (fld, svals) in zip(ds.fields, [sp, sz, su, sv, sw])
+    for fld in ds.fields
+        svals = singular_values[fld]
         lines!(ax1, 1:length(svals), spectrum[fld], 
                linewidth=4, color=colors[fld])
     end
@@ -113,7 +112,8 @@ with_theme(theme_latexfonts()) do
         xticklabelsize=25, yticklabelsize=25,
     )
 
-    for (fld, svals) in zip(ds.fields, [sp, sz, su, sv, sw])
+    for fld in ds.fields
+        svals = singular_values[fld]
         lines!(ax2, 1:length(svals), svals, label=fld, linewidth=4, 
                color=colors[fld])
     end
@@ -134,9 +134,12 @@ with_theme(theme_latexfonts()) do
         [LineElement(color=colors[fn], linewidth=5)]
         for fn in ds.fields
     ]
+    labels = [
+        fld == "z" ? L"$\zeta$" : L"$%$(fld)$" 
+        for fld in ds.fields
+    ]
     Legend(fig[1, :],
-        line_elements,
-        [L"$p$", L"$\zeta$", L"$u_x$", L"$u_y$", L"$u_z$"],
+        line_elements, labels,
         framevisible=false, patchsize=(70, 20),
         labelsize=40, rowgap=10, colgap=50, orientation=:horizontal,
     )
