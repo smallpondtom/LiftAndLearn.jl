@@ -11,7 +11,7 @@ struct DataSource
     fields::Vector{String}
     links::Dict{String, String}
     dims::NTuple{6, Int}  # (nx, ny, nz, nfields, nt, ntraj)
-    VelComp::Dict{String, Int} 
+    MomComp::Dict{String, Int} 
     MagComp::Dict{String, Int}
 end
 
@@ -26,12 +26,14 @@ function DataSource(hfname::String)
         "z" => read(h5["dimensions/z"]),
         "time" => read(h5["dimensions/time"])
     )
-    fields = ["rho", "u", "v", "w", "Bx", "By", "Bz"]  
+    # Note "m" is the momentum = rho * {u, v, w}
+    fields = ["rho", "z", "mx", "my", "mz", "Bx", "By", "Bz"]  
     links = Dict(
         "rho" => "t0_fields/density",
-        "u"   => "t1_fields/velocity",
-        "v"   => "t1_fields/velocity",
-        "w"   => "t1_fields/velocity",
+        "z"   => "t0_fields/density",
+        "mx"  => "t1_fields/velocity",
+        "my"  => "t1_fields/velocity",
+        "mz"  => "t1_fields/velocity",
         "Bx"  => "t1_fields/magnetic_field",
         "By"  => "t1_fields/magnetic_field",
         "Bz"  => "t1_fields/magnetic_field"
@@ -41,11 +43,11 @@ function DataSource(hfname::String)
     dims = (nx, ny, nz, length(fields), nt, ntraj)
 
     # Map velocity component names to index
-    VelComp = Dict("u" => 1, "v" => 2, "w" => 3)
+    MomComp = Dict("mx" => 1, "my" => 2, "mz" => 3)
     MagComp = Dict("Bx" => 1, "By" => 2, "Bz" => 3)
 
     close(h5)
-    return DataSource(hfname, grid, fields, links, dims, VelComp, MagComp)
+    return DataSource(hfname, grid, fields, links, dims, MomComp, MagComp)
 end
 
 # total snapshots
@@ -95,7 +97,7 @@ function Base.getindex(fp::FieldProxy, spatial, time, traj=1)
     tidx = collect(time)
     rtrj = collect(traj)
     link = ds.links[fp.name]
-    isvel = haskey(ds.VelComp, fp.name)
+    isvel = haskey(ds.MomComp, fp.name)
     ismag = haskey(ds.MagComp, fp.name)
 
     return h5open(ds.hfname, "r") do h5
@@ -107,8 +109,10 @@ function Base.getindex(fp::FieldProxy, spatial, time, traj=1)
         traj_range = trmin:trmax
         # read block
         block = if isvel
-            c = ds.VelComp[fp.name]
-            dset[c, :, :, :, time_range, traj_range]
+            c = ds.MomComp[fp.name]
+            rho = h5[ds.links["rho"]][:, :, :, time_range, traj_range]
+            # Return momentum
+            dset[c, :, :, :, time_range, traj_range] .* rho
         elseif ismag
             c = ds.MagComp[fp.name]
             dset[c, :, :, :, time_range, traj_range]

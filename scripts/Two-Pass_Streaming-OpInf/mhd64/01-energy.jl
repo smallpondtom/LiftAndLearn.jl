@@ -56,7 +56,7 @@ end
 spectrum = Dict(fn => zeros(length(singular_values[fn])) for fn in ds.fields)
 target_r = Dict(fn => 0 for fn in ds.fields)
 
-target_energy = 0.90
+target_energy = 0.85
 for fld in ds.fields
     svals = singular_values[fld]
     spectrum[fld], target_r[fld] = check_energy_retainment(svals, target_energy)
@@ -88,7 +88,9 @@ with_theme(theme_latexfonts()) do
 
     colors = Dict(
         key => color for (key, color) in zip(
-            ds.fields, Makie.wong_colors()[1:length(ds.fields)]
+            ds.fields, Makie.categorical_colors(
+                :seaborn_colorblind, length(ds.fields)
+            )
         )
     )
 
@@ -136,6 +138,8 @@ with_theme(theme_latexfonts()) do
     ]
     labels = [
         fld == "rho" ? L"$\rho$" : 
+        fld == "z" ? L"$\zeta$" :
+        occursin("m", fld) ? L"$m_{%$(fld[2])}$" :
         occursin("B", fld) ? L"$B_{%$(fld[2])}$" :
         L"$%$(fld)$" for fld in ds.fields
     ]

@@ -18,7 +18,7 @@ DATAPATH = "../../../../DATA/THE_WELL/mhd64"
 train_files = readdir(DATAPATH, join=true)
 fn = train_files[1]
 X = load(joinpath(FILEPATH, "data/preprocessed_data.jld2"))["X"]["all"]
-V = load(joinpath(FILEPATH, "data/bases/basis.jld2"))["V"]
+V = load(joinpath(FILEPATH, "data/bases/basis.jld2"))["V"][:,1:300]
 
 # Include the data sourcing module for data access
 include(joinpath(FILEPATH, "datasource.jl"))
@@ -34,7 +34,7 @@ n = n_time * n_traj
 #===============#
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
-        state=[1,2],
+        state=[1,2,3],
         control=0,
         constant=1,
     ),
@@ -67,13 +67,9 @@ if CONTINUOUS_TIME
         idx_start = (i-1) * n_time + 1
         idx_end = i * n_time
         Xdot[i], idx = LnL.time_derivative_approx(
-            X[:, idx_start:idx_end], options)
+            X[:, idx_start:idx_end], options
+        )
         Xhat[i] = V' * X[:, idx_start:idx_end][:, idx]
-
-        # Mutliply the density data to the time-derivatives of velocities
-        for j in 2:4
-            Xdot[i][nxyz*(j-1)+1:nxyz*j, :] .*= X[1:nxyz, idx_start:idx_end]
-        end
         Xhatdot[i] = V' * Xdot[i]
     end
 
@@ -91,11 +87,6 @@ else
         idx_end = i * n_time
         Xhat[i] = X[:, idx_start:idx_end-1]
         Xdot[i] = X[:, idx_start+1:idx_end]
-
-        # Mutliply the density data to the time-derivatives of velocities
-        for i in 2:4
-            Xdot[i][nxyz*(i-1)+1:nxyz*i, :] .*= Xhat[i][1:nxyz, :]
-        end
         Xhat[i] = V' * Xhat[i]
         Xhatdot[i] = V' 
     end
@@ -129,7 +120,7 @@ Xrom = Vector{Matrix{Float64}}(undef, n_traj)
 for i in 1:n_traj
     idx_start = (i-1) * n_time + 1
     idx_end = i * n_time
-    x0 = Xtmp[:, idx_start:idx_end][:,1]
+    x0 = V' * X[:, idx_start:idx_end][:,1]
     if CONTINUOUS_TIME
         Xrom[i] = rk4_integrate(x0, ds.grid["time"], op.A, op.A2u, op.K)
     else
@@ -151,7 +142,6 @@ Xrom = reduce(hcat, Xrom)
 ## Compute projection errors ##
 #=============================#
 ## Original data (unscaled and uncentered)
-X_orig = load(joinpath(FILEPATH, "data/original_data.jld2"))["X"]
 shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
 scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
 mean   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
@@ -160,6 +150,7 @@ unscale = (X, scale, shift) -> (scale .* X) .+ shift
 uncenter = (X, Xbar) -> X .+ Xbar
 
 ## Compute rse
+X_orig = load(joinpath(FILEPATH, "data/original_data.jld2"))["X"]
 begin
     # Processed data
     X_recon = V * Xrom
@@ -215,9 +206,9 @@ begin
     end
 end
 
-#============================#
-## Plot the sliced pressure ##
-#============================#
+#===========================#
+## Plot the sliced density ##
+#===========================#
 using CairoMakie
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(1200, 900))
@@ -240,14 +231,14 @@ with_theme(theme_latexfonts()) do
     # Collect all data first
     for (i, t_idx) in enumerate(time_indices)
         # Get full data
-        full_field = ds["p"][:, :, :, t_idx, 1]
+        full_field = ds["rho"][:, :, :, t_idx, 1]
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
         Xrecon = V * Xrom[:, t_idx]
         Xrecon = Xrecon[1:nxyz]
-        Xrecon = unscale(Xrecon, scale["p"], shift["p"])
-        Xrecon = uncenter(Xrecon, mean["p"])
+        Xrecon = unscale(Xrecon, scale["rho"], shift["rho"])
+        Xrecon = uncenter(Xrecon, mean["rho"])
         min_clip = minimum(abs.(Xrecon))
         Xrecon = max.(Xrecon, min_clip)
         rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
@@ -319,7 +310,7 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
     Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
-    
+    save(joinpath(FILEPATH, "plots/sliced_density.png"), fig)
     display(fig)
 end
 
@@ -428,14 +419,14 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
     Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
-    
+    save(joinpath(FILEPATH, "plots/sliced_volume.png"), fig)
     display(fig)
 end
 
 
 
 #============================#
-## Plot the sliced velocity ##
+## Plot the sliced momentum ##
 #============================#
 using CairoMakie
 with_theme(theme_latexfonts()) do 
@@ -454,27 +445,27 @@ with_theme(theme_latexfonts()) do
     all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
 
     # Collect all data first
-    velocity = "u"
-    if velocity == "u"
+    momentum = "mx"
+    if momentum == "mx"
         start_idx = nxyz*2 + 1
         end_idx = nxyz*3
-    elseif velocity == "v"
+    elseif momentum == "my"
         start_idx = nxyz*3 + 1
         end_idx = nxyz*4
-    elseif velocity == "w"
+    elseif momentum == "mz"
         start_idx = nxyz*4 + 1
         end_idx = nxyz*5
     end
     for (i, t_idx) in enumerate(time_indices)
         # Get full data
-        full_field = ds[velocity][1, :, :, :, t_idx, 1]
+        full_field = ds[momentum][1, :, :, :, t_idx, 1]
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
         Xrecon = V * Xrom[:, t_idx]
         Xrecon = Xrecon[start_idx:end_idx]
-        Xrecon = unscale(Xrecon, scale[velocity], shift[velocity])
-        Xrecon = uncenter(Xrecon, mean[velocity])
+        Xrecon = unscale(Xrecon, scale[momentum], shift[momentum])
+        Xrecon = uncenter(Xrecon, mean[momentum])
         rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
         all_rom_data[i] = rom_field[x_slice, y_slice, z_slice]
 
@@ -541,7 +532,119 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
     Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
+    save(joinpath(FILEPATH, "plots/sliced_momentum.png"), fig)
+    display(fig)
+end
+
+
+#==================================#
+## Plot the sliced magnetic field ##
+#==================================#
+using CairoMakie
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1200, 900))
+    # Get midpoint index for z-direction
+    x_slice = 1:nx
+    y_slice = ny ÷ 2
+    z_slice = 1:nz
+
+    # Select 3 time steps (beginning, middle, end)
+    time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time])
+
+    # Pre-calculate all data for colorbar scaling
+    all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
+    all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
+    all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
+
+    # Collect all data first
+    magnetic = "Bx"
+    if magnetic == "Bx"
+        start_idx = nxyz*5 + 1
+        end_idx = nxyz*6
+    elseif magnetic == "By"
+        start_idx = nxyz*6 + 1
+        end_idx = nxyz*7
+    elseif magnetic == "Bz"
+        start_idx = nxyz*7 + 1
+        end_idx = nxyz*8
+    end
+    for (i, t_idx) in enumerate(time_indices)
+        # Get full data
+        full_field = ds[magnetic][1, :, :, :, t_idx, 1]
+        all_full_data[i] = full_field[x_slice, y_slice, z_slice]
+        
+        # Get ROM data
+        Xrecon = V * Xrom[:, t_idx]
+        Xrecon = Xrecon[start_idx:end_idx]
+        Xrecon = unscale(Xrecon, scale[magnetic], shift[magnetic])
+        Xrecon = uncenter(Xrecon, mean[magnetic])
+        rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
+        all_rom_data[i] = rom_field[x_slice, y_slice, z_slice]
+
+        # Compute error
+        all_error_data[i] = abs.(all_full_data[i] - all_rom_data[i])
+    end
+
+    # Calculate global min/max for each row type
+    full_min, full_max = extrema(vcat(all_full_data...))
+    rom_min, rom_max = extrema(vcat(all_rom_data...))
+    error_min, error_max = extrema(vcat(all_error_data...))
+
+    # Align the color ranges for first and second rows (full and ROM)
+    common_min = min(full_min, rom_min)
+    common_max = max(full_max, rom_max)
+
+    # Create axes and heatmaps
+    hm_full = nothing
+    hm_rom = nothing
+    hm_error = nothing
+
+    for (i, t_idx) in enumerate(time_indices)
+        # Create axes
+        time_value = ds.grid["time"][t_idx]
+        ax_full = Axis(fig[1, i], 
+            title = L"$t$ = %$(round(time_value, digits=2))",
+            ylabel = i == 1 ? L"$x$" : "",
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=i==1 ? true : false,
+            yticksvisible=i==1 ? true : false,
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsize=25, yticklabelsize=25,
+            titlesize=30, 
+        )
+        ax_rom = Axis(fig[2, i], 
+            ylabel = i == 1 ? L"$x$" : "", 
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=i==1 ? true : false,
+            yticksvisible=i==1 ? true : false,
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsize=25, yticklabelsize=25,
+        )
+        ax_error = Axis(fig[3, i], 
+            ylabel = i == 1 ? L"$x$" : "", 
+            xlabel = L"$z$",
+            yticklabelsvisible=i==1 ? true : false,
+            yticksvisible=i==1 ? true : false,
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsize=25, yticklabelsize=25,
+        )
+
+        # Create heatmaps with aligned color ranges
+        xspan = ds.grid["x"]
+        zspan = ds.grid["z"]
+        hm_full = heatmap!(ax_full, zspan, xspan, all_full_data[i], 
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_rom = heatmap!(ax_rom, zspan, xspan, all_rom_data[i], 
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_error = heatmap!(ax_error, zspan, xspan, all_error_data[i], 
+            colormap = :matter, colorrange = (error_min, error_max))
+    end
     
+    # Add colorbars at the end of each row
+    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
+    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
+    save(joinpath(FILEPATH, "plots/sliced_magnetic.png"), fig)
     display(fig)
 end
 

@@ -107,7 +107,7 @@ for algo in algorithms
         # Incremental updates
         @showprogress for i in 2:n 
             tmp = @elapsed increment!(
-                brand, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
+                brand, preprocess!(ds[i], means, shifts, scales), 1e-10)
             push!(time_data, tmp)
         end
         
