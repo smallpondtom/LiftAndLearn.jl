@@ -56,7 +56,7 @@ end
 spectrum = Dict(fn => zeros(length(singular_values[fn])) for fn in ds.fields)
 target_r = Dict(fn => 0 for fn in ds.fields)
 
-target_energy = 0.85
+target_energy = 0.95
 for fld in ds.fields
     svals = singular_values[fld]
     spectrum[fld], target_r[fld] = check_energy_retainment(svals, target_energy)

@@ -18,7 +18,7 @@ DATAPATH = "../../../../DATA/THE_WELL/mhd64"
 train_files = readdir(DATAPATH, join=true)
 fn = train_files[1]
 X = load(joinpath(FILEPATH, "data/preprocessed_data.jld2"))["X"]["all"]
-V = load(joinpath(FILEPATH, "data/bases/basis.jld2"))["V"][:,1:300]
+V = load(joinpath(FILEPATH, "data/bases/basis.jld2"))["V"][:,1:50]
 
 # Include the data sourcing module for data access
 include(joinpath(FILEPATH, "datasource.jl"))
@@ -46,8 +46,8 @@ options = LnL.LSOpInfOption(
         deriv_type="FBCT4"
     ),
     use_backslash=true,
-    # use_normal_equations=false,
-    # use_svd_truncation=true,  # use SVD-based truncation
+    # use_normal_equations=true,
+    # use_svd_truncation=true,  
     # tolerance=1e-3,
 )
 
@@ -56,48 +56,42 @@ options = LnL.LSOpInfOption(
 #===================#
 CONTINUOUS_TIME = true
 # Compute the reduced data matrix
+Xtmp = V' * X
 if CONTINUOUS_TIME
     @info "Generate finite difference data for continuous-time "
     # Compute finite difference approximation
     Xhat = Vector{Matrix{Float64}}(undef, n_traj)
-    Xdot = Vector{Matrix{Float64}}(undef, n_traj)
     Xhatdot = Vector{Matrix{Float64}}(undef, n_traj)
     # Do it individually for each trajectory
     for i in 1:n_traj
         idx_start = (i-1) * n_time + 1
         idx_end = i * n_time
-        Xdot[i], idx = LnL.time_derivative_approx(
-            X[:, idx_start:idx_end], options
-        )
-        Xhat[i] = V' * X[:, idx_start:idx_end][:, idx]
-        Xhatdot[i] = V' * Xdot[i]
+        Xhatdot[i], idx = LnL.time_derivative_approx(
+            Xtmp[:, idx_start:idx_end], options)
+        Xhat[i] = Xtmp[:, idx_start:idx_end][:, idx]
     end
-
     Xhat = reduce(hcat, Xhat)
     Xhatdot = reduce(hcat, Xhatdot)
 else
     @info "Generate shifted data for discrete-time "
     # Shift the data for discrete-time data
     Xhat = Vector{Matrix{Float64}}(undef, n_traj)
-    Xdot = Vector{Matrix{Float64}}(undef, n_traj)
     Xhatdot = Vector{Matrix{Float64}}(undef, n_traj)
     # Do it individually for each trajectory
     for i in 1:n_traj
         idx_start = (i-1) * n_time + 1
         idx_end = i * n_time
-        Xhat[i] = X[:, idx_start:idx_end-1]
-        Xdot[i] = X[:, idx_start+1:idx_end]
-        Xhat[i] = V' * Xhat[i]
-        Xhatdot[i] = V' 
+        Xhat[i] = Xtmp[:, idx_start:idx_end-1]
+        Xhatdot[i] = Xtmp[:, idx_start+1:idx_end]
     end
-
     Xhat = reduce(hcat, Xhat)
     Xhatdot = reduce(hcat, Xhatdot)
 end
 
+
 ## Train the operators
-# options.with_reg = true
-# options.λ = LnL.TikhonovParameter(A=1e-9, A2=1e-9, K=1e-9)
+options.with_reg = true
+options.λ = LnL.TikhonovParameter(A=1e14, A2=1e14, A3=1e14, K=1e14)
 op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 ## Save the model
@@ -122,12 +116,12 @@ for i in 1:n_traj
     idx_end = i * n_time
     x0 = V' * X[:, idx_start:idx_end][:,1]
     if CONTINUOUS_TIME
-        Xrom[i] = rk4_integrate(x0, ds.grid["time"], op.A, op.A2u, op.K)
+        Xrom[i] = rk4_integrate(x0, ds.grid["time"], op.A, op.A2u, op.A3u, op.K)
     else
-        states = zeros(size(Xtmp,1), n_time)
+        states = zeros(size(V,2), n_time)
         states[:,1] = x0
         for j in 2:n_time
-            states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.K)
+            states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.A3u, op.K)
             if any(isnan.(states[:,j]))
                 @warn "NaN detected in trajectory $i at time step $j"
                 break
@@ -141,7 +135,7 @@ Xrom = reduce(hcat, Xrom)
 #=============================#
 ## Compute projection errors ##
 #=============================#
-## Original data (unscaled and uncentered)
+# Original data (unscaled and uncentered)
 shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
 scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
 mean   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
@@ -212,13 +206,29 @@ end
 using CairoMakie
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(1200, 900))
+    # Pick trajectory
+    traj_idx = 2
     # Get midpoint index for z-direction
     x_slice = nx ÷ 2
     y_slice = 1:ny
     z_slice = 1:nz
 
+    if x_slice isa Int 
+        axis_label = [L"$y$", L"$z$"] 
+        horz_span = ds.grid["y"]
+        vert_span = ds.grid["z"]
+    elseif y_slice isa Int
+        axis_label = [L"$x$", L"$z$"]
+        horz_span = ds.grid["x"]
+        vert_span = ds.grid["z"]
+    else
+        axis_label = [L"$x$", L"$y$"]
+        horz_span = ds.grid["x"]
+        vert_span = ds.grid["y"]
+    end
+
     # Select 3 time steps (beginning, middle, end)
-    time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time])
+    time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time-10])
 
     # Pre-calculate all data for colorbar scaling
     all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
@@ -231,11 +241,12 @@ with_theme(theme_latexfonts()) do
     # Collect all data first
     for (i, t_idx) in enumerate(time_indices)
         # Get full data
-        full_field = ds["rho"][:, :, :, t_idx, 1]
+        full_field = ds["rho"][:, :, :, t_idx, traj_idx]
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
-        Xrecon = V * Xrom[:, t_idx]
+        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
+        Xrecon = V * Xrom_traj
         Xrecon = Xrecon[1:nxyz]
         Xrecon = unscale(Xrecon, scale["rho"], shift["rho"])
         Xrecon = uncenter(Xrecon, mean["rho"])
@@ -267,52 +278,61 @@ with_theme(theme_latexfonts()) do
         time_value = ds.grid["time"][t_idx]
         ax_full = Axis(fig[1, i], 
             title = L"$t$ = %$(round(time_value, digits=2))",
-            ylabel = i == 1 ? L"$x$" : "",
+            ylabel = i == 1 ? axis_label[2] : "",
             xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # xticklabelsvisible=false, xticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
             titlesize=30, 
         )
         ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
+            ylabel = i == 1 ? axis_label[2] : "", 
             xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # xticklabelsvisible=false, xticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
         )
         ax_error = Axis(fig[3, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
-            xlabel = L"$z$",
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            ylabel = i == 1 ? axis_label[2] : "", 
+            xlabel = axis_label[1],
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
         )
 
         # Create heatmaps with aligned color ranges
-        xspan = ds.grid["x"]
-        zspan = ds.grid["z"]
-        hm_full = heatmap!(ax_full, zspan, xspan, all_full_data[i], 
+        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max),
             colorscale=log10)
-        hm_rom = heatmap!(ax_rom, zspan, xspan, all_rom_data[i], 
+        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max),
             colorscale=log10)
-        hm_error = heatmap!(ax_error, zspan, xspan, all_error_data[i], 
+        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
             colormap = :matter, colorrange = (error_min, error_max),
             colorscale=log10)
     end
     
     # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
+    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", 
+             labelsize=30, ticklabelsize=20)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", 
+             labelsize=30, ticklabelsize=20)
+    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
+             labelsize=30, ticklabelsize=20)
+    
     save(joinpath(FILEPATH, "plots/sliced_density.png"), fig)
     display(fig)
 end
+
 
 
 #===================================#
@@ -321,10 +341,26 @@ end
 using CairoMakie
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(1200, 900))
+    # Pick trajectory
+    traj_idx = 1
     # Get midpoint index for z-direction
     x_slice = nx ÷ 2
     y_slice = 1:ny
     z_slice = 1:nz
+
+    if x_slice isa Int 
+        axis_label = [L"$y$", L"$z$"] 
+        horz_span = ds.grid["y"]
+        vert_span = ds.grid["z"]
+    elseif y_slice isa Int
+        axis_label = [L"$x$", L"$z$"]
+        horz_span = ds.grid["x"]
+        vert_span = ds.grid["z"]
+    else
+        axis_label = [L"$x$", L"$y$"]
+        horz_span = ds.grid["x"]
+        vert_span = ds.grid["y"]
+    end
 
     # Select 3 time steps (beginning, middle, end)
     time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time])
@@ -340,16 +376,17 @@ with_theme(theme_latexfonts()) do
     # Collect all data first
     for (i, t_idx) in enumerate(time_indices)
         # Get full data
-        full_field = ds["z"][:, :, :, t_idx, 1]
+        full_field = ds["z"][:, :, :, t_idx, traj_idx]
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
-        Xrecon = V * Xrom[:, t_idx]
+        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
+        Xrecon = V * Xrom_traj
         Xrecon = Xrecon[1:nxyz]
         Xrecon = unscale(Xrecon, scale["z"], shift["z"])
         Xrecon = uncenter(Xrecon, mean["z"])
-        min_clip = minimum(abs.(Xrecon))
-        Xrecon = max.(Xrecon, min_clip)
+        # min_clip = minimum(abs.(Xrecon))
+        # Xrecon = max.(Xrecon, min_clip)
         rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
         all_rom_data[i] = rom_field[x_slice, y_slice, z_slice]
 
@@ -376,41 +413,43 @@ with_theme(theme_latexfonts()) do
         time_value = ds.grid["time"][t_idx]
         ax_full = Axis(fig[1, i], 
             title = L"$t$ = %$(round(time_value, digits=2))",
-            ylabel = i == 1 ? L"$x$" : "",
+            ylabel = i == 1 ? axis_label[2] : "",
             xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
             titlesize=30, 
         )
         ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
+            ylabel = i == 1 ? axis_label[2] : "", 
             xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
         )
         ax_error = Axis(fig[3, i], 
             ylabel = i == 1 ? L"$x$" : "", 
-            xlabel = L"$z$",
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            xlabel = axis_label[1],
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
         )
 
         # Create heatmaps with aligned color ranges
-        xspan = ds.grid["x"]
-        zspan = ds.grid["z"]
-        hm_full = heatmap!(ax_full, zspan, xspan, all_full_data[i], 
+        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max),
             colorscale=log10)
-        hm_rom = heatmap!(ax_rom, zspan, xspan, all_rom_data[i], 
+        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max),
             colorscale=log10)
-        hm_error = heatmap!(ax_error, zspan, xspan, all_error_data[i], 
+        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
             colormap = :matter, colorrange = (error_min, error_max),
             colorscale=log10)
     end
@@ -431,10 +470,26 @@ end
 using CairoMakie
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(1200, 900))
+    # Pick trajectory
+    traj_idx = 2
     # Get midpoint index for z-direction
     x_slice = 1:nx
     y_slice = ny ÷ 2
     z_slice = 1:nz
+
+    if x_slice isa Int 
+        axis_label = [L"$y$", L"$z$"] 
+        horz_span = ds.grid["y"]
+        vert_span = ds.grid["z"]
+    elseif y_slice isa Int
+        axis_label = [L"$x$", L"$z$"]
+        horz_span = ds.grid["x"]
+        vert_span = ds.grid["z"]
+    else
+        axis_label = [L"$x$", L"$y$"]
+        horz_span = ds.grid["x"]
+        vert_span = ds.grid["y"]
+    end
 
     # Select 3 time steps (beginning, middle, end)
     time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time])
@@ -458,11 +513,12 @@ with_theme(theme_latexfonts()) do
     end
     for (i, t_idx) in enumerate(time_indices)
         # Get full data
-        full_field = ds[momentum][1, :, :, :, t_idx, 1]
+        full_field = ds[momentum][1, :, :, :, t_idx, traj_idx]
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
-        Xrecon = V * Xrom[:, t_idx]
+        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
+        Xrecon = V * Xrom_traj
         Xrecon = Xrecon[start_idx:end_idx]
         Xrecon = unscale(Xrecon, scale[momentum], shift[momentum])
         Xrecon = uncenter(Xrecon, mean[momentum])
@@ -492,39 +548,41 @@ with_theme(theme_latexfonts()) do
         time_value = ds.grid["time"][t_idx]
         ax_full = Axis(fig[1, i], 
             title = L"$t$ = %$(round(time_value, digits=2))",
-            ylabel = i == 1 ? L"$x$" : "",
+            ylabel = i == 1 ? axis_label[2] : "",
             xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
             titlesize=30, 
         )
         ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
+            ylabel = i == 1 ? axis_label[2] : "", 
             xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
         )
         ax_error = Axis(fig[3, i], 
             ylabel = i == 1 ? L"$x$" : "", 
-            xlabel = L"$z$",
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            xlabel = axis_label[1],
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
         )
 
         # Create heatmaps with aligned color ranges
-        xspan = ds.grid["x"]
-        zspan = ds.grid["z"]
-        hm_full = heatmap!(ax_full, zspan, xspan, all_full_data[i], 
+        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max))
-        hm_rom = heatmap!(ax_rom, zspan, xspan, all_rom_data[i], 
+        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max))
-        hm_error = heatmap!(ax_error, zspan, xspan, all_error_data[i], 
+        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
             colormap = :matter, colorrange = (error_min, error_max))
     end
     
@@ -543,10 +601,26 @@ end
 using CairoMakie
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(1200, 900))
+    # Pick trajectory
+    traj_idx = 2
     # Get midpoint index for z-direction
     x_slice = 1:nx
     y_slice = ny ÷ 2
     z_slice = 1:nz
+
+    if x_slice isa Int 
+        axis_label = [L"$y$", L"$z$"] 
+        horz_span = ds.grid["y"]
+        vert_span = ds.grid["z"]
+    elseif y_slice isa Int
+        axis_label = [L"$x$", L"$z$"]
+        horz_span = ds.grid["x"]
+        vert_span = ds.grid["z"]
+    else
+        axis_label = [L"$x$", L"$y$"]
+        horz_span = ds.grid["x"]
+        vert_span = ds.grid["y"]
+    end
 
     # Select 3 time steps (beginning, middle, end)
     time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time])
@@ -570,11 +644,12 @@ with_theme(theme_latexfonts()) do
     end
     for (i, t_idx) in enumerate(time_indices)
         # Get full data
-        full_field = ds[magnetic][1, :, :, :, t_idx, 1]
+        full_field = ds[magnetic][1, :, :, :, t_idx, traj_idx]
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
-        Xrecon = V * Xrom[:, t_idx]
+        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
+        Xrecon = V * Xrom_traj
         Xrecon = Xrecon[start_idx:end_idx]
         Xrecon = unscale(Xrecon, scale[magnetic], shift[magnetic])
         Xrecon = uncenter(Xrecon, mean[magnetic])
@@ -604,39 +679,41 @@ with_theme(theme_latexfonts()) do
         time_value = ds.grid["time"][t_idx]
         ax_full = Axis(fig[1, i], 
             title = L"$t$ = %$(round(time_value, digits=2))",
-            ylabel = i == 1 ? L"$x$" : "",
+            ylabel = i == 1 ? axis_label[2] : "",
             xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
             titlesize=30, 
         )
         ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
+            ylabel = i == 1 ? axis_label[2] : "", 
             xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
         )
         ax_error = Axis(fig[3, i], 
             ylabel = i == 1 ? L"$x$" : "", 
-            xlabel = L"$z$",
-            yticklabelsvisible=i==1 ? true : false,
-            yticksvisible=i==1 ? true : false,
+            xlabel = axis_label[1],
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+            # yticklabelsvisible=i==1 ? true : false,
+            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            xticklabelsize=25, yticklabelsize=25,
+            # xticklabelsize=25, yticklabelsize=25,
         )
 
         # Create heatmaps with aligned color ranges
-        xspan = ds.grid["x"]
-        zspan = ds.grid["z"]
-        hm_full = heatmap!(ax_full, zspan, xspan, all_full_data[i], 
+        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max))
-        hm_rom = heatmap!(ax_rom, zspan, xspan, all_rom_data[i], 
+        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max))
-        hm_error = heatmap!(ax_error, zspan, xspan, all_error_data[i], 
+        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
             colormap = :matter, colorrange = (error_min, error_max))
     end
     
@@ -648,9 +725,9 @@ with_theme(theme_latexfonts()) do
     display(fig)
 end
 
-#===========================#
-## Create video (pressure) ##
-#===========================#
+#==========================#
+## Create video (density) ##
+#==========================#
 with_theme(theme_latexfonts()) do
     fig = Figure(fontsize=20, size=(1900,700))
     ax1 = Axis(fig[1, 1], xlabel=L"x", ylabel=L"y",
@@ -670,7 +747,7 @@ with_theme(theme_latexfonts()) do
     hidespines!(ax2)
     hidespines!(ax3)
 
-    Xtmp = ds["p"][:, :, :, 1:n_time, 1] # pressure field data
+    Xtmp = ds["rho"][:, :, :, 1:n_time, 1] # pressure field data
     xspan = ds.grid["x"]
     yspan = ds.grid["y"]
     zspan = ds.grid["z"]
@@ -680,9 +757,9 @@ with_theme(theme_latexfonts()) do
                    colorscale=log10, colorrange=(extrema(Xtmp[:,:,mid,:])))
     hm2 = heatmap!(ax2, yspan, zspan, Xtmp[mid,:,:,1], colormap=:plasma, colorscale=log10)
     hm3 = heatmap!(ax3, xspan, zspan, Xtmp[:,mid,:,1], colormap=:plasma, colorscale=log10)
-    cb = Colorbar(fig[1, 4], hm1, label=L"pressure$$", labelsize=40, ticklabelsize=15)
+    cb = Colorbar(fig[1, 4], hm1, label=L"density$$", labelsize=40, ticklabelsize=15)
     tight_ticklabel_spacing!(cb)
-    record(fig, joinpath(FILEPATH, "plots/pressure_dist.mp4"), 1:n_time) do i
+    record(fig, joinpath(FILEPATH, "plots/density_dist.mp4"), 1:n_time) do i
         hm1[3] = Xtmp[:,:,mid,i]
         hm2[3] = Xtmp[mid,:,:,i]
         hm3[3] = Xtmp[:,mid,:,i]
@@ -692,9 +769,9 @@ with_theme(theme_latexfonts()) do
     end
 end
 
-#==========================================#
-## Create video Reconstruction (pressure) ##
-#==========================================#
+#=========================================#
+## Create video Reconstruction (density) ##
+#=========================================#
 with_theme(theme_latexfonts()) do
     fig = Figure(fontsize=20, size=(1900,700))
     ax1 = Axis(fig[1, 1], xlabel=L"x", ylabel=L"y",
@@ -716,8 +793,8 @@ with_theme(theme_latexfonts()) do
 
     Xtmp = V * Xrom[:, 1:n_time]
     Xtmp = Xtmp[1:nxyz, :] # pressure field data
-    Xtmp = unscale(Xtmp, scale["p"], shift["p"])
-    Xtmp = uncenter(Xtmp, mean["p"])
+    Xtmp = unscale(Xtmp, scale["rho"], shift["rho"])
+    Xtmp = uncenter(Xtmp, mean["rho"])
     Xtmp = reshape(Xtmp, nx, ny, nz, n_time)
     min_clip = minimum(abs.(Xtmp))
     Xtmp = max.(Xtmp, min_clip)
@@ -732,9 +809,9 @@ with_theme(theme_latexfonts()) do
                    colorscale=log10)
     hm3 = heatmap!(ax3, xspan, zspan, Xtmp[:,mid,:,1], colormap=:plasma, 
                    colorscale=log10)
-    cb = Colorbar(fig[1, 4], hm1, label=L"pressure$$", labelsize=40, ticklabelsize=15)
+    cb = Colorbar(fig[1, 4], hm1, label=L"density$$", labelsize=40, ticklabelsize=15)
     tight_ticklabel_spacing!(cb)
-    record(fig, joinpath(FILEPATH, "plots/rom_pressure_dist.mp4"), 1:n_time) do i
+    record(fig, joinpath(FILEPATH, "plots/rom_density_dist.mp4"), 1:n_time) do i
         hm1[3] = Xtmp[:,:,mid,i]
         hm2[3] = Xtmp[mid,:,:,i]
         hm3[3] = Xtmp[:,mid,:,i]

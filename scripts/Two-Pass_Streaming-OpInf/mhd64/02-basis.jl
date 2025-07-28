@@ -34,16 +34,39 @@ n = n_time * n_traj
 ## Compute the POD bases ##
 #=========================#
 FIELD_WISE = false
+MERGING = false
 # Load the target ranks 
 target_r = load(joinpath(FILEPATH, "data/target_ranks.jld2"))["target_ranks"]
-extra_ranks = 10
+extra_ranks = 0
 
 if FIELD_WISE
     @info "Computing POD basis field-wise"
-    V = BlockDiagonal([
-        svd(X[fld]).U[:, 1:target_r[fld]+extra_ranks]
+    if MERGING
+        @info "Merging POD bases of all fields"
+        Z = Array[]
+        Vs = Array[]
+        target_r_mean = ceil(Int, sum(values(target_r)) / length(ds.fields))
         for fld in ds.fields
-    ])
+            V, S, W = svd(X[fld])
+            push!(Z, S[1:target_r_mean+extra_ranks] .* W[:, 1:target_r_mean+extra_ranks]')
+            push!(Vs, V[:, 1:target_r_mean+extra_ranks])
+        end
+        Z = reduce(vcat, Z)
+        L, _ = lq(Z)
+        Vl = svd(L).U 
+        r_sum = 0
+        for i in eachindex(Vs)
+            tmp = Vs[i] * Vl[r_sum+1:r_sum+size(Vs[i],2), :]
+            r_sum += size(Vs[i], 2)
+            Vs[i] = tmp
+        end
+        V = reduce(vcat, Vs)
+    else
+        V = BlockDiagonal([
+            svd(X[fld]).U[:, 1:target_r[fld]+extra_ranks]
+            for fld in ds.fields
+        ])
+    end
 else
     @info "Computing POD basis for all fields combined"
     V = svd(X["all"]).U[:, 1:min(sum(values(target_r))+extra_ranks*length(ds.fields), n)]
@@ -76,7 +99,10 @@ tmp = norm(X_perp, 2) / norm(X["all"], 2)
 rpe_processed["all"] = tmp
 println("Overall projection error: $(tmp)")
 
-## Original data (unscaled and uncentered)
+#=================================#
+## Compute reconstruction errors ##
+#=================================#
+# Original data (unscaled and uncentered)
 X_orig = load(joinpath(FILEPATH, "data/original_data.jld2"))["X"]
 shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
 scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
