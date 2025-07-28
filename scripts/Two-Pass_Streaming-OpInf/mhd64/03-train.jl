@@ -455,9 +455,12 @@ with_theme(theme_latexfonts()) do
     end
     
     # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
+    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", 
+             labelsize=30, ticklabelsize=20)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", 
+             labelsize=30, ticklabelsize=20)
+    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
+             labelsize=30, ticklabelsize=20)
     save(joinpath(FILEPATH, "plots/sliced_volume.png"), fig)
     display(fig)
 end
@@ -471,7 +474,7 @@ using CairoMakie
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(1200, 900))
     # Pick trajectory
-    traj_idx = 2
+    traj_idx = 1
     # Get midpoint index for z-direction
     x_slice = 1:nx
     y_slice = ny ÷ 2
@@ -587,9 +590,12 @@ with_theme(theme_latexfonts()) do
     end
     
     # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
+    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", 
+             labelsize=30, ticklabelsize=20)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", 
+             labelsize=30, ticklabelsize=20)
+    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
+             labelsize=30, ticklabelsize=20)
     save(joinpath(FILEPATH, "plots/sliced_momentum.png"), fig)
     display(fig)
 end
@@ -718,9 +724,12 @@ with_theme(theme_latexfonts()) do
     end
     
     # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
+    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", 
+             labelsize=30, ticklabelsize=20)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", 
+             labelsize=30, ticklabelsize=20)
+    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
+             labelsize=30, ticklabelsize=20)
     save(joinpath(FILEPATH, "plots/sliced_magnetic.png"), fig)
     display(fig)
 end
