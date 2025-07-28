@@ -289,6 +289,75 @@ function solve_iterative_tikhonov(A::AbstractMatrix{T},
     return O
 end
 
+
+"""
+Efficient SVD-based solver for scalar regularization (Γ = λI).
+Equivalent to the Python lstsq_l2_numpy implementation.
+"""
+function solve_svd_scalar_regularization(A::AbstractMatrix{T}, 
+                                         b::AbstractArray{T}, 
+                                         λ::T,
+                                         solver::TikhonovSolver{T}) where T
+    try
+        # Compute SVD of A
+        U, σ, V = svd(A)
+        
+        # Compute regularized inverse of singular values
+        σ_inv = σ ./ (σ.^2 .+ λ^2)
+        
+        # Efficient computation: V * (σ_inv .* (U' * b))
+        # This is equivalent to: V * Diagonal(σ_inv) * U' * b
+        x = V * (σ_inv .* (U' * b))
+        
+        # Optionally compute residual for diagnostics
+        if solver.tolerance > 0  # Use tolerance flag to indicate if residual is needed
+            b_estimate = A * x
+            residual = norm(b - b_estimate)
+            @info "L2 regularized solution residual: $residual"
+        end
+        
+        return x
+        
+    catch e
+        if isa(e, OutOfMemoryError)
+            @warn "Out of memory in SVD scalar regularization. Falling back to normal form."
+            # Fall back to normal form with scalar regularization
+            n = size(A, 2)
+            Γ_scalar = λ * I(n)
+            return solve_normal_form(A, b, Γ_scalar, solver)
+        else
+            rethrow(e)
+        end
+    end
+end
+
+"""
+Check if Γ is a scalar multiple of identity matrix.
+Returns (is_scalar, scalar_value) where is_scalar is boolean
+and scalar_value is the diagonal value if is_scalar is true.
+"""
+function is_scalar_regularization(Γ::AbstractMatrix{T}) where T
+    n = size(Γ, 1)
+    
+    # Check if it's diagonal
+    if !isdiag(Γ)
+        return false, zero(T)
+    end
+    
+    # Get diagonal values
+    diag_vals = diag(Γ)
+    
+    # Check if all diagonal values are equal (within tolerance)
+    first_val = diag_vals[1]
+    tol = 1e-14 * abs(first_val)  # Relative tolerance
+    
+    if all(abs.(diag_vals .- first_val) .<= tol)
+        return true, first_val
+    else
+        return false, zero(T)
+    end
+end
+
 """
     solve_svd_truncation(A, b, Γ, solver)
 
@@ -298,6 +367,14 @@ function solve_svd_truncation(A::AbstractMatrix{T},
                               b::AbstractArray{T}, 
                               Γ::AbstractMatrix{T}, 
                               solver::TikhonovSolver{T}) where T
+    # Check if Γ is scalar regularization
+    is_scalar, λ = is_scalar_regularization(Γ)
+    
+    if is_scalar && λ > 0
+        @info "Detected scalar regularization (Γ = $(λ)I). Using efficient SVD method."
+        return solve_svd_scalar_regularization(A, b, sqrt(λ), solver)
+    end
+
     try 
         n = size(A,2)
         p = size(b,2)
