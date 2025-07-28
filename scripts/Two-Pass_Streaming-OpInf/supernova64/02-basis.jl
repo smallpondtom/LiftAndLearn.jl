@@ -36,7 +36,7 @@ n = n_time * n_traj
 FIELD_WISE = false
 # Load the target ranks 
 target_r = load(joinpath(FILEPATH, "data/target_ranks.jld2"))["target_ranks"]
-extra_ranks = 10
+extra_ranks = 0
 
 if FIELD_WISE
     @info "Computing POD basis field-wise"

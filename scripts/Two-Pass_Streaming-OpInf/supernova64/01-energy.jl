@@ -53,7 +53,7 @@ function check_energy_retainment(svals, target=0.999)
     return energy_ret, r
 end
 
-spectrum = Dict(fn => zeros(length(sp)) for fn in ds.fields)
+spectrum = Dict(fn => zeros(length(singular_values[fn])) for fn in ds.fields)
 target_r = Dict(fn => 0 for fn in ds.fields)
 
 target_energy = 0.99
