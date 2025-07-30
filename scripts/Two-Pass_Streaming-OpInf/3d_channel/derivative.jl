@@ -1,49 +1,4 @@
 """
-    f(x, u, A, A2u, B)
-
-ODE function.
-"""
-function f(x, u, A, A2u, B)
-    return A * x + A2u * (x ⊘ x) + B * u
-end
-
-"""
-    rk4_step(x, u, dt, A, A2u, B)
-
-Perform a single RK4 step. 
-"""
-function rk4_step(x, u, dt, A, A2u, B)
-    k1 = f(x, u, A, A2u, B)
-    k2 = f(x + (dt/2) * k1, u, A, A2u, B)
-    k3 = f(x + (dt/2) * k2, u, A, A2u, B)
-    k4 = f(x + dt * k3, u, A, A2u, B)
-    return x + dt / 6 * (k1 + 2*k2 + 2*k3 + k4)
-end
-
-"""
-    rk4_integrate(x0, Uinput, tspan, A, A2u, B)
-
-Integrate the ODE using the RK4 method over a specified time span.
-"""
-function rk4_integrate(x0, Uinput, tspan, A, A2u, B)
-    N = length(tspan)  # number of time points
-    n = length(x0)     # dimension of the state
-    xs = zeros(n, N)
-    xs[:, 1] = x0
-    for i in 1:(N-1)
-        x = xs[:,i]
-        u = Uinput[i]
-        dt = tspan[i+1] - tspan[i]
-        k1 = f(x, u, A, A2u, B)
-        k2 = f(x + (dt/2)*k1, u, A, A2u, B)
-        k3 = f(x + (dt/2)*k2, u, A, A2u, B)
-        k4 = f(x + dt*k3, u, A, A2u, B)
-        xs[:, i+1] .= x + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
-    end
-    return xs
-end
-
-"""
 fwd4(xs, dt)
 
 Forward 4th order finite difference time derivative estimation.

@@ -38,6 +38,7 @@ include(joinpath(FILEPATH, "datasource.jl"))
 include(joinpath(FILEPATH, "derivative.jl"))
 include(joinpath(FILEPATH, "../utilities/extract_operators.jl"))
 include(joinpath(FILEPATH, "../utilities/interpolate.jl"))
+include(joinpath(FILEPATH, "preprocess.jl"))
 
 #=============================#
 ## Load the training dataset
@@ -99,19 +100,28 @@ dim_per_field = Nz * Ny * Nx
 
 # h.(1:16)
 
-#==========================#
-## Load the mean velocity
-#==========================#
-xbar = load(joinpath(FILEPATH, "data/streaming/mean.jld2"))["xbar"]
-# minmax = load(joinpath(FILEPATH, "data/streaming/minmax.jld2"))["minmax"]
-# xbar = minmax["xbar"]
-# scale_factors = minmax["scale_factors"]
-# minmax = nothing
 
-dPdx = 0.001722
-# scale_factors = [sqrt(dPdx), sqrt(dPdx), sqrt(dPdx), dPdx]
-# scale_factors = [1.0, 0.1, 0.01]
-scale_factors = [1.0, 0.01, 0.01, dPdx]
+#============================#
+## Load the mean and scaling
+#============================#
+means  = load(joinpath(FILEPATH, "data/mean.jld2"))["xbar"]
+shifts = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["shifts"]
+scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
+
+
+# #==========================#
+# ## Load the mean velocity
+# #==========================#
+# xbar = load(joinpath(FILEPATH, "data/streaming/mean.jld2"))["xbar"]
+# # minmax = load(joinpath(FILEPATH, "data/streaming/minmax.jld2"))["minmax"]
+# # xbar = minmax["xbar"]
+# # scale_factors = minmax["scale_factors"]
+# # minmax = nothing
+
+# dPdx = 0.001722
+# # scale_factors = [sqrt(dPdx), sqrt(dPdx), sqrt(dPdx), dPdx]
+# # scale_factors = [1.0, 0.1, 0.01]
+# scale_factors = [1.0, 0.01, 0.01, dPdx]
 
 ##
 # ubar = sum(abs, xbar[1:dim_per_field]) / dim_per_field
@@ -136,28 +146,27 @@ options = LnL.LSOpInfOption(
         verbose=true,
     ),
     use_backslash=true,
-    # use_svd_truncation=false,
+    # use_svd_truncation=true,
     # tolerance=1e-22
 )
-save(joinpath(FILEPATH, "data/setup.jld2"), 
-    "options", options,
-    "3dchannel", Dict(
-        "Nx" => Nx, "Ny" => Ny, "Nz" => Nz, "n" => n, 
-        "xspan" => ds["x"][:], 
-        "yspan" => ds["y"][:],
-        "zspan" => ds["z"][:],
-        "tspan" => ds["times"][:]
-    )
-)
-rmax = 500
+# save(joinpath(FILEPATH, "data/setup.jld2"), 
+#     "options", options,
+#     "3dchannel", Dict(
+#         "Nx" => Nx, "Ny" => Ny, "Nz" => Nz, "n" => n, 
+#         "xspan" => ds["x"][:], 
+#         "yspan" => ds["y"][:],
+#         "zspan" => ds["z"][:],
+#         "tspan" => ds["times"][:]
+#     )
+# )
+rmax = 300
 
 #=================#
 ## Load the bases 
 #=================#
 # Standard basis
-basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
-basis_data = load(basis_file)
-iVrmax = basis_data["bases"]["baker"].iVr[:, 1:rmax]
+basis_file = joinpath(FILEPATH, "data/bases/basis.jld2")
+iVrmax = load(basis_file)["bases"]["baker"].iVr[:, 1:rmax]
 
 # Fieldwise basis
 # basis_file = joinpath(FILEPATH, "data/streaming/basis_fieldwise.jld2")
@@ -177,14 +186,16 @@ iVrmax = basis_data["bases"]["baker"].iVr[:, 1:rmax]
 #=========================#
 ## Load reduced data
 #=========================#
-Xhat = load(joinpath(FILEPATH, "data/streaming/reduced_data_discrete_r$(rmax).jld2"))["Xhat"]
-# Xhatdot = load(joinpath(FILEPATH, "data/streaming/reduced_data.jld2"))["Xhatdot"]
-Xhat2 = Xhat[:, 2:end]
-Xhat1 = Xhat[:, 1:end-1]  
-# U = load(joinpath(FILEPATH, "data/streaming/reduced_data.jld2"))["U"]
-# U = ones(size(Xhat1,2))
-
-size(Xhat1,1) != rmax && @warn "Xhat has a different number of \
+CONTINUOUS_TIME = false
+if CONTINUOUS_TIME
+    Xhat = load(joinpath(FILEPATH, "data/streaming/reduced_data_r$(rmax).jld2"))["Xhat"]
+    Xhatdot = load(joinpath(FILEPATH, "data/streaming/reduced_data_r$(rmax).jld2"))["Xhatdot"]
+else
+    Xhat = load(joinpath(FILEPATH, "data/streaming/reduced_data_r$(rmax).jld2"))["Xhat"]
+    Xhatdot = Xhat[:, 1:end-1]  
+    Xhat = Xhat[:, 2:end]
+end
+size(Xhat,1) != rmax && @warn "Xhat has a different number of \
     rows than the basis. This might lead to unexpected results."
 
 #=========================#
@@ -192,7 +203,7 @@ size(Xhat1,1) != rmax && @warn "Xhat has a different number of \
 #=========================#
 # OpInf
 options.with_reg = false
-op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
+op_inf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 ##
 # ops = Dict("opinf" => op_inf)
@@ -201,8 +212,8 @@ op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
 
 ## Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e-12, A2=1e-6, K=1e-8)
-op_inf = LnL.opinf(Xhat1, options; Xhatdot=Xhat2)
+options.λ = LnL.TikhonovParameter(A=1e12, A2=1e12, K=1e12)
+op_inf = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 ##
 save(joinpath(FILEPATH, "data/models", "operators_tol1e-12.jld2"), 
@@ -658,7 +669,7 @@ reduced_model = (x) -> op_inf.A * x + op_inf.A2u * (x ⊘ x) + op_inf.K
 ##
 tspan = ds["times"][:] .- ds["times"][1]
 states = zeros(rmax, length(tspan))
-states[:,1] = Xhat1[:,1]
+states[:,1] = Xhat[:,1]
 for i in 2:length(tspan)
     states[:,i] = reduced_model(states[:,i-1])
     if any(isnan.(states[:, i]))
@@ -690,7 +701,7 @@ with_theme(theme_latexfonts()) do
         
         # Get ROM data
         x_rom_t = iVrmax * states[:, t_idx]
-        x_rom_t = unscale(x_rom_t, dim_per_field, scale_factors) + xbar
+        x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
         u_rom_field = reshape(x_rom_t[1:dim_per_field], Nx, Ny, Nz)
         all_rom_data[i] = u_rom_field[:, :, z_mid]
 
