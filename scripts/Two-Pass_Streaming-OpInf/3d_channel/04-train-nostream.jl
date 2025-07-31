@@ -208,24 +208,6 @@ best_beta1, best_beta2, best_train_err, op_trinf, eval_time, fidx =
                           n, Int(n+(n // 10)), max_growth, options)
 
 
-# #====================================#
-# ## Simulate the reduced model
-# #====================================#
-# reduced_model = (x) -> op_inf.A * x + op_inf.A2u * (x ⊘ x) + op_inf.K
-
-# ##
-# tspan = ds["times"][:] .- ds["times"][1]
-# states = zeros(rmax, length(tspan))
-# states[:,1] = Xhat[:,1]
-# for i in 2:length(tspan)
-#     states[:,i] = reduced_model(states[:,i-1])
-#     if any(isnan.(states[:, i]))
-#         @info "Reduced model produced NaN at time step $i"
-#         break
-#     end
-# end
-
-
 #================#
 ## Simulate ROM ##
 #================#
