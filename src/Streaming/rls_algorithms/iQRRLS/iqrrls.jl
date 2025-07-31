@@ -272,7 +272,8 @@ function iqrrls_qr!(obj::iQRRLSCache{T}, d::AbstractArray{T},
     @views mul!(A[2:end, 2:end], obj.Psq', LinearAlgebra.I, T(1)/λsq, T(0))
 
     # Perform in-place QR factorization of A without storing Q
-    LAPACK.geqrf!(A)  
+    qr!(A) # this is slightly faster
+    # LAPACK.geqrf!(A)  
 
     # Extract Csq_inv and gCsq_inv
     Csq_inv = A[1,1]

@@ -88,7 +88,8 @@ function qrrls!(obj::QRRLSCache{T}, d::AbstractArray{T},
 
     # Perform in-place QR factorization of A (we want the R matrix)
     if obj.mthd == :qr
-        LAPACK.geqrf!(A)  
+        qr!(A)  # This is slightly faster than LAPACK.geqrf!
+        # LAPACK.geqrf!(A)  
     else # Givens rotations
         qr_givens!(A)
     end
