@@ -17,11 +17,11 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-DATAPATH = "../../../../../DATA/NREL/3D_CHANNEL"
+DATAPATH = "../../../../../DATA/NREL/ABL"
 FILEPATH = occursin("scripts", pwd()) ? 
-           joinpath(pwd(),"Two-Pass_Streaming-OpInf/3d_channel") : 
-           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel")
-fn = "channel_5200_data_0_10000.h5"
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/ABL") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/ABL")
+fn = "ABL_0_10000.h5"
 datafile = joinpath(DATAPATH, fn)
 
 #==========================================#
