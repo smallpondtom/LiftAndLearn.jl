@@ -2,57 +2,144 @@
 Cache for inverse-QR RLS via square-root updates, with vectorized loops.
 Maintains lower-triangular Psq = Cholesky factor of P^{-1}.
 """
-mutable struct iQRRLSCache{T<:Real}
-    N::Int                             # number of features
-    n::Int                             # dimension of response
-    λ::T                               # forgetting factor
-    O::Matrix{T}                       # operator matrix (N×n)
-    Psq::LowerTriangular{T,Matrix{T}}  # lower-triangular sqrt-inverse correlation (N×N)
-    u::Array{T}                        # temporary (N)
-    K::Matrix{T}                       # Kalman gain (N×1)
-    ξpre::Matrix{T}                    # a priori error (1×n)
-    ξpost::Matrix{T}                   # a posteriori error (1×n)
-    A::Matrix{T}                       # temporary matrix for QR fact. ((N+1)×(N+1)) or NxN
-    temp_dO::Union{T,Matrix{T}}        # temporary for d * O (1×n)
-    temp_Ke::Matrix{T}                 # temporary for K * ξpre (N×n)
-    C::T                               # Conversion factor (scalar)
-    J::T                               # cost
-    mthd::Symbol                       # method used for updates, default is :qr
+# mutable struct iQRRLSCache{T<:Real}
+#     N::Int                             # number of features
+#     n::Int                             # dimension of response
+#     λ::T                               # forgetting factor
+#     O::Matrix{T}                       # operator matrix (N×n)
+#     Psq::LowerTriangular{T,Matrix{T}}  # lower-triangular sqrt-inverse correlation (N×N)
+#     u::Array{T}                        # temporary (N)
+#     K::Matrix{T}                       # Kalman gain (N×1)
+#     ξpre::Matrix{T}                    # a priori error (1×n)
+#     ξpost::Matrix{T}                   # a posteriori error (1×n)
+#     A::Matrix{T}                       # temporary matrix for QR fact. ((N+1)×(N+1)) or NxN
+#     temp_dO::Union{T,Matrix{T}}        # temporary for d * O (1×n)
+#     temp_Ke::Matrix{T}                 # temporary for K * ξpre (N×n)
+#     C::T                               # Conversion factor (scalar)
+#     J::T                               # cost
+#     mthd::Symbol                       # method used for updates, default is :qr
+# end
+
+
+# -----------------------------------------------------------------------------
+# Extended iQRRLSCache with GPU support
+# -----------------------------------------------------------------------------
+mutable struct iQRRLSCache{T<:AbstractFloat}
+    N::Int                     # number of features
+    n::Int                     # output dimension
+    λ::T                       # forgetting factor
+
+    O::Union{Matrix{T},CuArray{T,2}}                    # operator matrix (N×n)
+    Psq::Union{LowerTriangular{T,<:AbstractMatrix{T}}}  # sqrt inv-cov
+    u::Union{Vector{T},CuArray{T,1}}                    # temp vector (N)
+    K::Union{Matrix{T},CuArray{T,2}}                    # Kalman gain (N×1)
+    ξpre::Union{Matrix{T},CuArray{T,2}}                 # a priori error (1×n)
+    ξpost::Union{Matrix{T},CuArray{T,2}}                # a posteriori error (1×n)
+    A::Union{Matrix{T},CuArray{T,2}}                    # temp QR matrix ((N+1)×(N+1))
+    temp_dO::Union{Matrix{T},CuArray{T,2}}              # temp for d*O (1×n)
+    temp_Ke::Union{Matrix{T},CuArray{T,2}}              # temp for K*ξpre (N×n)
+
+    C::T                       # conversion factor
+    J::T                       # cumulative cost
+    mthd::Symbol               # :qr or :givens
+    use_gpu::Bool              # flag to run on GPU
+    tau                        # workspace for cuSOLVER.geqrf! (length N+1)
 end
 
 """
 Constructor: initialize all fields and wrap Psq via LowerTriangular.
 """
-function iQRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T), 
-                         Psq::AbstractMatrix=Matrix{T}(I, N, N),
-                         method::Symbol=:qr) where T<:Real
-    λ       = T(λ)
-    Psq_T   = convert(AbstractMatrix{T}, Psq)
+# function iQRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T), 
+#                          Psq::AbstractMatrix=Matrix{T}(I, N, N),
+#                          method::Symbol=:qr) where T<:Real
+#     λ       = T(λ)
+#     Psq_T   = convert(AbstractMatrix{T}, Psq)
 
-    O       = zeros(T,N,n)
-    Psq     = LowerTriangular(Psq_T)
-    u       = zeros(T, N, 1)
-    K       = zeros(T, N, 1)
-    ξpre    = zeros(T, 1, n)
-    ξpost   = zeros(T, 1, n)
-    A       = method == :qr ? zeros(T, N+1, N+1) : zeros(T, N, N)
-    temp_dO = zeros(T, 1, n)
-    temp_Ke = zeros(T, N, n)
-    C       = zero(T)
-    J       = zero(T)
-    method  = method in (:givens, :qr) ? method : :qr
-    return iQRRLSCache{T}(N, n, λ, O, Psq, u, K, ξpre,  
-                          ξpost, A, temp_dO, temp_Ke, C, J, method)
+#     O       = zeros(T,N,n)
+#     Psq     = LowerTriangular(Psq_T)
+#     u       = zeros(T, N, 1)
+#     K       = zeros(T, N, 1)
+#     ξpre    = zeros(T, 1, n)
+#     ξpost   = zeros(T, 1, n)
+#     A       = method == :qr ? zeros(T, N+1, N+1) : zeros(T, N, N)
+#     temp_dO = zeros(T, 1, n)
+#     temp_Ke = zeros(T, N, n)
+#     C       = zero(T)
+#     J       = zero(T)
+#     method  = method in (:givens, :qr) ? method : :qr
+#     return iQRRLSCache{T}(N, n, λ, O, Psq, u, K, ξpre,  
+#                           ξpost, A, temp_dO, temp_Ke, C, J, method)
+# end
+
+
+# -----------------------------------------------------------------------------
+# GPU‐aware constructor
+# -----------------------------------------------------------------------------
+function iQRRLSCache{T}(;
+    N::Int=1,
+    n::Int=1,
+    λ::T=one(T),
+    Psq::AbstractMatrix=Matrix{T}(I, N, N),
+    method::Symbol=:qr,
+    use_gpu::Bool=false
+) where T<:AbstractFloat
+    λ = T(λ)
+    # allocate on GPU or CPU
+    if use_gpu
+        O       = CUDA.zeros(T, N, n)
+        Psq_dat = CUDA.CuArray(Psq)
+        Psq     = LowerTriangular(Psq_dat)
+        u       = CUDA.zeros(T, N)
+        K       = CUDA.zeros(T, N, 1)
+        ξpre    = CUDA.zeros(T, 1, n)
+        ξpost   = CUDA.zeros(T, 1, n)
+        A       = CUDA.zeros(T, N+1, N+1)
+        temp_dO = CUDA.zeros(T, 1, n)
+        temp_Ke = CUDA.zeros(T, N, n)
+        tau     = CUDA.CuArray{T,1}(undef, N+1)
+    else
+        O       = zeros(T, N, n)
+        Psq     = LowerTriangular(Matrix{T}(Psq))
+        u       = zeros(T, N)
+        K       = zeros(T, N, 1)
+        ξpre    = zeros(T, 1, n)
+        ξpost   = zeros(T, 1, n)
+        A       = zeros(T, N+1, N+1)
+        temp_dO = zeros(T, 1, n)
+        temp_Ke = zeros(T, N, n)
+        tau     = nothing
+    end
+    C = zero(T)
+    J = zero(T)
+    method = method in (:qr, :givens) ? method : :qr
+    return iQRRLSCache{T}(N, n, λ,
+        O, Psq, u, K, ξpre, ξpost, A, temp_dO, temp_Ke,
+        C, J, method, use_gpu, tau
+    )
 end
 
+
+# -----------------------------------------------------------------------------
+# Dispatch: CPU or GPU branch
+# -----------------------------------------------------------------------------
 function iqrrls!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
-                 r::AbstractArray{T}) where T<:Real
+                 r::AbstractArray{T}) where T<:AbstractFloat
     if obj.mthd == :givens
         return iqrrls_givens!(obj, d, r)
     else
-        return iqrrls_qr!(obj, d, r)
+        return obj.use_gpu ? iqrrls_qr_gpu!(obj, d, r) : iqrrls_qr!(obj, d, r)
     end
 end
+
+
+# function iqrrls!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
+#                  r::AbstractArray{T}) where T<:Real
+#     if obj.mthd == :givens
+#         return iqrrls_givens!(obj, d, r)
+#     else
+#         return iqrrls_qr!(obj, d, r)
+#     end
+# end
 
 
 """
@@ -305,3 +392,52 @@ function iqrrls_qr!(obj::iQRRLSCache{T}, d::AbstractArray{T},
 
     return nothing
 end
+
+
+
+# -----------------------------------------------------------------------------
+# GPU‐accelerated QR‐based update
+# -----------------------------------------------------------------------------
+function iqrrls_qr_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2}, 
+                        r::CuArray{T,2}) where T<:Union{Float32,Float64}
+    N, n = obj.N, obj.n
+    invλ = one(T)/sqrt(obj.λ)
+    A = obj.A
+
+    # 1) Build A = [1      0
+    #               Psq'/√λ Psq'/√λ ]
+    fill!(A, zero(T))
+    A[1:1,1:1] .= one(T)
+    mul!(obj.u, obj.Psq', vec(d), invλ, zero(T))             # u = Psq' * d'/√λ
+    A[2:N+1, 1] .= obj.u                                     # first column
+    mul!(view(A,2:N+1,2:N+1), obj.Psq', LinearAlgebra.I, invλ, zero(T))
+
+    # 2) GPU QR factorization (in-place)
+    CUSOLVER.geqrf!(A, obj.tau) # A ↦ R in upper, Q info in lower+tau
+
+    # 3) Extract scalars and update Psq
+    Csq_inv = A[1:1,1:1]
+    gCsq_inv = view(A, 1, 2:N+1)
+    copyto!(obj.Psq.data, tril(transpose(view(A,2:N+1,2:N+1))))
+
+    # 4) Kalman gain
+    obj.K[:,1] .= gCsq_inv ./ Csq_inv
+
+    # 5) compute ξpre = r - d*O
+    mul!(obj.temp_dO, d, obj.O, one(T), zero(T))
+    obj.ξpre .= r .- obj.temp_dO
+
+    # 6) update O
+    obj.O .+= obj.K .* obj.ξpre
+
+    # 7) compute ξpost = r - d*O
+    mul!(obj.temp_dO, d, obj.O, one(T), zero(T))
+    obj.ξpost .= r .- obj.temp_dO
+
+    # 8) conversion factor & cost
+    obj.C = one(T)/Array((Csq_inv[1:1,1:1]))[1]^2
+    obj.J = obj.λ * obj.J + dot(vec(obj.ξpre), vec(obj.ξpost))
+
+    return nothing
+end
+

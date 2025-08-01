@@ -115,10 +115,7 @@ function unscale!(data::Matrix{T}, shifts::Union{T,Vector{T}},
 end
 
 
-function compute_mean_parallel_threads_fixed(ds, dims; batch_size=50)
-    # Get total number of snapshots
-    n = length(ds)
-    
+function compute_mean_parallel_threads_fixed(ds, dims, n; batch_size=50)
     # Infer element type from first snapshot
     T = eltype(ds[1])
     
@@ -170,8 +167,7 @@ function compute_mean_parallel_threads_fixed(ds, dims; batch_size=50)
 end
 
 # Alternative implementation with explicit locking for comparison
-function compute_mean_parallel_threads_locked(ds, dims; batch_size=50)
-    n = length(ds)
+function compute_mean_parallel_threads_locked(ds, dims, n; batch_size=50)
     
     # Infer element type from first snapshot
     T = eltype(ds[1])
@@ -208,10 +204,7 @@ function compute_mean_parallel_threads_locked(ds, dims; batch_size=50)
     return result_sum ./ T(n)
 end
 
-function compute_minmax_parallel_threads(ds; batch_size=50, means=nothing)
-    # total snapshots
-    n = length(ds)
-    
+function compute_minmax_parallel_threads(ds, n; batch_size=50, means=nothing)
     # infer per‐snapshot shape and element type
     first_snap = ds[1]
     T = eltype(first_snap)

@@ -39,7 +39,9 @@ include(joinpath(FILEPATH, "preprocess.jl"))
 #=============================#
 ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 nz, ny, nx, n_fields, n = ds.dims
-nxyz = Nz * Ny * Nx
+nxyz = nz * ny * nx
+n_test = 2000
+n_train = n - n_test
 
 #=============================#
 ## Load the mean and scalings
@@ -55,7 +57,7 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 algorithms = ["baker"]  # Can be extended to ["baker", "brand", "sketchy", "batch"]
 
 # Settings
-rmax = 500
+rmax = 400
 bases = Dict()
 execution_times = Dict()
 
@@ -74,11 +76,11 @@ for algo in algorithms
         # Initialize
         tmp = @elapsed baker = iSVD(
             x1=preprocess!(ds[1], means, shifts, scales),
-            algo=:baker, max_rank=rmax)
+            algo=:baker, max_rank=rmax, right_singular_vectors=true)
         push!(time_data, tmp)
         
         # Incremental updates
-        @showprogress for i in 2:n 
+        @showprogress for i in 2:n_train
             tmp = @elapsed increment!(
                 baker, preprocess!(ds[i], means, shifts, scales)
             )
@@ -86,7 +88,8 @@ for algo in algorithms
         end
         
         # Store results
-        bases[algo] = (iVr=baker.Q[:,1:rmax], iΣr=baker.Σ[1:rmax])
+        bases[algo] = (iVr=baker.Q[:,1:rmax], iΣr=baker.Σ[1:rmax],
+                       iW=baker.W[:,1:rmax])
         execution_times[algo] = reduce(vcat, time_data)
         
     elseif algo == "brand"
@@ -100,18 +103,20 @@ for algo in algorithms
         # Initialize
         tmp = @elapsed brand = iSVD(
             x1=preprocess!(ds[1], means, shifts, scales), 
-            algo=:brand1, reorth_method=:gramschmidt, max_rank=rmax)
+            algo=:brand1, reorth_method=:gramschmidt, max_rank=rmax,
+            right_singular_vectors=true)
         push!(time_data, tmp)
         
         # Incremental updates
-        @showprogress for i in 2:n 
+        @showprogress for i in 2:n_train
             tmp = @elapsed increment!(
                 brand, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
             push!(time_data, tmp)
         end
         
         # Store results
-        bases[algo] = (iVr=brand.Q[:,1:rmax], iΣr=brand.Σ[1:rmax])
+        bases[algo] = (iVr=brand.Q[:,1:rmax], iΣr=brand.Σ[1:rmax],
+                       iW=brand.W[:,1:rmax])
         execution_times[algo] = reduce(vcat, time_data)
         
     elseif algo == "sketchy"
@@ -132,8 +137,8 @@ for algo in algorithms
         push!(time_data, tmp)
         
         # Process in batches
-        X = spzeros(Nz*Ny*Nx*3, n)
-        @showprogress for i in 1:(n ÷ 10)
+        X = spzeros(Nz*Ny*Nx*3, n_train)
+        @showprogress for i in 1:(n_train ÷ 10)
             idx = 10*(i-1)+1:10*i
             X[:,idx] .= [preprocess!(ds[j], means, shifts, scales) for j in idx]
             sketchy.X .+= sketchy.Ξ * X
@@ -146,7 +151,8 @@ for algo in algorithms
         IncrementalSVD.terminate!(sketchy, false, false)
         
         # Store results
-        bases[algo] = (iVr=sketchy.Q[:,1:rmax], iΣr=sketchy.Σ[1:rmax])
+        bases[algo] = (iVr=sketchy.Q[:,1:rmax], iΣr=sketchy.Σ[1:rmax],
+                       iW=sketchy.W[:,1:rmax])
         execution_times[algo] = reduce(vcat, time_data)
         
     elseif algo == "batch"

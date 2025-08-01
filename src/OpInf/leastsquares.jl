@@ -115,7 +115,7 @@ function solve_normal_equations(D::AbstractArray{T}, Rt::AbstractArray{T},
             mul!(y, D, x)      # y = D*x
             mul!(y, D', y)     # y = D'*(D*x) = D'*D*x
         end
-        LinearOperator{T}(matvec!, n, n; ismutating=true, issymmetric=true)
+        FunctionOperator{T}(matvec!, n, n; ismutating=true, issymmetric=true)
     end
     
     # Solve normal equations for each column

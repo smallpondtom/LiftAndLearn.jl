@@ -265,7 +265,7 @@ function solve_iterative_tikhonov(A::AbstractMatrix{T},
             mul!(y, A', temp)
             y .+= Γ * x
         end
-        LinearOperator{T}(matvec!, n, n; ismutating=true, issymmetric=true)
+        FunctionOperator{T}(matvec!, n, n; ismutating=true, issymmetric=true)
     end
     
     # Compute A' * b
@@ -473,7 +473,7 @@ function select_optimal_method(A::AbstractMatrix{T},
         @info "Using SVD truncation method due to high condition number: \
                              $condition_estimate"
         return SVDTruncation(), :svd
-    elseif solver.use_normal_form || (m > 2n && p < 100)
+    elseif solver.use_normal_form && (m > 2n && p < 100)
         @info "Using normal form method for large overdetermined system"
         return NormalForm(), :normal
     else

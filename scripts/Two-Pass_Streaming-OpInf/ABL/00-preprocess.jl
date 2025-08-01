@@ -40,6 +40,8 @@ ds = ChannelDataSource(
     time_downsample=10,
 )
 nz, ny, nx, n_fields, n = ds.dims
+n_test = 2000
+n_train = n - n_test
 
 #================================================================#
 ## Compute preprocessing parameters (mean and/or minmax scaling)
@@ -57,7 +59,7 @@ if COMPUTE_MEAN && COMPUTE_MINMAX
     else
         @info "Starting mean computation with $(Threads.nthreads()) threads"
         @time begin
-            xbar = compute_mean_parallel_threads_locked(ds, (nz*ny*nx*4,); batch_size=100)
+            xbar = compute_mean_parallel_threads_locked(ds, (nz*ny*nx*4,), n_train; batch_size=100)
         end
         @info "Mean computation complete"
         save(mean_file, "xbar", xbar)
@@ -72,7 +74,7 @@ if COMPUTE_MEAN && COMPUTE_MINMAX
     else
         @info "Starting min/max computation with $(Threads.nthreads()) threads"
         @time begin
-            x_min, x_max = compute_minmax_parallel_threads(ds, batch_size=100)
+            x_min, x_max = compute_minmax_parallel_threads(ds, n_train, batch_size=100)
         end
         # Compute minmax scaling parameters
         @info "Min/max computation complete"
@@ -101,7 +103,7 @@ elseif COMPUTE_MEAN
     else
         @info "Starting mean computation with $(Threads.nthreads()) threads"
         @time begin
-            xbar = compute_mean_parallel_threads_locked(ds, (nz*ny*nx*4,); batch_size=100)
+            xbar = compute_mean_parallel_threads_locked(ds, (nz*ny*nx*4,), n_train; batch_size=100)
         end
         @info "Mean computation complete"
         save(mean_file, "xbar", xbar)
@@ -118,7 +120,7 @@ elseif COMPUTE_MINMAX
     else
         @info "Starting min/max computation with $(Threads.nthreads()) threads"
         @time begin
-            x_min, x_max = compute_minmax_parallel_threads(ds, batch_size=100)
+            x_min, x_max = compute_minmax_parallel_threads(ds, n_train, batch_size=100)
         end
         # Compute minmax scaling parameters
         @info "Min/max computation complete"

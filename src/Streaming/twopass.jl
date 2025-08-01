@@ -62,7 +62,7 @@ Streaming Two-Pass Operator Inference/Lift And Learn.
 - `λ::T=1.0`: Forgetting factor (default is 1).
 - `rank::Int=1`: Rank of the update (default is 1).
 - `variable_regularize::Bool=false`: Variable regularization (only for `:RLS`) flag (default is false). This is experimental.
-- `qr_method::Symbol=:givens`: QR method for `iQRRLS` and `QRRLS` (default is `:givens` or built-in `qr`).
+- `qr_method::Symbol=:givens`: QR method for `iQRRLS` and `QRRLS` (default is `:qr` built-in or `givens`).
 """
 function TwoPassStreamingOpInf(;
     options::LSOpInfOption,             # Standard (Least-Squares) Operator Inference options
@@ -73,7 +73,8 @@ function TwoPassStreamingOpInf(;
     λ::T=1.0,                           # forgetting factor
     rank::Int=1,                        # rank of the update (default rank-1 update)
     variable_regularize::Bool=false,    # variable regularization flag
-    qr_method::Symbol=:givens,          # QR method for iQRRLS (default is :givens)
+    qr_method::Symbol=:qr,              # QR method for iQRRLS (default is :qr)
+    use_gpu::Bool=false,                # use GPU for computations (default is false)
     ) where {T<:Real}
 
     # Ensure BLAS multi-threading is enabled
@@ -242,7 +243,8 @@ function TwoPassStreamingOpInf(;
         end
 
         # State regression
-        state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, λ=λ, method=qr_method)
+        state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, λ=λ, 
+                                     method=qr_method, use_gpu=use_gpu)
         state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, term_setting, options)
         if iszero(l)
             return state_iqrrls
@@ -257,7 +259,8 @@ function TwoPassStreamingOpInf(;
         end
 
         # Output regression
-        output_cache = iQRRLSCache{T}(N=n, n=l, Psq=Psqo, λ=λ, method=qr_method)
+        output_cache = iQRRLSCache{T}(N=n, n=l, Psq=Psqo, λ=λ, 
+                                      method=qr_method, use_gpu=use_gpu)
         output_iqrrls = iQRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_iqrrls, output_iqrrls
     else
