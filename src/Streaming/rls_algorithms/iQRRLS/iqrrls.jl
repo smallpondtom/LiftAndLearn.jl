@@ -64,6 +64,9 @@ function iQRRLSCache{T}(;
     C = zero(T)
     J = zero(T)
     method = method in (:qr, :givens) ? method : :qr
+
+    @assert (method == :qr && use_gpu == true) "Givens rotations not implemented for GPU."
+
     return iQRRLSCache{T}(N, n, λ,
         O, Psq, u, K, ξpre, ξpost, A, temp_dO, temp_Ke,
         C, J, method, use_gpu, tau
@@ -73,126 +76,16 @@ end
 
 function iqrrls!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
                  r::AbstractArray{T}) where T<:AbstractFloat
-    if obj.mthd == :givens
-        return iqrrls_givens!(obj, d, r)
-    else
-        return obj.use_gpu ? iqrrls_qr_gpu!(obj, d, r) : iqrrls_qr!(obj, d, r)
-    end
+    return obj.use_gpu ? iqrrls_step_gpu!(obj, d, r) : iqrrls_step!(obj, d, r)
 end
 
 
-
 """
-Perform one rank-1 iQRRLS update via vectorized loops and BLAS calls (O(N^2)).
-This algorithm takes advantage of the lower-triangular structure of Psq
-and performs the update in-place, minimizing memory allocations and computation
-time.
+iqrrls! - Perform one rank-1 iQRRLS update using QR factorization or Givens.
+
+Note: This is slow when `N` is large, as it uses O(N^3) operations for QR.
 """
-function iqrrls_givens!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
-                        r::AbstractArray{T}) where T<:Real
-
-    # d: 1 x N (row vector)
-    # r: 1 x n (row vector)
-    @assert length(d)==obj.N && length(r)==obj.n
-    N = obj.N
-    
-    # 1) Compute the scaling 1/sqrt(λ)
-    invλ = one(T)/sqrt(obj.λ)
-
-    # 2) mat-vec Psq * d' / √λ (triangular kernel)
-    mul!(obj.u, obj.Psq', vec(d), invλ, zero(T))
-
-    # 3) Create a working copy of Psq scaled by 1/√λ
-    # We need to work with Psq'/√λ, not Psq itself
-    mul!(obj.A, obj.Psq', LinearAlgebra.I, invλ, zero(T))
-
-    # 4) annihilate sub-diagonal via Givens rotation, inner loop vectorized
-    # We need to simulate the QR decomposition of B without forming B
-    # B has the structure: [1, 0, 0, ..., 0]
-    #                      [u[1], Psq0[1,1]/√λ, Psq0[1,2]/√λ, ..., Psq0[1,N]/√λ]
-    #                      [u[2], Psq0[2,1]/√λ, Psq0[2,2]/√λ, ..., Psq0[2,N]/√λ]
-    #                      [...]
-    #                      [u[N], Psq0[N,1]/√λ, Psq0[N,2]/√λ, ..., Psq0[N,N]/√λ]
-    #
-    # Track the first row elements as we go
-    first_row = zeros(T, N+1)
-    first_row[1] = one(T)       
-
-    # Process column 1: eliminate u[i] for i = 1:N
-    for i in 1:N
-        if abs(obj.u[i]) > eps(T)
-            # Apply Givens rotation between row 1 and row i+1
-            c, s, _ = givens_rotation(first_row[1], obj.u[i])
-            
-            # Update first row element
-            old_first = first_row[1]
-            first_row[1] = c * old_first - s * obj.u[i]
-            
-            # Use BLAS.rot! for the remaining elements of first_row and 
-            # row i of Psq_work
-            if N > 0
-                @turbo BLAS.rot!(
-                    N,
-                    view(first_row, 2:N+1), 1,  # first_row[2:end] with stride 1
-                    view(obj.A, i, 1:N), N,     # Psq_work[i, :] with stride N
-                    c, -s
-                )
-            end
-            obj.u[i] = zero(T)  # This element is now eliminated
-        end
-    end
-
-    # Now perform QR on the remaining NxN block (obj.A) using BLAS.rot!
-    for i in 1:N
-        for j in (i+1):N
-            if abs(obj.A[j, i]) > eps(T)
-                c, s, _ = givens_rotation(obj.A[i, i], obj.A[j, i])
-                
-                # Use BLAS.rot! for columns i:N of rows i and j
-                @turbo BLAS.rot!(
-                    N - i + 1,
-                    view(obj.A, i, i:N), N,  # row i, columns i:N
-                    view(obj.A, j, i:N), N,  # row j, columns i:N
-                    c, -s
-                )
-            end
-        end
-    end
-    
-    # Update obj.Psq with the lower triangular part of the transpose
-    copyto!(obj.Psq.data, tril(obj.A'))
-
-    # 5) conversion factor C = 1/("first row first element"^2)
-    obj.C = one(T) / first_row[1]^2
-
-    # 6) Kalman gain K = first_row[2:end]/first_row[1]
-    obj.K[:,1] .= first_row[2:end] / first_row[1]
-
-    # 7) Compute ξpre = r - d * O
-    # d: 1 x N, O: N x n, d * O: 1 x n
-    mul!(obj.temp_dO, d, obj.O, T(1), T(0))  # temp_dO: 1 x n
-    obj.ξpre .= r .- obj.temp_dO  # ξpre: 1 x n
-
-    # 8) Update O: O += K * ξpre
-    # K: N x n, ξpre: 1 x n (broadcasted), K * ξpre': N x n
-    obj.O .+= obj.K .* obj.ξpre  # Element-wise multiplication and accumulation
-
-    # 9) Compute ξpost = r - d * O
-    mul!(obj.temp_dO, d, obj.O, T(1), T(0))  # temp_dO: 1 x n
-    obj.ξpost .= r .- obj.temp_dO  # ξpost: 1 x n
-
-    # 10) Since ξpre and ξpost are 1 x n row vectors, compute dot product
-    obj.J = obj.λ * obj.J + dot(vec(obj.ξpre), vec(obj.ξpost))
-    
-    return nothing
-end
-
-"""
-iqrrls_qr! - Perform one rank-1 iQRRLS update using QR factorization.
-
-Note: This is slow when `N` is large, as it uses O(N^3) operations.
-"""
-function iqrrls_qr!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
+function iqrrls_step!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
                     r::AbstractArray{T}) where T<:Real
     # d: 1 x N (row vector)
     # r: 1 x n (row vector)
@@ -227,8 +120,12 @@ function iqrrls_qr!(obj::iQRRLSCache{T}, d::AbstractArray{T},
     @views mul!(A[2:end, 2:end], obj.Psq', LinearAlgebra.I, T(1)/λsq, T(0))
 
     # Perform in-place QR factorization of A without storing Q
-    qr!(A) # this is slightly faster
-    # LAPACK.geqrf!(A)  
+    if obj.mthd == :qr
+        qr!(A) # this is slightly faster
+        # LAPACK.geqrf!(A)  
+    else # Givens rotations
+        iqrrls_givens_fast!(A)
+    end
 
     # Extract Csq_inv and gCsq_inv
     Csq_inv = A[1,1]
@@ -262,7 +159,7 @@ function iqrrls_qr!(obj::iQRRLSCache{T}, d::AbstractArray{T},
 end
 
 
-function iqrrls_qr_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2}, 
+function iqrrls_step_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2}, 
                         r::CuArray{T,2}) where T<:Union{Float32,Float64}
     N, n = obj.N, obj.n
     invλ = one(T)/sqrt(obj.λ)
@@ -303,4 +200,40 @@ function iqrrls_qr_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2},
     obj.J = obj.λ * obj.J + dot(vec(obj.ξpre), vec(obj.ξpost))
 
     return nothing
+end
+
+
+function iqrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
+    """
+    In-place Givens rotation applied to the first column.
+    Modifies A directly and returns it.
+    """
+    np1 = size(A, 1)
+    n = size(A, 2)
+    
+    # Apply Givens rotations from bottom to top
+    for j in np1:-1:2
+        c, s, r = givens_rotation(A[1, 1], A[j, 1])
+        
+        # Apply rotation directly to rows 1 and j
+        @inbounds @simd for k in 1:n
+            a1k = A[1, k]
+            ajk = A[j, k]
+            A[1, k] = c * a1k - s * ajk
+            A[j, k] = s * a1k + c * ajk
+        end
+    end
+    
+    # Negate and apply upper triangular structure
+    @inbounds @simd for i in 1:np1
+        for j in 1:n
+            if i <= j
+                A[i, j] = -A[i, j]
+            else
+                A[i, j] = zero(T)
+            end
+        end
+    end
+    A[np1, np1] *= -1.0 # Fix the last diagonal entry for odd n
+    return A
 end

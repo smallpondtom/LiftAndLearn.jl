@@ -6,23 +6,31 @@ Compute a numerically-robust Givens rotation so that
     [  c  -s ] [ a ] = [ r ]
     [  s   c ] [ b ]   [ 0 ]
 """
-@generated function givens_rotation(a::T,b::T) where {T<:AbstractFloat}
-    quote
-        zeroT, oneT = zero(T), one(T)
-        if b == zeroT
-            c = sign(a); c == zeroT && (c = oneT)
-            return c, zeroT, abs(a)
-        elseif a == zeroT
-            return zeroT, -sign(b), abs(b)
-        elseif abs(a) > abs(b)
-            t = b/a; u = sign(a)*sqrt(oneT + t^2)
-            return oneT/u, -t*(oneT/u), a*u
-        else
-            t = a/b; u = sign(b)*sqrt(oneT + t^2)
-            return  t/u, -oneT/u, b*u
-        end
+@inline function givens_rotation(a::T, b::T) where {T<:AbstractFloat}
+    zeroT, oneT = zero(T), one(T)
+    if b == zeroT
+        c = sign(a); 
+        c = c == zeroT ? oneT : c
+        return c, zeroT, abs(a)
+    elseif a == zeroT
+        return zeroT, -sign(b), abs(b)
+    elseif abs(a) > abs(b)
+        t = b / a
+        u = sign(a) * sqrt(oneT + t * t)
+        c = oneT / u
+        s = -c * t
+        r = a * u
+        return c, s, r
+    else
+        t = a / b 
+        u = sign(b) * sqrt(oneT + t * t)
+        s = -oneT / u
+        c = t / u
+        r = b * u
+        return c, s, r
     end
 end
+
 
 """
     qr_givens!(A::AbstractMatrix{T}) -> R

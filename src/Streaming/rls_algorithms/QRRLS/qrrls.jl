@@ -56,7 +56,7 @@ function QRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T),
         J        = zero(T)
         tau      = CUDA.CuArray{T,1}(undef, N+n+1)
 
-        @assert method == :qr "Givens rotations not implemented for GPU yet."
+        @assert method == :qr "Givens rotations not implemented for GPU."
 
         return QRRLSCache{T}(N, n, λ, O, P_wrapped, K, Φsq_up, q, ξpre, ξpost, C, J,
                              A, temp_dO, temp_Kd, method, true, tau)
@@ -82,17 +82,12 @@ end
 
 # Public entry point: route to CPU/GPU and method
 function qrrls!(obj::QRRLSCache{T}, d, r) where T<:AbstractFloat
-    if obj.mthd == :givens
-        # Optional: a Givens path could be added later; use QR for now
-        return obj.use_gpu ? qrrls_qr_gpu!(obj, d, r) : qrrls_qr!(obj, d, r)
-    else
-        return obj.use_gpu ? qrrls_qr_gpu!(obj, d, r) : qrrls_qr!(obj, d, r)
-    end
+    return obj.use_gpu ? qrrls_step_gpu!(obj, d, r) : qrrls_step!(obj, d, r)
 end
 
 
 # CPU implementation (existing logic, with minor fixes)
-function qrrls_qr!(obj::QRRLSCache{T}, d::AbstractArray{T},
+function qrrls_step!(obj::QRRLSCache{T}, d::AbstractArray{T},
                    r::AbstractArray{T}) where T<:AbstractFloat
     # d: 1 x N (row vector)
     # r: 1 x n (row vector)
@@ -128,7 +123,7 @@ function qrrls_qr!(obj::QRRLSCache{T}, d::AbstractArray{T},
         qr!(A)  # This is slightly faster than LAPACK.geqrf!
         # LAPACK.geqrf!(A)  
     else # Givens rotations
-        qr_givens!(A)
+        qrrls_givens_fast!(A)
     end
 
     # Extract Φsq (upper triangular) and q
@@ -164,7 +159,7 @@ end
 
 
 # GPU implementation (CUDA/cuSOLVER)
-function qrrls_qr_gpu!(obj::QRRLSCache{T}, d::CUDA.CuArray{T,2},
+function qrrls_step_gpu!(obj::QRRLSCache{T}, d::CUDA.CuArray{T,2},
                        r::CUDA.CuArray{T,2}) where T<:Union{Float32,Float64}
     N, n = obj.N, obj.n
     λsq = sqrt(obj.λ)
@@ -217,7 +212,49 @@ function qrrls_qr_gpu!(obj::QRRLSCache{T}, d::CUDA.CuArray{T,2},
 end
 
 
-# ...existing code...
+function qrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
+    """
+    In-place Givens rotation applied to the first column.
+    Modifies A directly and returns it.
+    """
+    np1, nprp1 = size(A)
+    n = np1 - 1
+    r = nprp1 - np1
+    
+    # Apply Givens rotations 
+    for j in 1:n
+        c, s, r = givens_rotation(A[j, j], A[np1, j])
+        
+        # Apply rotation directly to rows 1 and j
+        @inbounds @simd for k in j:nprp1
+            ajk = A[j, k]
+            ank = A[np1, k]
+            A[j, k] = c * ajk - s * ank
+            A[np1, k] = s * ajk + c * ank
+        end
+    end
+
+    # Apply negation and ensure upper triangular structure
+    @inbounds @simd for j in 1:nprp1
+        # Negate upper triangular part
+        for i in 1:min(j, n)
+            A[i, j] = -A[i, j]
+        end
+        # Zero out lower triangular part (except last row)
+        for i in (j+1):n
+            A[i, j] = zero(T)
+        end
+    end
+    
+    # Ensure zero for last row in 1:n columns
+    @inbounds @simd for j in 1:n
+        A[np1, j] = 0.0
+    end
+    
+    return A
+end
+
+
 # function backsub!(U::Matrix{T}, x::Vector{T}) where T<:Real
 #     n = length(x)
 #     # Backward substitution for U*x = y
