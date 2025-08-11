@@ -5,7 +5,7 @@ Update the streaming operator inference with new data by solving a recursive lea
 the QR Decomposition Recursive Least-Squares (iQRRLS) algorithm.
 """
 function stream!(obj::QRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::AbstractArray{T}=T[], 
-                 final_step::Bool=false) where T<:Number
+                 use_gpu::Bool=false) where T<:Number
 
     tdim = size(X, 2)  # number of data points (time dimension)
 
@@ -15,43 +15,9 @@ function stream!(obj::QRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::A
         if foo == bar && foo != 1
             @warn "Transposing while assuming the row dim is the input dim and the column dim is the number of data points."
         end
-
-        # if iszero(obj.cache.counter)
-        #     D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
-        #     obj.termination_settings[:dims] = operator_dims
-        #     obj.termination_settings[:syms] = operator_symbols
-        # else
-        #     D = get_data_matrix(X, U', obj.options; verbose=false)
-        # end
-
         D = get_data_matrix(X, U', obj.options; verbose=false)
-
-        # if final_step
-        #     D, operator_dims, operator_symbols = get_data_matrix(X, U', obj.options; verbose=true)
-        #     obj.termination_settings[:dims] = operator_dims
-        #     obj.termination_settings[:syms] = operator_symbols
-        # else
-        #     D = get_data_matrix(X, U', obj.options; verbose=false)
-        # end
     else
-
-        # if iszero(obj.cache.counter)
-        #     D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
-        #     obj.termination_settings[:dims] = operator_dims
-        #     obj.termination_settings[:syms] = operator_symbols
-        # else
-        #     D = get_data_matrix(X, U, obj.options; verbose=false)
-        # end
-
         D = get_data_matrix(X, U, obj.options; verbose=false)
-
-        # if final_step
-        #     D, operator_dims, operator_symbols = get_data_matrix(X, U, obj.options; verbose=true)
-        #     obj.termination_settings[:dims] = operator_dims
-        #     obj.termination_settings[:syms] = operator_symbols
-        # else
-        #     D = get_data_matrix(X, U, obj.options; verbose=false)
-        # end
     end
 
     # Reorganize the dimension of the derivative data matrix
@@ -63,11 +29,14 @@ function stream!(obj::QRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; U::A
         R = R'
     end
 
+    # GPU support
+    if use_gpu
+        D = CUDA.CuArray(D)
+        R = CUDA.CuArray(R)
+    end
+
     @assert tdim == 1 "iQRRLS is only for rank-1 update."
     qrrls!(obj.cache, D, R)
-
-    # Update the counter
-    # obj.cache.counter += 1
 
     return D
 end

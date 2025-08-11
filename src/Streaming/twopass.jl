@@ -156,7 +156,8 @@ function TwoPassStreamingOpInf(;
         end
 
         # State regression
-        state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, λ=λ)
+        state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, λ=λ, 
+                                  use_gpu=use_gpu)
         state_rls = RLSOpInf{T}(
             state_cache, dims, term_setting, options, 
             variable_regularize, iszero(Γs)
@@ -178,7 +179,8 @@ function TwoPassStreamingOpInf(;
         end
 
         # Output regression
-        output_cache = RLSCache{T}(N=n, M=rank, n=l, P=Po, λ=λ)
+        output_cache = RLSCache{T}(N=n, M=rank, n=l, P=Po, λ=λ, 
+                                   use_gpu=use_gpu)
         output_rls = RLSOpInf{T}(
             output_cache, dims, Dict{Symbol,Any}(), options, 
             variable_regularize, iszero(Γo)
@@ -205,7 +207,8 @@ function TwoPassStreamingOpInf(;
         end
 
         # State regression
-        state_cache = QRRLSCache{T}(N=d, n=n, P=Ps, Φsq=Φsqs, λ=λ)
+        state_cache = QRRLSCache{T}(N=d, n=n, P=Ps, Φsq=Φsqs, λ=λ, 
+                                    method=qr_method, use_gpu=use_gpu)
         state_qrrls = QRRLSOpInf{T}(state_cache, dims, term_setting, options)
         if iszero(l)
             return state_qrrls
@@ -229,7 +232,8 @@ function TwoPassStreamingOpInf(;
         end
 
         # Output regression
-        output_cache = QRRLSCache{T}(N=n, n=l, P=Po, Φsq=Φsqo, λ=λ)
+        output_cache = QRRLSCache{T}(N=n, n=l, P=Po, Φsq=Φsqo, λ=λ,
+                                     method=qr_method, use_gpu=use_gpu)
         output_qrrls = QRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_qrrls, output_qrrls
 
@@ -389,7 +393,7 @@ Terminate the streaming operator inference and return the operators.
 """
 function terminate_stream(obj::TwoPassStreamingOpInf) 
     # Extract the operators
-    operators = Operators(O=obj.cache.O)
+    operators = Operators(O=Array(obj.cache.O))
     unpack_operators!(
         operators, obj.cache.O',  # remember to transpose the operator matrix
         obj.termination_settings[:dims], obj.termination_settings[:syms])
@@ -405,7 +409,7 @@ Terminate the streaming operator inference and return the operators (dispatch)
 function terminate_stream(state_obj::TwoPassStreamingOpInf, 
                           output_obj::TwoPassStreamingOpInf) 
     # Extract the operators
-    operators = Operators(O=obj.cache.O)
+    operators = Operators(O=Array(obj.cache.O))
     unpack_operators!(
         operators, state_obj.cache.O',  # remember to transpose the operator matrix
         state_obj.termination_settings[:dims], state_obj.termination_settings[:syms])

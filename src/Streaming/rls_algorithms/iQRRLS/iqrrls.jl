@@ -1,29 +1,7 @@
 """
 Cache for inverse-QR RLS via square-root updates, with vectorized loops.
-Maintains lower-triangular Psq = Cholesky factor of P^{-1}.
+Maintains lower-triangular Psq = Cholesky factor of P^{-1}. With GPU support.
 """
-# mutable struct iQRRLSCache{T<:Real}
-#     N::Int                             # number of features
-#     n::Int                             # dimension of response
-#     λ::T                               # forgetting factor
-#     O::Matrix{T}                       # operator matrix (N×n)
-#     Psq::LowerTriangular{T,Matrix{T}}  # lower-triangular sqrt-inverse correlation (N×N)
-#     u::Array{T}                        # temporary (N)
-#     K::Matrix{T}                       # Kalman gain (N×1)
-#     ξpre::Matrix{T}                    # a priori error (1×n)
-#     ξpost::Matrix{T}                   # a posteriori error (1×n)
-#     A::Matrix{T}                       # temporary matrix for QR fact. ((N+1)×(N+1)) or NxN
-#     temp_dO::Union{T,Matrix{T}}        # temporary for d * O (1×n)
-#     temp_Ke::Matrix{T}                 # temporary for K * ξpre (N×n)
-#     C::T                               # Conversion factor (scalar)
-#     J::T                               # cost
-#     mthd::Symbol                       # method used for updates, default is :qr
-# end
-
-
-# -----------------------------------------------------------------------------
-# Extended iQRRLSCache with GPU support
-# -----------------------------------------------------------------------------
 mutable struct iQRRLSCache{T<:AbstractFloat}
     N::Int                     # number of features
     n::Int                     # output dimension
@@ -49,32 +27,6 @@ end
 """
 Constructor: initialize all fields and wrap Psq via LowerTriangular.
 """
-# function iQRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T), 
-#                          Psq::AbstractMatrix=Matrix{T}(I, N, N),
-#                          method::Symbol=:qr) where T<:Real
-#     λ       = T(λ)
-#     Psq_T   = convert(AbstractMatrix{T}, Psq)
-
-#     O       = zeros(T,N,n)
-#     Psq     = LowerTriangular(Psq_T)
-#     u       = zeros(T, N, 1)
-#     K       = zeros(T, N, 1)
-#     ξpre    = zeros(T, 1, n)
-#     ξpost   = zeros(T, 1, n)
-#     A       = method == :qr ? zeros(T, N+1, N+1) : zeros(T, N, N)
-#     temp_dO = zeros(T, 1, n)
-#     temp_Ke = zeros(T, N, n)
-#     C       = zero(T)
-#     J       = zero(T)
-#     method  = method in (:givens, :qr) ? method : :qr
-#     return iQRRLSCache{T}(N, n, λ, O, Psq, u, K, ξpre,  
-#                           ξpost, A, temp_dO, temp_Ke, C, J, method)
-# end
-
-
-# -----------------------------------------------------------------------------
-# GPU‐aware constructor
-# -----------------------------------------------------------------------------
 function iQRRLSCache{T}(;
     N::Int=1,
     n::Int=1,
@@ -119,9 +71,6 @@ function iQRRLSCache{T}(;
 end
 
 
-# -----------------------------------------------------------------------------
-# Dispatch: CPU or GPU branch
-# -----------------------------------------------------------------------------
 function iqrrls!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
                  r::AbstractArray{T}) where T<:AbstractFloat
     if obj.mthd == :givens
@@ -131,15 +80,6 @@ function iqrrls!(obj::iQRRLSCache{T}, d::AbstractArray{T},
     end
 end
 
-
-# function iqrrls!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
-#                  r::AbstractArray{T}) where T<:Real
-#     if obj.mthd == :givens
-#         return iqrrls_givens!(obj, d, r)
-#     else
-#         return iqrrls_qr!(obj, d, r)
-#     end
-# end
 
 
 """
@@ -247,78 +187,6 @@ function iqrrls_givens!(obj::iQRRLSCache{T}, d::AbstractArray{T},
     return nothing
 end
 
-
-# function iqrrls_givens!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
-#                         r::AbstractArray{T}) where T<:Real
-#     # d: 1 x N (row vector)
-#     # r: 1 x n (row vector)
-#     N = size(d, 2)  # Number of features
-#     n = size(r, 2)  # Residual dimension (state dimension)
-#     λsq = sqrt(obj.λ)
-
-#     # Ensure temporary variables are correctly sized
-#     @assert size(obj.A) == (N+1, N+1)
-#     @assert length(obj.u) == N
-#     @assert size(obj.temp_dO) == (1, n)
-#     @assert size(obj.temp_Ke) == (N, n)
-
-#     # Compute the lower-triangular A matrix
-#     # A = [1                 zeros(1, N);
-#     #      Psq' * d' / λsq   Psq' / λsq]
-#     # Initialize A
-#     A = obj.A
-#     A .= 0
-#     A[1,1] = T(1)
-
-#     # Compute u = (Psq' * d') / λsq
-#     # d': N x 1
-#     # transposing Psq seems off but it's correct for `mul!` semantics
-#     mul!(obj.u, obj.Psq', vec(d), T(1)/λsq, T(0))  # obj.u: N x 1
-
-#     # Set A[2:end, 1] = u
-#     @views copyto!(A[2:end, 1], obj.u)
-
-#     # Compute Psq_scaled = Psq' / λsq and set A[2:end, 2:end] = Psq_scaled
-#     # transposing Psq seems off but it's correct for `mul!` semantics
-#     @views mul!(A[2:end, 2:end], obj.Psq', LinearAlgebra.I, T(1)/λsq, T(0))
-
-#     # Perform in-place QR factorization of A without storing Q
-#     qr_givens!(A) 
-
-#     # Extract Csq_inv and gCsq_inv
-#     Csq_inv = A[1,1]
-#     @views gCsq_inv = A[1,2:end]
-
-#     # Update Psq: Psq = (A[2:end, 2:end])', ensuring it's lower triangular
-#     @views copyto!(obj.Psq, tril(A[2:end, 2:end]'))
-
-#     # Compute K = (gCsq_inv / Csq_inv)'
-#     obj.K[:,1] .= gCsq_inv ./ Csq_inv
-
-#     # Compute ξpre = r - d * O
-#     # d: 1 x N, O: N x n, d * O: 1 x n
-#     mul!(obj.temp_dO, d, obj.O, T(1), T(0))  # temp_dO: 1 x n
-#     obj.ξpre .= r .- obj.temp_dO  # ξpre: 1 x n
-
-#     # Update O: O += K * ξpre
-#     # K: N x n, ξpre: 1 x n (broadcasted), K * ξpre': N x n
-#     obj.O .+= obj.K .* obj.ξpre  # Element-wise multiplication and accumulation
-
-#     # Compute ξpost = r - d * O
-#     mul!(obj.temp_dO, d, obj.O, T(1), T(0))  # temp_dO: 1 x n
-#     obj.ξpost .= r .- obj.temp_dO  # ξpost: 1 x n
-
-#     # Update conversion factor C and cost J
-#     obj.C = T(1) / (Csq_inv^2)
-#     # Since ξpre and ξpost are 1 x n row vectors, compute dot product
-#     obj.J = obj.λ * obj.J + dot(vec(obj.ξpre), vec(obj.ξpost))
-
-#     return nothing
-
-# end
-
-
-
 """
 iqrrls_qr! - Perform one rank-1 iQRRLS update using QR factorization.
 
@@ -394,10 +262,6 @@ function iqrrls_qr!(obj::iQRRLSCache{T}, d::AbstractArray{T},
 end
 
 
-
-# -----------------------------------------------------------------------------
-# GPU‐accelerated QR‐based update
-# -----------------------------------------------------------------------------
 function iqrrls_qr_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2}, 
                         r::CuArray{T,2}) where T<:Union{Float32,Float64}
     N, n = obj.N, obj.n
@@ -440,4 +304,3 @@ function iqrrls_qr_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2},
 
     return nothing
 end
-

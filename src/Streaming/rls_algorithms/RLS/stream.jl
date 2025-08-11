@@ -16,7 +16,7 @@ function stream!(
     obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; 
     U::AbstractArray{T}=T[], 
     Q::Union{T,AbstractArray{<:Real}}=size(X,2)==1 ? 1.0 : 1.0I(size(X,2)),
-    Γs::Union{Real,AbstractArray{<:Real}}=0.0, 
+    Γs::Union{Real,AbstractArray{<:Real}}=0.0, use_gpu::Bool=false
     ) where T<:Number
 
     tdim = size(X, 2)  # number of data points (time dimension)
@@ -41,6 +41,12 @@ function stream!(
                 "and the column dim is the number of data points."
         end
         R = R'
+    end
+
+    # GPU support
+    if use_gpu
+        D = CUDA.CuArray(D)
+        R = CUDA.CuArray(R)
     end
 
     # Execute the update
