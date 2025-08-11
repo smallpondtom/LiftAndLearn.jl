@@ -8,7 +8,6 @@
 using FileIO
 using JLD2
 using LinearAlgebra
-using ProgressMeter
 using BlockDiagonals
 using SparseArrays
 using Statistics
@@ -56,7 +55,7 @@ options = LnL.LSOpInfOption(
     use_svd_truncation=true,
     # tolerance=1e-22
 )
-rmax = 400
+rmax = 500
 
 
 #=========================#
@@ -83,32 +82,59 @@ options.λ = LnL.TikhonovParameter(A=1e12, A2=1e12, K=1e12)
 op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
 ##
-save(joinpath(FILEPATH, "data/models", "operators_tol1e-12.jld2"), 
-    "opinf", op_inf)
+save(joinpath(FILEPATH, "data/models", "operators_r500_lambda1e12.jld2"), "op", op)
+
+
+#================#
+## Simulate ROM ##
+#================#
+include(joinpath(FILEPATH, "integrate.jl"))
+
+if CONTINUOUS_TIME
+    tspan = ds["times"][:] .- ds["times"][1]
+    x0 = Xhat[:,1]
+    states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
+else
+    states = zeros(size(V,2), n_time)
+    states[:,1] = x0
+    for j in 2:n_time
+        states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.K)
+        if any(isnan.(states[:,j]))
+            @warn "NaN detected in trajectory $i at time step $j"
+            break
+        end
+    end
+    Xrom[i] = states
+end
 
 
 #========================================#
 ## Grid Search Regularization Parameters
 #========================================#
-function solve_opinf_difference_model(init_cond, n_steps, reduced_model)
-    Qhat = zeros(length(init_cond), n_steps)
+function simulate_opinf(x0, n_time, op, tspan=nothing, continuous=true)
     contains_nan = false
-    Qhat[:, 1] = init_cond
     final_idx = 0
-    for i in 2:n_steps
-        Qhat[:, i] = reduced_model(Qhat[:, i-1])
-        if any(isnan.(Qhat[:, i]))
-            contains_nan = true
-            final_idx = i - 1
-            break
+    if continuous
+        states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
+    else
+        states = zeros(size(op.A, 1), n_time)
+        states[:, 1] = x0
+        for j in 2:n_time
+            states[:, j] = reduced_model(states[:, j-1], op.A, op.A2u, op.K)
+            if any(isnan.(states[:, j]))
+                @warn "NaN detected in trajectory at time step $j"
+                break
+            end
         end
     end
-    return contains_nan, Qhat, final_idx
+    return contains_nan, states, final_idx
 end
+
 
 function find_best_opinf_model(
     reg_pairs, Xhat, Xhat1, Xhat2, 
-    n_time, n_time_pred, max_growth, opinf_options)
+    n_time, n_time_pred, max_growth, opinf_options, 
+    tspan=nothing, continuous=true)
 
     @assert options.with_reg == true "Regularization must be enabled in options."
     
@@ -122,7 +148,7 @@ function find_best_opinf_model(
     max_diff_Xhat = maximum(abs.(Xhat .- mean_Xhat), dims=2)
     
     # Loop over all regularization pairs
-    @showprogress for (beta1, beta2) in reg_pairs
+    for (beta1, beta2) in reg_pairs
         
         # Construct a regularizer that penalizes the linear and constant reduced
         # operators using beta1 and the quadratic operator using beta2
@@ -132,16 +158,13 @@ function find_best_opinf_model(
         # Solve the regularized OpInf problem
         ops = LnL.opinf(Xhat1, opinf_options; Xhatdot=Xhat2)
         
-        # Define the OpInf reduced model
-        opinf_reduced_model = x -> ops.A * x + ops.A2u * (x ⊘ x) + ops.K
-
         # Extract the reduced initial condition from Qhat_1
         xhat0 = Xhat1[:,1]
         
         # Compute the reduced solution over the trial time horizon
         start_eval_time = time()
-        contains_nans, Xtilde, fidx = solve_opinf_difference_model(
-            xhat0, n_time_pred, opinf_reduced_model)
+        contains_nans, Xtilde, fidx = simulate_opinf(
+            xhat0, n_time_pred, ops, tspan, continuous)
         end_eval_time = time()
         time_opinf_eval = end_eval_time - start_eval_time
         
@@ -182,6 +205,9 @@ function find_best_opinf_model(
             best_final_idx = fidx
         end
 
+        @info "Regularization pair (β1, β2) = ($beta1, $beta2): \
+               training error = $train_err, evaluation time = $time_opinf_eval, \
+               max growth = $max_growth_trial, final index = $fidx"
         ops = nothing
         GC.gc() 
     end
@@ -196,39 +222,18 @@ function find_best_opinf_model(
     return best_beta1, best_beta2, best_train_err, Xtilde_opt, eval_time_opt, best_final_idx
 end
 
-##
-B1 = 10.0 .^ range(-24.0, -20.0, length=8)
-B2 = 10.0 .^ range(-20.0, -8.0, length=8)
+## Run grid Search
+B1 = 10.0 .^ range(8.0, 12.0, length=6)
+B2 = 10.0 .^ range(8.0, 12.0, length=6)
 reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
 n_reg_global = length(reg_pairs_global)
 max_growth = 1.2
 options.with_reg = true
-best_beta1, best_beta2, best_train_err, op_trinf, eval_time, fidx = 
-    find_best_opinf_model(reg_pairs_global, Xhat, Xhat1, Xhat2,
-                          n, Int(n+(n // 10)), max_growth, options)
+best_beta1, best_beta2, best_train_err, states, eval_time, fidx = 
+    find_best_opinf_model(reg_pairs_global, Xhat, Xhat, Xhatdot,
+                          n_time, Int(n_time+(n_time // 10)), max_growth, options,
+                          ds["times"][:], CONTINUOUS_TIME)
 
-
-#================#
-## Simulate ROM ##
-#================#
-include(joinpath(FILEPATH, "integrate.jl"))
-
-if CONTINUOUS_TIME
-    tspan = ds["times"][:] .- ds["times"][1]
-    x0 = Xhat[:,1]
-    states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
-else
-    states = zeros(size(V,2), n_time)
-    states[:,1] = x0
-    for j in 2:n_time
-        states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.K)
-        if any(isnan.(states[:,j]))
-            @warn "NaN detected in trajectory $i at time step $j"
-            break
-        end
-    end
-    Xrom[i] = states
-end
 
 
 #============================#
@@ -424,6 +429,204 @@ with_theme(theme_latexfonts()) do
     save(joinpath(FILEPATH, "plots", "state_evolution.png"), fig)
     display(fig)
 end
+
+
+
+#====================================================#
+## Plot the mean flow of each field and their errors
+#====================================================#
+# Compute mean flows of ROM
+include(joinpath(FILEPATH, "preprocess.jl"))
+means_rom = compute_mean_parallel_threads_fixed_rom(states, iVrmax, 4*nxyz, 
+                                                    n_time; batch_size=100)
+save(joinpath(FILEPATH, "data/results/mean_rom.jld2"), "means_rom", means_rom)
+
+##
+
+# 3D Mean Flow Comparison Plot
+using GLMakie
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1800, 1200))
+    
+    # Unprocess the ROM mean flows
+    means_rom_unprocessed = copy(means_rom)
+    means_rom_unprocessed = unprocess!(means_rom_unprocessed, means, shifts, scales)
+    
+    # Field names and their corresponding indices
+    field_names = ["u", "v", "w", "p"]
+    
+    for (row, field) in enumerate(field_names)
+        # Extract field data
+        i_s = nxyz * (row - 1) + 1
+        i_f = nxyz * row
+        
+        # Get mean data for this field
+        mean_orig = means[i_s:i_f]
+        mean_rom = means_rom_unprocessed[i_s:i_f]
+        mean_error = abs.(mean_orig - mean_rom)
+        
+        # Reshape data to 3D
+        mean_orig_3d = reshape(mean_orig, nx, ny, nz)
+        mean_rom_3d = reshape(mean_rom, nx, ny, nz)
+        mean_error_3d = reshape(mean_error, nx, ny, nz)
+        
+        # Get coordinate spans and convert to ranges
+        x_span = ds["x"][:]
+        y_span = ds["y"][:]
+        z_span = ds["z"][:]
+        
+        # Convert to endpoint ranges
+        x_range = x_span[1]..x_span[end]
+        y_range = y_span[1]..y_span[end]
+        z_range = z_span[1]..z_span[end]
+        
+        # Calculate unified color range for original and ROM data
+        combined_min = min(minimum(mean_orig), minimum(mean_rom))
+        combined_max = max(maximum(mean_orig), maximum(mean_rom))
+        error_min = minimum(mean_error)
+        error_max = maximum(mean_error)
+        
+        # Create 3D axes for each column
+        # Column 1: Original mean flow
+        ax1 = Axis3(fig[row, 1],
+            xlabel = "x", ylabel = "y", zlabel = "z",
+            xlabelsize = 20, ylabelsize = 20, zlabelsize = 20,
+            xticklabelsvisible = false, yticklabelsvisible = false, zticklabelsvisible = false,
+            xticksvisible = false, yticksvisible = false, zticksvisible = false,
+            title = row == 1 ? "Original" : "", aspect = (3,2,1)
+        )
+        
+        # Column 2: ROM mean flow
+        ax2 = Axis3(fig[row, 2],
+            xlabel = "x", ylabel = "y", zlabel = "z",
+            xlabelsize = 20, ylabelsize = 20, zlabelsize = 20,
+            xticklabelsvisible = false, yticklabelsvisible = false, zticklabelsvisible = false,
+            xticksvisible = false, yticksvisible = false, zticksvisible = false,
+            title = row == 1 ? "ROM" : "",aspect = (3,2,1)
+        )
+        
+        # Column 3: Error
+        ax3 = Axis3(fig[row, 4],
+            xlabel = "x", ylabel = "y", zlabel = "z",
+            xlabelsize = 20, ylabelsize = 20, zlabelsize = 20,
+            xticklabelsvisible = false, yticklabelsvisible = false, zticklabelsvisible = false,
+            xticksvisible = false, yticksvisible = false, zticksvisible = false,
+            title = row == 1 ? "Error" : "", aspect = (3,2,1)
+        )
+        
+        # Create volume plots with endpoint ranges
+        vol1 = volume!(ax1, x_range, y_range, z_range, mean_orig_3d,
+            colorrange = (combined_min, combined_max),
+            colormap = :viridis)
+            
+        vol2 = volume!(ax2, x_range, y_range, z_range, mean_rom_3d,
+            colorrange = (combined_min, combined_max),
+            colormap = :viridis)
+            
+        vol3 = volume!(ax3, x_range, y_range, z_range, mean_error_3d,
+            colorrange = (error_min, error_max),
+            colormap = :matter)
+        
+        # Add field name as row label
+        Label(fig[row, 0], field, rotation = π/2, fontsize = 30, 
+              tellheight = false, tellwidth = true)
+        
+        # Add colorbars
+        if row == 1
+            # Unified colorbar for original and ROM (after column 2)
+            Colorbar(fig[row, 3], vol2, 
+                labelsize = 20,
+                ticklabelsize = 15)
+            
+            # Error colorbar (after column 3)  
+            Colorbar(fig[row, 5], vol3,
+                labelsize = 20,
+                ticklabelsize = 15)
+        else
+            # For other rows, create invisible colorbars to maintain spacing
+            Colorbar(fig[row, 3], vol2, 
+                label = "", 
+                labelsize = 20,
+                ticklabelsize = 15)
+            
+            Colorbar(fig[row, 5], vol3,
+                label = "",
+                labelsize = 20,
+                ticklabelsize = 15)
+        end
+    end
+
+    colsize!(fig.layout, 1, Fixed(370))
+    colsize!(fig.layout, 2, Fixed(370))
+    colsize!(fig.layout, 3, Fixed(45))
+    colsize!(fig.layout, 4, Fixed(370))
+    colsize!(fig.layout, 5, Fixed(45))
+    
+    # Add overall title
+    Label(fig[0, 1:5], "3D Mean Flow Comparison", fontsize = 35, tellwidth = false)
+    save(joinpath(FILEPATH, "plots", "3d_mean_flow_comparison.png"), fig)
+    display(fig)
+end
+
+##
+
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1200, 800))
+
+    means_rom_unprocessed = copy(means_rom)
+    means_rom_unprocessed = unprocess!(means_rom_unprocessed, means, shifts, scales)
+    
+    # Plot each field and its error
+    for (i, field) in enumerate(["u", "v", "w", "p"])
+        # First column: Mean flows
+        ax1 = Axis(fig[i, 1], 
+            ylabel = L"%$(field)", 
+            xlabel = i == 4 ? "grid point" : "",
+            xlabelsize = 20, 
+            ylabelsize = 20,
+            xticklabelsize = 15, 
+            yticklabelsize = 15,
+            title = i == 1 ? "Mean Flows" : "",
+            titlesize = 20
+        )
+        
+        # Second column: Errors
+        ax2 = Axis(fig[i, 2], 
+            ylabel = i == 1 ? "Error" : "",
+            xlabel = i == 4 ? "grid point" : "",
+            xlabelsize = 20, 
+            ylabelsize = 20,
+            xticklabelsize = 15, 
+            yticklabelsize = 15,
+            title = i == 1 ? "Absolute Errors" : "",
+            titlesize = 20,
+        )
+
+        i1 = (i - 1) * nxyz + 1
+        i2 = i * nxyz
+
+        full = @view means[i1:i2]
+        rom = @view means_rom_unprocessed[i1:i2]
+        error = abs.(full - rom)
+        
+        # Plot mean fields in first column
+        lines!(ax1, 1:nxyz, full, color=:black, linewidth=3, label="Original")
+        lines!(ax1, 1:nxyz, rom, color=:orange, linewidth=0.5, linestyle=:dash, label="ROM")
+        
+        # Plot error in second column
+        lines!(ax2, 1:nxyz, error, color=:black, linewidth=1, label="Abs. Error")
+        
+        # Add legend only to the top subplot of first column
+        if i == 1
+            axislegend(ax1, position=:rt, labelsize=15)
+            axislegend(ax2, position=:rt, labelsize=15)
+        end
+    end
+    
+    save(joinpath(FILEPATH, "plots", "mean_flow_and_errors.png"), fig)
+    display(fig)
+end
+
 
 #===================================#
 ## Compute the relative state error

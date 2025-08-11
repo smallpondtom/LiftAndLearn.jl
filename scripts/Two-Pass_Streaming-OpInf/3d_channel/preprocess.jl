@@ -253,3 +253,56 @@ function compute_minmax_parallel_threads(ds, n; batch_size=50, means=nothing)
     @info "Processed $n snapshots across $num_batches batches."
     return x_min, x_max
 end
+
+
+function compute_mean_parallel_threads_fixed_rom(states, Vr, dims, n; batch_size=50)
+    
+    # Infer element type from first snapshot
+    T = eltype(states[:,1])
+    
+    # Create thread-local accumulators with proper initialization
+    n_threads = Threads.nthreads()
+    # Use a more robust approach with locks for thread safety
+    thread_sums = [zeros(T, dims...) for _ in 1:n_threads]
+    
+    # Use batch processing to reduce overhead
+    num_batches = ceil(Int, n / batch_size)
+    batch_results = fill(false, num_batches)  # Track completed batches
+
+    # Disable logging during parallel execution
+    old_logger = global_logger(NullLogger())
+    
+    # Parallel batch processing
+    Threads.@threads for batch in 1:num_batches
+        tid = Threads.threadid()
+        start_idx = (batch-1) * batch_size + 1
+        end_idx = min(batch * batch_size, n)
+        
+        # Pre-allocate thread-local storage to reduce GC pressure
+        # Make sure to use the correct element type
+        batch_sum = zeros(T, dims...)
+        
+        # Process each snapshot in this batch
+        for i in start_idx:end_idx
+            snapshot = Vr * states[:,i]  # Get snapshot only once
+            batch_sum .+= snapshot
+        end
+        
+        # Update thread sum once per batch
+        # This is safe because each thread only writes to its own slot
+        thread_sums[tid] .+= batch_sum
+        batch_results[batch] = true
+    end
+    
+    # Restore logger
+    global_logger(old_logger)
+    
+    # Combine results from all threads
+    xbar = reduce(.+, thread_sums)
+    xbar ./= T(n)  # Divide by the total number of snapshots, not thread counts
+    
+    # Report processing summary
+    @info "Processed $n snapshots ($(count(batch_results)) batches)"
+    
+    return xbar
+end
