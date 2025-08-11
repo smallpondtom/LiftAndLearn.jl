@@ -19,7 +19,7 @@ FILEPATH = occursin("scripts", pwd()) ?
 DATAPATH = "../../../../DATA/THE_WELL/mhd64"
 train_files = readdir(DATAPATH, join=true)
 fn = train_files[1]
-X = load(joinpath(FILEPATH, "data/preprocessed_data.jld2"))["X"]
+X = load(joinpath(FILEPATH, "data/preprocessed_data.jld2"))["X"]["all"]
 
 # Include the data sourcing module for data access
 include(joinpath(FILEPATH, "datasource.jl"))
@@ -30,119 +30,116 @@ nx, ny, nz, n_fields, n_time, n_traj = ds.dims
 nxyz = nx * ny * nz
 n = n_time * n_traj
 
-#=========================#
-## Compute the POD bases ##
-#=========================#
-FIELD_WISE = false
-MERGING = false
-# Load the target ranks 
+#========================================#
+## Compute the POD bases with batch SVD ##
+#========================================#
+@info "Computing POD basis for all fields combined"
 target_r = load(joinpath(FILEPATH, "data/target_ranks.jld2"))["target_ranks"]
 extra_ranks = 0
-
-if FIELD_WISE
-    @info "Computing POD basis field-wise"
-    if MERGING
-        @info "Merging POD bases of all fields"
-        Z = Array[]
-        Vs = Array[]
-        target_r_mean = ceil(Int, sum(values(target_r)) / length(ds.fields))
-        for fld in ds.fields
-            V, S, W = svd(X[fld])
-            push!(Z, S[1:target_r_mean+extra_ranks] .* W[:, 1:target_r_mean+extra_ranks]')
-            push!(Vs, V[:, 1:target_r_mean+extra_ranks])
-        end
-        Z = reduce(vcat, Z)
-        L, _ = lq(Z)
-        Vl = svd(L).U 
-        r_sum = 0
-        for i in eachindex(Vs)
-            tmp = Vs[i] * Vl[r_sum+1:r_sum+size(Vs[i],2), :]
-            r_sum += size(Vs[i], 2)
-            Vs[i] = tmp
-        end
-        V = reduce(vcat, Vs)
-    else
-        V = BlockDiagonal([
-            svd(X[fld]).U[:, 1:target_r[fld]+extra_ranks]
-            for fld in ds.fields
-        ])
-    end
-else
-    @info "Computing POD basis for all fields combined"
-    V = svd(X["all"]).U[:, 1:min(sum(values(target_r))+extra_ranks*length(ds.fields), n)]
-end
+V = svd(X).U[:, 1:min(sum(values(target_r))+extra_ranks*n_fields, n)]
 println("POD basis of size $(size(V))")
 
 ## Save basis 
 basis_file = joinpath(FILEPATH, "data/bases/basis.jld2")
 save(basis_file, "V", V)
 
+## Load the basis instead
+basis_file = joinpath(FILEPATH, "data/bases/basis.jld2")
+V = load(basis_file)["V"]
+
+
+#====================================================#
+## Compute the POD bases using streaming algorithms ##
+#====================================================#
+using IncrementalSVD
+rmax = 50
+
+## (Dry) Run it once due to JUlia's JIT compilation
+# Baker
+baker = iSVD(x1=X[:,1], algo=:baker, max_rank=rmax) 
+full_increment!(baker, X[:,2:3], verbose=true, runtime=true)
+## Brand
+brand = iSVD(x1=X[:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
+full_increment!(brand, X[:,2:3], verbose=true, tol=1e-10, runtime=true)
+## SketchySVD
+sketchy = iSVD(algo=:sketchy; m=nxyz*n_fields, n=n, r=rmax, ReduxMap=:Sparse)
+full_increment!(sketchy, X[:,2:3], verbose=true, runtime=true, dump_all=true)
+
+## Main run 
+# Baker
+baker = iSVD(x1=X[:,1], algo=:baker, max_rank=rmax)
+full_increment!(baker, X[:,2:end], verbose=true, runtime=false)
+
+## Brand
+brand = iSVD(x1=X[:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
+full_increment!(brand, X[:,2:end], verbose=true, tol=1e-10)
+
+## SketchySVD
+sketchy = iSVD(algo=:sketchy; m=nxyz*n_fields, n=n, r=rmax, ReduxMap=:Sparse)
+full_increment!(sketchy, X, verbose=true, runtime=true, dump_all=true)
+
+## Save the bases
+save(joinpath(FILEPATH, "data/bases/baker_basis.jld2"), "baker", baker)
+save(joinpath(FILEPATH, "data/bases/brand_basis.jld2"), "brand", brand)
+save(joinpath(FILEPATH, "data/bases/sketchy_basis.jld2"), "sketchy", sketchy)
+
 #=============================#
 ## Compute projection errors ##
 #=============================#
-# Processed data
-X_perp = X["all"] - V * (V' * X["all"])
-rpe_processed = Dict(
-    fld => 0.0 for fld in [ds.fields, "all"]
-)
-for i in eachindex(ds.fields)
-    fld = ds.fields[i]
-    idx_start = (i-1) * nxyz + 1
-    idx_end = i * nxyz
-    num = norm(X_perp[idx_start:idx_end, :], 2)
-    den = norm(X[fld], 2)
-    rpe_fld = num / den 
-    rpe_processed[ds.fields[i]] = rpe_fld
-    println("Projection error for field $(fld): $rpe_fld")
-end
-tmp = norm(X_perp, 2) / norm(X["all"], 2)
-rpe_processed["all"] = tmp
-println("Overall projection error: $(tmp)")
+# Data projected onto orthogonal complement of the basis
+X_perp_batch = X - V[:,1:rmax] * (V[:,1:rmax]' * X)
+X_perp_baker = X - baker.Q * (baker.Q' * X)
+X_perp_brand = X - brand.Q * (brand.Q' * X)
+X_perp_sketchy = X - sketchy.Q * (sketchy.Q' * X)
 
-#=================================#
-## Compute reconstruction errors ##
-#=================================#
-# Original data (unscaled and uncentered)
-X_orig = load(joinpath(FILEPATH, "data/original_data.jld2"))["X"]
-shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
-scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
-mean   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
-
-unscale = (X, scale, shift) -> (scale .* X) .+ shift
-uncenter = (X, Xbar) -> X .+ Xbar
-
-scale_all = reduce(vcat, [scale[fld] for fld in ds.fields])
-shift_all = reduce(vcat, [shift[fld] for fld in ds.fields])
-mean_all  = reduce(vcat, [mean[fld] for fld in ds.fields])
-
-##
-
-X_proj = V * (V' * X["all"])
-X_proj = unscale(X_proj, scale_all, shift_all)
-X_proj = uncenter(X_proj, mean_all)
-X_perp = X_orig["all"] - X_proj
-
-rpe_orig = Dict(
-    fld => 0.0 for fld in [ds.fields, "all"]
+# Preallocate relative projection errors
+rpe = Dict(
+    "batch" => Dict(
+        fld => 0.0 for fld in [ds.fields, "all"]
+    ),
+    "baker" => Dict(
+        fld => 0.0 for fld in [ds.fields, "all"]
+    ),
+    "brand" => Dict(
+        fld => 0.0 for fld in [ds.fields, "all"]
+    ),
+    "sketchy" => Dict(
+        fld => 0.0 for fld in [ds.fields, "all"]
+    )
 )
 
 for i in eachindex(ds.fields)
     fld = ds.fields[i]
     idx_start = (i-1) * nxyz + 1
     idx_end = i * nxyz
-    X_perp_field = X_perp[idx_start:idx_end, :] 
-    num = norm(X_perp_field, 2)
-    den = norm(X_orig[fld], 2)
-    rpe_fld = num / den
-    rpe_orig[fld] = rpe_fld
-    println("Relative projection error for $fld: $rpe_fld")
-end
-rpe_orig["all"] = norm(X_perp) / norm(X_orig["all"])
-println("Overall relative projection error: $(rpe_orig["all"])")
 
-## Save projection errors
-rpe_file = joinpath(FILEPATH, "data/results/rpe.jld2")
-if !isfile(rpe_file)
-    @info "Saving relative projection errors to file"
-    save(rpe_file, "rpe", Dict("processed" => rpe_processed, "original" => rpe_orig))
+    num_batch = @views norm(X_perp_batch[idx_start:idx_end, :], 2)
+    num_baker = @views norm(X_perp_baker[idx_start:idx_end, :], 2)
+    num_brand = @views norm(X_perp_brand[idx_start:idx_end, :], 2)
+    num_sketchy = @views norm(X_perp_sketchy[idx_start:idx_end, :], 2)
+    den = @views norm(X[idx_start:idx_end, :], 2)
+
+    rpe["batch"][fld] = num_batch / den
+    rpe["baker"][fld] = num_baker / den
+    rpe["brand"][fld] = num_brand / den
+    rpe["sketchy"][fld] = num_sketchy / den
+
+    println("Relative projection error for field $(fld):")
+    println("  Batch:   $num_batch / $den = $(rpe["batch"][fld])")
+    println("  Baker:   $num_baker / $den = $(rpe["baker"][fld])")
+    println("  Brand:   $num_brand / $den = $(rpe["brand"][fld])")
+    println("  Sketchy: $num_sketchy / $den = $(rpe["sketchy"][fld])")
 end
+Xnorm = norm(X, 2)
+rpe["batch"]["all"] = norm(X_perp_batch) / Xnorm
+rpe["baker"]["all"] = norm(X_perp_baker) / Xnorm
+rpe["brand"]["all"] = norm(X_perp_brand) / Xnorm
+rpe["sketchy"]["all"] = norm(X_perp_sketchy) / Xnorm
+println("Overall relative projection error:")
+println("  Batch:   $(rpe["batch"]["all"])")
+println("  Baker:   $(rpe["baker"]["all"])")
+println("  Brand:   $(rpe["brand"]["all"])")
+println("  Sketchy: $(rpe["sketchy"]["all"])")
+
+## Save results
+save(joinpath(FILEPATH, "data/projection_errors.jld2"), rpe)

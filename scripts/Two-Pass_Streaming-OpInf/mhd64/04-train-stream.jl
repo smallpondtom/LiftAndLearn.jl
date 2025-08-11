@@ -5,8 +5,10 @@ using LinearAlgebra
 using BlockDiagonals
 using FileIO
 using JLD2
+using ProgressMeter
 using Revise
 using IncrementalSVD
+using CUDA
 import LiftAndLearn as LnL
 
 #=============#
@@ -21,6 +23,7 @@ fn = train_files[1]
 X = load(joinpath(FILEPATH, "data/preprocessed_data.jld2"))["X"]["all"]
 baker = load(joinpath(FILEPATH, "data/bases/baker_basis.jld2"))["baker"]
 V = baker.Q
+rmax = size(V, 2)
 
 # Include the data sourcing module for data access
 include(joinpath(FILEPATH, "datasource.jl"))
@@ -30,6 +33,9 @@ ds = DataSource(fn)
 nx, ny, nz, n_fields, n_time, n_traj = ds.dims
 nxyz = nx * ny * nz
 n = n_time * n_traj
+
+# Load the batch OpInf model
+op = load(joinpath(FILEPATH, "data/models/opinf_mdl.jld2"))["op"]
 
 #===============#
 ## Set Options ##
@@ -47,56 +53,120 @@ options = LnL.LSOpInfOption(
         Δt=sum(diff(ds.grid["time"])) / (length(ds.grid["time"])-1),
         deriv_type="FBCT4"
     ),
-    use_backslash=true,
-    # use_normal_equations=true,
-    # use_svd_truncation=true,  
-    # tolerance=1e-3,
 )
 
-#===================#
-## Train Operators ##
-#===================#
-CONTINUOUS_TIME = true
+#=========================#
+## Generate Reduced Data ##
+#=========================#
 # Compute the reduced data matrix
 Xtmp = V' * X
-if CONTINUOUS_TIME
-    @info "Generate finite difference data for continuous-time "
-    # Compute finite difference approximation
-    Xhat = Vector{Matrix{Float64}}(undef, n_traj)
-    Xhatdot = Vector{Matrix{Float64}}(undef, n_traj)
-    # Do it individually for each trajectory
-    for i in 1:n_traj
-        idx_start = (i-1) * n_time + 1
-        idx_end = i * n_time
-        Xhatdot[i], idx = LnL.time_derivative_approx(
-            Xtmp[:, idx_start:idx_end], options)
-        Xhat[i] = Xtmp[:, idx_start:idx_end][:, idx]
-    end
-    Xhat = reduce(hcat, Xhat)
-    Xhatdot = reduce(hcat, Xhatdot)
-else
-    @info "Generate shifted data for discrete-time "
-    # Shift the data for discrete-time data
-    Xhat = Vector{Matrix{Float64}}(undef, n_traj)
-    Xhatdot = Vector{Matrix{Float64}}(undef, n_traj)
-    # Do it individually for each trajectory
-    for i in 1:n_traj
-        idx_start = (i-1) * n_time + 1
-        idx_end = i * n_time
-        Xhat[i] = Xtmp[:, idx_start:idx_end-1]
-        Xhatdot[i] = Xtmp[:, idx_start+1:idx_end]
-    end
-    Xhat = reduce(hcat, Xhat)
-    Xhatdot = reduce(hcat, Xhatdot)
+@info "Generate finite difference data for continuous-time "
+# Compute finite difference approximation
+Xhat = Vector{Matrix{Float64}}(undef, n_traj)
+Xhatdot = Vector{Matrix{Float64}}(undef, n_traj)
+# Do it individually for each trajectory
+for i in 1:n_traj
+    idx_start = (i-1) * n_time + 1
+    idx_end = i * n_time
+    Xhatdot[i], idx = LnL.time_derivative_approx(
+        Xtmp[:, idx_start:idx_end], options)
+    Xhat[i] = Xtmp[:, idx_start:idx_end][:, idx]
 end
+Xhat = reduce(hcat, Xhat)
+Xhatdot = reduce(hcat, Xhatdot)
 
-## Train the operators
-options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e14, A2=1e14, A3=1e14, K=1e14)
-op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
-## Save the trained model
-save(joinpath(FILEPATH, "data/models/opinf_mdl.jld2"), "op", op)
+#===========================#
+## Train  streaming models ##
+#===========================#
+Γ = 1e14  # Regularization parameter
+
+# Dict to store streaming errors for each algorithm
+stream_errors = Dict(
+    :rls    => zeros(n),
+    :iqrrls => zeros(n),
+    # :qrrls  => zeros(n)
+)
+
+
+## Streamify the data based on the selected streamsizes
+X_stream = LnL.streamify(Xhat, 1)
+Xdot_stream = LnL.streamify(Xhatdot, 1)
+
+## RLS
+rls_stream  = LnL.TwoPassStreamingOpInf(
+    options=options, n=rmax, algorithm=:RLS, Γs=Γ, use_gpu=true) 
+
+Onorm = norm(op.O, 2)
+Ostar = op.O'
+@showprogress for i in 1:n
+    # The stream of data
+    x_i    = X_stream[i]
+    xdot_i = Xdot_stream[i]
+
+    # Stream, update, and get data matrix for the state system
+    LnL.stream!(rls_stream, x_i, xdot_i, use_gpu=true)   
+
+    # Compute streaming errors
+    stream_errors[:rls][i]    = norm(Array(rls_stream.cache.O) - Ostar, 2) / Onorm
+end
+op_rls = LnL.terminate_stream(rls_stream)
+rls_stream = nothing
+GC.gc(false)
+CUDA.reclaim()
+
+## iQRRLS
+iqrrls_stream = LnL.TwoPassStreamingOpInf(
+    options=options, n=rmax, algorithm=:iQRRLS, Γs=Γ, 
+    qr_method=:qr, use_gpu=false)
+@showprogress for i in 1:n
+    # The stream of data
+    x_i    = X_stream[i]
+    xdot_i = Xdot_stream[i]
+
+    # Stream, update, and get data matrix for the state system
+    LnL.stream!(iqrrls_stream, x_i, xdot_i; use_gpu=false) 
+
+    # Compute streaming errors
+    foo = norm(Array(iqrrls_stream.cache.O) - Ostar, 2) / Onorm
+    stream_errors[:iqrrls][i] = foo
+    println("iQRRLS error at step $i: $foo")
+    # stream_errors[:iqrrls][i] = norm(Array(iqrrls_stream.cache.O) - Ostar, 2) / Onorm
+end
+op_iqrrls = LnL.terminate_stream(iqrrls_stream)
+iqrrls_stream = nothing
+GC.gc(false)
+CUDA.reclaim()
+
+## QRRLS
+# qrrls_stream = LnL.TwoPassStreamingOpInf(
+#     options=options, n=rmax, algorithm=:QRRLS, Γs=Γ, 
+#     qr_method=:qr, use_gpu=true)
+# @showprogress for i in 1:n
+#     # The stream of data
+#     x_i    = X_stream[i]
+#     xdot_i = Xdot_stream[i]
+
+#     # Stream, update, and get data matrix for the state system
+#     LnL.stream!(qrrls_stream, x_i, xdot_i; use_gpu=true) 
+
+#     # Compute streaming errors
+#     stream_errors[:qrrls][i]  = norm(Array(qrrls_stream.cache.O) - Ostar, 2) / Onorm
+# end
+# op_qrrls  = LnL.terminate_stream(qrrls_stream)
+# qrrls_stream = nothing
+# GC.gc(false)
+# CUDA.reclaim()
+
+## Save the streaming models
+save(joinpath(FILEPATH, "data/models/streaming_opinf_mdl.jld2"),
+     "op_rls", op_rls,
+     "op_iqrrls", op_iqrrls)
+    #  "op_qrrls", op_qrrls)
+
+## Save the streaming errors
+stream_errors_file = joinpath(FILEPATH, "data/results/streaming_errors.jld2")
+save(stream_errors_file, "stream_errors", stream_errors)
 
 #================#
 ## Simulate ROM ##
@@ -104,99 +174,37 @@ save(joinpath(FILEPATH, "data/models/opinf_mdl.jld2"), "op", op)
 include("integrate.jl")
 
 # Integrate a single trajectory 
-Xrom = Vector{Matrix{Float64}}(undef, n_traj)
-for i in 1:n_traj
-    idx_start = (i-1) * n_time + 1
-    idx_end = i * n_time
-    x0 = V' * X[:, idx_start:idx_end][:,1]
-    if CONTINUOUS_TIME
-        Xrom[i] = rk4_integrate(x0, ds.grid["time"], op.A, op.A2u, op.A3u, op.K)
-    else
-        states = zeros(size(V,2), n_time)
-        states[:,1] = x0
-        for j in 2:n_time
-            states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.A3u, op.K)
-            if any(isnan.(states[:,j]))
-                @warn "NaN detected in trajectory $i at time step $j"
-                break
-            end
-        end
-        Xrom[i] = states
+Xrom = Dict(
+    :batch  => Vector{Matrix{Float64}}(undef, n_traj),
+    :rls    => Vector{Matrix{Float64}}(undef, n_traj),
+    :iqrrls => Vector{Matrix{Float64}}(undef, n_traj),
+    :qrrls  => Vector{Matrix{Float64}}(undef, n_traj)
+)
+for alg in [:batch, :rls, :iqrrls, :qrrls]
+    op_ = alg == :batch ? op : 
+          alg == :rls ? op_rls :
+          alg == :iqrrls ? op_iqrrls : 
+          op_qrrls
+    for i in 1:n_traj
+        idx_start = (i-1) * n_time + 1
+        idx_end = i * n_time
+        x0 = V' * X[:, idx_start:idx_end][:,1]
+        Xrom[alg][i] = rk4_integrate(x0, ds.grid["time"], 
+                                     op_.A, op_.A2u, op_.A3u, op_.K)
     end
-end
-Xrom = reduce(hcat, Xrom)
-
-#=============================#
-## Compute projection errors ##
-#=============================#
-# Original data (unscaled and uncentered)
-shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
-scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
-mean   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
-
-unscale = (X, scale, shift) -> (scale .* X) .+ shift
-uncenter = (X, Xbar) -> X .+ Xbar
-
-## Compute rse
-X_orig = load(joinpath(FILEPATH, "data/original_data.jld2"))["X"]
-begin
-    # Processed data
-    X_recon = V * Xrom
-    X_error = X - X_recon
-    rse_processed = Dict(
-        fld => 0.0 for fld in [ds.fields, "all"]
-    )
-    for i in eachindex(ds.fields)
-        fld = ds.fields[i]
-        idx_start = (i-1) * nxyz + 1
-        idx_end = i * nxyz
-        num = norm(X_error[idx_start:idx_end, :], 2)
-        den = norm(X[idx_start:idx_end, :], 2)
-        rse_fld = num / den 
-        rse_processed[ds.fields[i]] = rse_fld
-        println("Reconstruction error for field $(fld): $rse_fld")
-    end
-    tmp = norm(X_error, 2) / norm(X, 2)
-    rse_processed["all"] = tmp
-    println("Overall reconstruction error: $(tmp)")
-
-    scale_all = reduce(vcat, [scale[fld] for fld in ds.fields])
-    shift_all = reduce(vcat, [shift[fld] for fld in ds.fields])
-    mean_all  = reduce(vcat, [mean[fld] for fld in ds.fields])
-
-    X_recon = unscale(X_recon, scale_all, shift_all)
-    X_recon = uncenter(X_recon, mean_all)
-    X_error = X_orig["all"] - X_recon
-
-    rse_orig = Dict(
-        fld => 0.0 for fld in [ds.fields, "all"]
-    )
-
-    for i in eachindex(ds.fields)
-        fld = ds.fields[i]
-        idx_start = (i-1) * nxyz + 1
-        idx_end = i * nxyz
-        X_error_field = X_error[idx_start:idx_end, :] 
-        num = norm(X_error_field, 2)
-        den = norm(X_orig[fld], 2)
-        rse_fld = num / den
-        rse_orig[fld] = rse_fld
-        println("Relative reconstruction error for $fld: $rse_fld")
-    end
-    rse_orig["all"] = norm(X_recon) / norm(X_orig["all"])
-    println("Overall relative reconstruction error: $(rse_orig["all"])")
-
-    ## Save relative errors
-    rse_file = joinpath(FILEPATH, "data/results/rse.jld2")
-    if !isfile(rse_file)
-        @info "Saving relative projection errors to file"
-        save(rse_file, "rse", Dict("processed" => rse_processed, "original" => rse_orig))
-    end
+    Xrom_copy = copy(Xrom[alg])
+    delete!(Xrom, alg)
+    Xrom[alg] = reduce(hcat, Xrom_copy)
 end
 
 #===========================#
 ## Plot the sliced density ##
 #===========================#
+# Original data (unscaled and uncentered)
+shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
+scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
+mean   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
+
 using CairoMakie
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(1200, 900))
@@ -323,7 +331,7 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
              labelsize=30, ticklabelsize=20)
     
-    # save(joinpath(FILEPATH, "plots/sliced_density.png"), fig)
+    save(joinpath(FILEPATH, "plots/sliced_density.png"), fig)
     display(fig)
 end
 
