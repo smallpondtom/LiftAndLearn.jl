@@ -85,7 +85,7 @@ Xhatdot = reduce(hcat, Xhatdot)
 stream_errors = Dict(
     :rls    => zeros(n),
     :iqrrls => zeros(n),
-    # :qrrls  => zeros(n)
+    :qrrls  => zeros(n)
 )
 
 
@@ -108,61 +108,56 @@ Ostar = op.O'
     LnL.stream!(rls_stream, x_i, xdot_i, use_gpu=true)   
 
     # Compute streaming errors
-    stream_errors[:rls][i]    = norm(Array(rls_stream.cache.O) - Ostar, 2) / Onorm
+    stream_errors[:rls][i] = norm(Array(rls_stream.cache.O) - Ostar, 2) / Onorm
 end
 op_rls = LnL.terminate_stream(rls_stream)
 rls_stream = nothing
-GC.gc(false)
+GC.gc()
 CUDA.reclaim()
 
 ## iQRRLS
 iqrrls_stream = LnL.TwoPassStreamingOpInf(
     options=options, n=rmax, algorithm=:iQRRLS, Γs=Γ, 
-    qr_method=:qr, use_gpu=false)
+    qr_method=:givens, use_gpu=false)
 @showprogress for i in 1:n
     # The stream of data
     x_i    = X_stream[i]
     xdot_i = Xdot_stream[i]
 
     # Stream, update, and get data matrix for the state system
-    LnL.stream!(iqrrls_stream, x_i, xdot_i; use_gpu=false) 
+    LnL.stream!(iqrrls_stream, x_i, xdot_i)
 
     # Compute streaming errors
-    foo = norm(Array(iqrrls_stream.cache.O) - Ostar, 2) / Onorm
-    stream_errors[:iqrrls][i] = foo
-    println("iQRRLS error at step $i: $foo")
-    # stream_errors[:iqrrls][i] = norm(Array(iqrrls_stream.cache.O) - Ostar, 2) / Onorm
+    stream_errors[:iqrrls][i] = norm(Array(iqrrls_stream.cache.O) - Ostar, 2) / Onorm
 end
 op_iqrrls = LnL.terminate_stream(iqrrls_stream)
 iqrrls_stream = nothing
-GC.gc(false)
-CUDA.reclaim()
+GC.gc()
 
 ## QRRLS
-# qrrls_stream = LnL.TwoPassStreamingOpInf(
-#     options=options, n=rmax, algorithm=:QRRLS, Γs=Γ, 
-#     qr_method=:qr, use_gpu=true)
-# @showprogress for i in 1:n
-#     # The stream of data
-#     x_i    = X_stream[i]
-#     xdot_i = Xdot_stream[i]
+qrrls_stream = LnL.TwoPassStreamingOpInf(
+    options=options, n=rmax, algorithm=:QRRLS, Γs=Γ, 
+    qr_method=:givens, use_gpu=false)
+@showprogress for i in 1:n
+    # The stream of data
+    x_i    = X_stream[i]
+    xdot_i = Xdot_stream[i]
 
-#     # Stream, update, and get data matrix for the state system
-#     LnL.stream!(qrrls_stream, x_i, xdot_i; use_gpu=true) 
+    # Stream, update, and get data matrix for the state system
+    LnL.stream!(qrrls_stream, x_i, xdot_i)
 
-#     # Compute streaming errors
-#     stream_errors[:qrrls][i]  = norm(Array(qrrls_stream.cache.O) - Ostar, 2) / Onorm
-# end
-# op_qrrls  = LnL.terminate_stream(qrrls_stream)
-# qrrls_stream = nothing
-# GC.gc(false)
-# CUDA.reclaim()
+    # Compute streaming errors
+    stream_errors[:qrrls][i] = norm(Array(qrrls_stream.cache.O) - Ostar, 2) / Onorm
+end
+op_qrrls  = LnL.terminate_stream(qrrls_stream)
+qrrls_stream = nothing
+GC.gc()
 
 ## Save the streaming models
 save(joinpath(FILEPATH, "data/models/streaming_opinf_mdl.jld2"),
      "op_rls", op_rls,
-     "op_iqrrls", op_iqrrls)
-    #  "op_qrrls", op_qrrls)
+     "op_iqrrls", op_iqrrls,
+     "op_qrrls", op_qrrls)
 
 ## Save the streaming errors
 stream_errors_file = joinpath(FILEPATH, "data/results/streaming_errors.jld2")
