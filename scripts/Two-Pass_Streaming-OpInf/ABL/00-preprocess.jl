@@ -34,10 +34,10 @@ include(joinpath(FILEPATH, "preprocess.jl"))
 #=============================#
 ds = ChannelDataSource(
     datafile, ["z", "y", "x", "fields", "times"],
-    x_subsample=3, 
-    y_subsample=3, 
-    z_subsample=2,
-    time_downsample=10,
+    # x_subsample=3, 
+    # y_subsample=3, 
+    # z_subsample=2,
+    # time_downsample=10,
 )
 nz, ny, nx, n_fields, n = ds.dims
 n_test = 2000
