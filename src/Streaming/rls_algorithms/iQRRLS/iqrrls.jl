@@ -65,7 +65,7 @@ function iQRRLSCache{T}(;
     J = zero(T)
     method = method in (:qr, :givens) ? method : :qr
 
-    @assert (method == :qr && use_gpu == true) "Givens rotations not implemented for GPU."
+    @assert !(method == :givens && use_gpu) "Givens rotations not implemented for GPU."
 
     return iQRRLSCache{T}(N, n, λ,
         O, Psq, u, K, ξpre, ξpost, A, temp_dO, temp_Ke,
