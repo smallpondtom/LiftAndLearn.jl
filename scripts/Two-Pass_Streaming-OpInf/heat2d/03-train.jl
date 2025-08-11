@@ -125,9 +125,9 @@ for (file_idx, data_file) in enumerate(training_data_files)
         rls_stream  = LnL.TwoPassStreamingOpInf(
             options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γ) 
         iqrrls_stream = LnL.TwoPassStreamingOpInf(
-            options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ, qr_method=:qr, use_gpu=true)
+            options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ)
         qrrls_stream = LnL.TwoPassStreamingOpInf(
-            options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ, qr_method=:qr)
+            options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ)
 
         # Preallocate a dictionary to store the streaming results
         # error_factors = Dict{Symbol, Matrix{Float64}}(
@@ -151,7 +151,7 @@ for (file_idx, data_file) in enumerate(training_data_files)
 
             # Stream, update, and get data matrix for the state system
             LnL.stream!(rls_stream, x_i, xdot_i; U=u_i)     # RLS
-            LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i, use_gpu=true)  # iQRRLS
+            LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i)  # iQRRLS
             LnL.stream!(qrrls_stream, x_i, xdot_i; U=u_i)   # QRRLS
 
             # Compute the error factor 
@@ -345,5 +345,5 @@ train_errors = Dict(
     end
 end
 
-# Save the errors
+## Save the errors
 save(joinpath(FILEPATH, "data/training_errors.jld2"), train_errors)
