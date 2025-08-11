@@ -49,7 +49,7 @@ function QRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T),
         q        = CUDA.zeros(T, N, n)
         ξpre     = CUDA.zeros(T, 1, n)
         ξpost    = CUDA.zeros(T, 1, n)
-        A        = CUDA.zeros(T, N+n+1, N+n+1)
+        A        = CUDA.zeros(T, N+1, N+n+1)
         temp_dO  = CUDA.zeros(T, 1, n)
         temp_Kd  = CUDA.zeros(T, N, 1)
         C        = zero(T)
@@ -70,7 +70,7 @@ function QRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T),
         ξpost    = zeros(T, 1, n)
         C        = zero(T)
         J        = zero(T)
-        A        = zeros(T, N+n+1, N+n+1)
+        A        = zeros(T, N+1, N+n+1)
         temp_dO  = zeros(T, 1, n)
         temp_Kd  = zeros(T, N, 1)
         tau      = nothing
@@ -96,7 +96,7 @@ function qrrls_step!(obj::QRRLSCache{T}, d::AbstractArray{T},
     λsq = sqrt(obj.λ)
 
     # Ensure temporary variables are correctly sized
-    @assert size(obj.A) == (N + n + 1, N + n + 1)
+    @assert size(obj.A) == (N + 1, N + n + 1)
     @assert size(obj.temp_dO) == (1, n)
     @assert size(obj.temp_Kd) == (N, 1)
 
