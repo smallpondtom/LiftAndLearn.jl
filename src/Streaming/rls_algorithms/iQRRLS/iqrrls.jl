@@ -224,16 +224,23 @@ function iqrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
         end
     end
     
-    # Negate and apply upper triangular structure
-    @inbounds @simd for i in 1:np1
-        for j in 1:n
-            if i <= j
-                A[i, j] = -A[i, j]
-            else
-                A[i, j] = zero(T)
-            end
-        end
-    end
-    A[np1, np1] *= -1.0 # Fix the last diagonal entry for odd n
+    """
+    The following code is necessary IF we want to obtain a post-array 
+    that is the complete same as the one obtained from `qr!()`. However,
+    it is not necessary since it is just zeroing out the lower part which is
+    not used and flipping the signs which cancel out in the final computations.
+    """
+    # # Negate and apply upper triangular structure
+    # @inbounds @simd for i in 1:np1
+    #     for j in 1:n
+    #         if i <= j
+    #             A[i, j] = -A[i, j]
+    #         # else
+    #         #     A[i, j] = zero(T)
+    #         end
+    #     end
+    # end
+    # A[np1, np1] *= -1.0 # Fix the last diagonal entry for odd n
+
     return A
 end

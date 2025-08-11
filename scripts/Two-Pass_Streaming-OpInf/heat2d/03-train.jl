@@ -123,7 +123,7 @@ for (file_idx, data_file) in enumerate(training_data_files)
 
         # Initialize the streaming OpInfs
         rls_stream  = LnL.TwoPassStreamingOpInf(
-            options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γ) 
+            options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γ)
         iqrrls_stream = LnL.TwoPassStreamingOpInf(
             options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ)
         qrrls_stream = LnL.TwoPassStreamingOpInf(

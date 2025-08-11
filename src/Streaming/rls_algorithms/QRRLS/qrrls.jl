@@ -234,22 +234,28 @@ function qrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
         end
     end
 
-    # Apply negation and ensure upper triangular structure
-    @inbounds @simd for j in 1:nprp1
-        # Negate upper triangular part
-        for i in 1:min(j, n)
-            A[i, j] = -A[i, j]
-        end
-        # Zero out lower triangular part (except last row)
-        for i in (j+1):n
-            A[i, j] = zero(T)
-        end
-    end
+    """
+    The following code is necessary IF we want to obtain a post-array 
+    that is the complete same as the one obtained from `qr!()`. However,
+    it is not necessary since it is just zeroing out the lower part which is
+    not used and flipping the signs which cancel out in the final computations.
+    """
+    # # Apply negation and ensure upper triangular structure
+    # @inbounds @simd for j in 1:nprp1
+    #     # Negate upper triangular part
+    #     for i in 1:min(j, n)
+    #         A[i, j] = -A[i, j]
+    #     end
+    #     # # Zero out lower triangular part (except last row)
+    #     # for i in (j+1):n
+    #     #     A[i, j] = zero(T)
+    #     # end
+    # end
     
-    # Ensure zero for last row in 1:n columns
-    @inbounds @simd for j in 1:n
-        A[np1, j] = 0.0
-    end
+    # # # Ensure zero for last row in 1:n columns
+    # # @inbounds @simd for j in 1:n
+    # #     A[np1, j] = 0.0
+    # # end
     
     return A
 end
