@@ -21,6 +21,7 @@ function reproject(Xhat::AbstractArray, V::AbstractArray, Ut::AbstractArray,
     Rt = zeros(K, n)  # Left hand side of the regression problem
 
     # Assuming the user gave the nonlinear functional or the Operator structure predefined the nonlinear functional
+    _reconstruct_function!(op)
     f = (x, u) -> op.A * x .+ op.B * u .+ op.K .+ op.f(x,u)
 
     for i in 1:K  # loop thru all data

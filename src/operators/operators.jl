@@ -58,15 +58,18 @@ Base.@kwdef mutable struct Operators
     # Constant operators
     K::Union{AbstractArray{<:Number},Real} = 0                                             # constant
 
-    # Nonlinear function operator (default using defined operators)
-    f::Function =
-        begin
-            if size(B,2) == 1
-                (x,u) -> A2u*⊘(x, iszero(A2u) ? 1 : 2) + A3u*⊘(x, iszero(A3u) ? 1 : 3) + A4u*⊘(x, iszero(A4u) ? 1 : 4) + (N*x)*u[1]
-            else
-                (x,u) -> A2u*⊘(x, iszero(A2u) ? 1 : 2) + A3u*⊘(x, iszero(A3u) ? 1 : 3) + A4u*⊘(x, iszero(A4u) ? 1 : 4) + sum([(N[i] * x) * u[i] for i in 1:size(B,2)]) 
-            end
-        end 
+    # # Nonlinear function operator (default using defined operators)
+    # f::Function =
+    #     begin
+    #         if size(B,2) == 1
+    #             (x,u) -> A2u*⊘(x, iszero(A2u) ? 1 : 2) + A3u*⊘(x, iszero(A3u) ? 1 : 3) + A4u*⊘(x, iszero(A4u) ? 1 : 4) + (N*x)*u[1]
+    #         else
+    #             (x,u) -> A2u*⊘(x, iszero(A2u) ? 1 : 2) + A3u*⊘(x, iszero(A3u) ? 1 : 3) + A4u*⊘(x, iszero(A4u) ? 1 : 4) + sum([(N[i] * x) * u[i] for i in 1:size(B,2)]) 
+    #         end
+    #     end 
+
+    # Nonlinear function operator (default using defined operators) - not serialized
+    f::Function = _default_nonlinear_function
 
     # Concatenated operators from the solution of OpInf
     O::Union{AbstractArray{<:Number},Real} = 0
@@ -84,4 +87,18 @@ Base.@kwdef mutable struct Operators
         :A3u => iszero(A3u) ? 0 : size(A3u,2), 
         :A4u => iszero(A4u) ? 0 : size(A4u,2), 
     ) 
+end
+
+# Define the default function separately
+function _default_nonlinear_function(ops::Operators)
+    if size(ops.B,2) == 1
+        return (x,u) -> ops.A2u*⊘(x, iszero(ops.A2u) ? 1 : 2) + ops.A3u*⊘(x, iszero(ops.A3u) ? 1 : 3) + ops.A4u*⊘(x, iszero(ops.A4u) ? 1 : 4) + (ops.N*x)*u[1]
+    else
+        return (x,u) -> ops.A2u*⊘(x, iszero(ops.A2u) ? 1 : 2) + ops.A3u*⊘(x, iszero(ops.A3u) ? 1 : 3) + ops.A4u*⊘(x, iszero(ops.A4u) ? 1 : 4) + sum([(ops.N[i] * x) * u[i] for i in 1:size(ops.B,2)]) 
+    end
+end
+
+# Reconstruction after loading
+function _reconstruct_function!(ops::Operators)
+    ops.f = _default_nonlinear_function(ops)
 end
