@@ -5,7 +5,7 @@ Update the streaming operator inference with new data by solving a recursive lea
 the inverse-QR Decomposition Recursive Least-Squares (iQRRLS) algorithm.
 """
 function stream!(obj::iQRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; 
-                 U::AbstractArray{T}=T[], use_gpu::Bool=false) where T<:Number
+                 U::AbstractArray{T}=T[]) where T<:Number
 
     tdim = size(X, 2)  # number of data points (time dimension)
 
@@ -30,7 +30,7 @@ function stream!(obj::iQRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T};
     end
 
     # GPU support
-    if use_gpu
+    if obj.cache.use_gpu
         D = CUDA.CuArray(D)
         R = CUDA.CuArray(R)
     end
