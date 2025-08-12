@@ -395,7 +395,7 @@ function terminate_stream(obj::TwoPassStreamingOpInf)
     # Extract the operators
     operators = Operators(O=Array(obj.cache.O))
     unpack_operators!(
-        operators, obj.cache.O',  # remember to transpose the operator matrix
+        operators, Array(obj.cache.O'),  # remember to transpose the operator matrix
         obj.termination_settings[:dims], obj.termination_settings[:syms])
     return operators
 end
@@ -411,7 +411,7 @@ function terminate_stream(state_obj::TwoPassStreamingOpInf,
     # Extract the operators
     operators = Operators(O=Array(obj.cache.O))
     unpack_operators!(
-        operators, state_obj.cache.O',  # remember to transpose the operator matrix
+        operators, Array(state_obj.cache.O'),  # remember to transpose the operator matrix
         state_obj.termination_settings[:dims], state_obj.termination_settings[:syms])
     operators.C = output_obj.cache.O'
     return operators
