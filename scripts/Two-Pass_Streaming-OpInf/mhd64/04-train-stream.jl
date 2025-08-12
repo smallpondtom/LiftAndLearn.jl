@@ -169,28 +169,36 @@ save(stream_errors_file, "stream_errors", stream_errors)
 include("integrate.jl")
 
 # Integrate a single trajectory 
-Xrom = Dict(
+tmp = Dict(
     :batch  => Vector{Matrix{Float64}}(undef, n_traj),
     :rls    => Vector{Matrix{Float64}}(undef, n_traj),
     :iqrrls => Vector{Matrix{Float64}}(undef, n_traj),
     :qrrls  => Vector{Matrix{Float64}}(undef, n_traj)
 )
+Xrom = Dict(
+    :batch  => Matrix{Float64}(undef, nxyz, n),
+    :rls    => Matrix{Float64}(undef, nxyz, n),
+    :iqrrls => Matrix{Float64}(undef, nxyz, n),
+    :qrrls  => Matrix{Float64}(undef, nxyz, n)
+)
 for alg in [:batch, :rls, :iqrrls, :qrrls]
-    op_ = alg == :batch ? op : 
-          alg == :rls ? op_rls :
+    op_ = alg == :rls ? op_rls :
           alg == :iqrrls ? op_iqrrls : 
           op_qrrls
+    A = Array(op_.A)
+    A2u = Array(op_.A2u)
+    A3u = Array(op_.A3u)
+    K = Array(op_.K)
     for i in 1:n_traj
         idx_start = (i-1) * n_time + 1
         idx_end = i * n_time
         x0 = V' * X[:, idx_start:idx_end][:,1]
-        Xrom[alg][i] = rk4_integrate(x0, ds.grid["time"], 
-                                     op_.A, op_.A2u, op_.A3u, op_.K)
+        tmp[alg][i] = rk4_integrate(x0, ds.grid["time"], A, A2u, A3u, K)
     end
-    Xrom_copy = copy(Xrom[alg])
-    delete!(Xrom, alg)
-    Xrom[alg] = reduce(hcat, Xrom_copy)
+    Xrom[alg] = reduce(hcat, tmp[alg])
 end
+tmp = nothing
+GC.gc()
 
 #===========================#
 ## Plot the sliced density ##
@@ -200,8 +208,12 @@ shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
 scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
 mean   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
 
+##
 using CairoMakie
 with_theme(theme_latexfonts()) do 
+    alg = "qrrls"
+    algsym = Symbol(alg)
+
     fig = Figure(size=(1200, 900))
     # Pick trajectory
     traj_idx = 2
@@ -242,7 +254,7 @@ with_theme(theme_latexfonts()) do
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
-        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
+        Xrom_traj = Xrom[algsym][:, (traj_idx-1) * n_time + t_idx]
         Xrecon = V * Xrom_traj
         Xrecon = Xrecon[1:nxyz]
         Xrecon = unscale(Xrecon, scale["rho"], shift["rho"])
@@ -326,17 +338,18 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
              labelsize=30, ticklabelsize=20)
     
-    save(joinpath(FILEPATH, "plots/sliced_density.png"), fig)
+    save(joinpath(FILEPATH, "plots/sliced_density_$(alg).png"), fig)
     display(fig)
 end
-
 
 
 #===================================#
 ## Plot the sliced specific volume ##
 #===================================#
-using CairoMakie
 with_theme(theme_latexfonts()) do 
+    alg = "qrrls"
+    algsym = Symbol(alg)
+
     fig = Figure(size=(1200, 900))
     # Pick trajectory
     traj_idx = 1
@@ -377,7 +390,7 @@ with_theme(theme_latexfonts()) do
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
-        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
+        Xrom_traj = Xrom[algsym][:, (traj_idx-1) * n_time + t_idx]
         Xrecon = V * Xrom_traj
         Xrecon = Xrecon[1:nxyz]
         Xrecon = unscale(Xrecon, scale["z"], shift["z"])
@@ -458,7 +471,7 @@ with_theme(theme_latexfonts()) do
              labelsize=30, ticklabelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
              labelsize=30, ticklabelsize=20)
-    save(joinpath(FILEPATH, "plots/sliced_volume.png"), fig)
+    save(joinpath(FILEPATH, "plots/sliced_volume_$(alg).png"), fig)
     display(fig)
 end
 
@@ -469,6 +482,9 @@ end
 #============================#
 using CairoMakie
 with_theme(theme_latexfonts()) do 
+    alg = "qrrls"
+    algsym = Symbol(alg)
+
     fig = Figure(size=(1200, 900))
     # Pick trajectory
     traj_idx = 1
@@ -499,6 +515,9 @@ with_theme(theme_latexfonts()) do
     all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
     all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
 
+    unscale = (X, scale, shift) -> (scale .* X) .+ shift
+    uncenter = (X, Xbar) -> X .+ Xbar
+
     # Collect all data first
     momentum = "mx"
     if momentum == "mx"
@@ -517,7 +536,7 @@ with_theme(theme_latexfonts()) do
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
-        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
+        Xrom_traj = Xrom[algsym][:, (traj_idx-1) * n_time + t_idx]
         Xrecon = V * Xrom_traj
         Xrecon = Xrecon[start_idx:end_idx]
         Xrecon = unscale(Xrecon, scale[momentum], shift[momentum])
@@ -593,7 +612,7 @@ with_theme(theme_latexfonts()) do
              labelsize=30, ticklabelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
              labelsize=30, ticklabelsize=20)
-    save(joinpath(FILEPATH, "plots/sliced_momentum.png"), fig)
+    save(joinpath(FILEPATH, "plots/sliced_momentum_$(alg).png"), fig)
     display(fig)
 end
 
@@ -603,6 +622,9 @@ end
 #==================================#
 using CairoMakie
 with_theme(theme_latexfonts()) do 
+    alg = "qrrls"
+    algsym = Symbol(alg)
+
     fig = Figure(size=(1200, 900))
     # Pick trajectory
     traj_idx = 2
@@ -633,6 +655,9 @@ with_theme(theme_latexfonts()) do
     all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
     all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
 
+    unscale = (X, scale, shift) -> (scale .* X) .+ shift
+    uncenter = (X, Xbar) -> X .+ Xbar
+
     # Collect all data first
     magnetic = "Bx"
     if magnetic == "Bx"
@@ -651,7 +676,7 @@ with_theme(theme_latexfonts()) do
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
         
         # Get ROM data
-        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
+        Xrom_traj = Xrom[algsym][:, (traj_idx-1) * n_time + t_idx]
         Xrecon = V * Xrom_traj
         Xrecon = Xrecon[start_idx:end_idx]
         Xrecon = unscale(Xrecon, scale[magnetic], shift[magnetic])
@@ -727,7 +752,7 @@ with_theme(theme_latexfonts()) do
              labelsize=30, ticklabelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
              labelsize=30, ticklabelsize=20)
-    save(joinpath(FILEPATH, "plots/sliced_magnetic.png"), fig)
+    save(joinpath(FILEPATH, "plots/sliced_magnetic_$(alg).png"), fig)
     display(fig)
 end
 
