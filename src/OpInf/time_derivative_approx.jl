@@ -57,10 +57,134 @@ function time_derivative_approx(X::VecOrMat, options::AbstractOption)
         )
         idx = 1:N
     else
-        error("Undefined choice of numerical integration. Choose only an accepted method from: FE (Forward Euler), BE (Backward Euler), SI (Semi-implicit Euler)")
+        error("Undefined choice of numerical integration. Choose only an " * 
+              "accepted method from: FE (Forward Euler), BE (Backward Euler)," *
+              "SI (Semi-implicit Euler)")
     end
     return dXdt, idx
 end
+
+
+function finite_diff_matrix(fd_method::String, n::Int, dt::Float64)
+    if fd_method == "FE"
+        if n < 2
+            error("Need at least 2 time points for 1st order finite differences.")
+        end
+        D = zeros(n, n-1)
+        for i in 1:n-1
+            D[i, i]   = -1 / dt
+            D[i+1, i] =  1 / dt
+        end
+        idx = 1:n-1
+    elseif fd_method == "BE"
+        if n < 2
+            error("Need at least 2 time points for 1st order finite differences.")
+        end
+        D = zeros(n, n-1)
+        for i in 2:n
+            D[i-1, i-1] = -1 / dt
+            D[i, i-1]   =  1 / dt
+        end
+        idx = 2:n
+    elseif fd_method == "SI"
+        if n < 2
+            error("Need at least 2 time points for 1st order finite differences.")
+        end
+        D = zeros(n, n-1)
+        for i in 2:n
+            D[i-1, i-1] = -1 / dt
+            D[i, i-1]   =  1 / dt
+        end
+        idx = 2:n
+    elseif fd_method == "FE4"
+        if n < 5
+            error("Need at least 5 time points for 4th order finite differences.")
+        end
+        D = zeros(n, n-4)
+        for i in 1:n-4
+            D[i, i]   = -25 / (12*dt)
+            D[i, i+1] =  48 / (12*dt)
+            D[i, i+2] = -36 / (12*dt)
+            D[i, i+3] =  16 / (12*dt)
+            D[i, i+4] =  -3 / (12*dt)
+        end
+        idx = 1:n-4
+    elseif fd_method == "BE4"
+        if n < 5
+            error("Need at least 5 time points for 4th order finite differences.")
+        end
+        D = zeros(n, n-4)
+        for i in 5:n
+            D[i, i-4] =  3 / (12*dt)
+            D[i, i-3] = -16 / (12*dt)
+            D[i, i-2] =  36 / (12*dt)
+            D[i, i-1] = -48 / (12*dt)
+            D[i, i]   = 25 / (12*dt)
+        end
+        idx = 5:n
+    elseif fd_method == "CTD4"
+        if n < 5
+            error("Need at least 5 time points for 4th order finite differences.")
+        end
+        D = zeros(n, n-4)
+        for i in 3:n-2
+            D[i, i-2] =  1 / (12*dt)
+            D[i, i-1] = -8 / (12*dt)
+            D[i, i+1] =  8 / (12*dt)
+            D[i, i+2] = -1 / (12*dt)
+        end
+        idx = 3:n-2
+    elseif fd_method == "FBCT4"
+        if n < 5
+            error("Need at least 5 time points for 4th order finite differences.")
+        end
+        D = zeros(n, n)
+        # Forward difference for first two points
+        D[1, 1] = -25 / (12*dt)
+        D[1, 2] =  48 / (12*dt)
+        D[1, 3] = -36 / (12*dt)
+        D[1, 4] =  16 / (12*dt)
+        D[1, 5] =  -3 / (12*dt)
+
+        D[2, 1] =  -3 / (12*dt)
+        D[2, 2] = -10 / (12*dt)
+        D[2, 3] =  18 / (12*dt)
+        D[2, 4] =  -6 / (12*dt)
+        D[2, 5] =   1 / (12*dt)
+
+        # Central difference for middle points
+        for i in 3:n-2
+            D[i, i-2] =  1 / (12*dt)
+            D[i, i-1] = -8 / (12*dt)
+            D[i, i+1] =  8 / (12*dt)
+            D[i, i+2] = -1 / (12*dt)
+        end
+
+        # Backward difference for last two points
+        D[n-1, n-4] = -1 / (12*dt)
+        D[n-1, n-3] =  6 / (12*dt)
+        D[n-1, n-2] = -18 / (12*dt)
+        D[n-1, n-1] = 10 / (12*dt)
+        D[n-1, n]   =  3 / (12*dt)
+
+        D[n, n-4] =  3 / (12*dt)
+        D[n, n-3] = -16 / (12*dt)
+        D[n, n-2] = 36 / (12*dt)
+        D[n, n-1] = -48 / (12*dt)
+        D[n, n]
+
+        idx = 1:n
+    else
+        error("Undefined choice of numerical integration. Choose only an " * 
+              "accepted method from: FE (Forward Euler), BE (Backward Euler)," *
+              "SI (Semi-implicit Euler), FE4 (4th order Forward Euler), " *
+              "BE4 (4th order Backward Euler), CTD4 (4th order Central), " *
+              "FBCT4 (4th order Forward Backward Central)")
+    end
+    return D, idx
+end
+
+
 
 
 """

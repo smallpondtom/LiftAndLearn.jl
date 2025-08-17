@@ -511,15 +511,25 @@ function compute_onepass_operators(obj::OnePassStreamingOpInf1,
         tikhonov_matrix!(Γ, dims, operator_symbols, obj.options.λ)
         Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
-        Ot = tikhonov(
-            R, D, Γ, obj.options.pinv_tol; tol_flag=obj.options.with_tol, 
-            use_gpu=obj.options.use_gpu, use_backslash=obj.options.use_backslash
-        )
+        Ot = tikhonov(R, D, Γ;
+                      tol=obj.options.tolerance,
+                      use_gpu=obj.options.use_gpu,
+                      use_normal_form=obj.options.use_normal_equations,
+                      use_svd_truncation=obj.options.use_svd_truncation,
+                      use_backslash=obj.options.use_backslash,
+                      chunk_size=obj.options.chunk_size,
+                      max_iterations=obj.options.max_iterations,
+                      estimate_memory=obj.options.estimate_memory,
+                      preconditioning=obj.options.preconditioning,)
     else
-        Ot = standard_least_squares(
-            D, R; use_gpu=obj.options.use_gpu, 
-            use_backslash=obj.options.use_backslash
-        )
+        Ot = standard_least_squares(D, R; 
+                                    use_gpu=obj.options.use_gpu, 
+                                    use_normal_equations=obj.options.use_normal_equations,
+                                    chunk_size=obj.options.chunk_size,
+                                    tolerance=obj.options.tolerance,
+                                    use_backslash=obj.options.use_backslash,
+                                    algorithm=obj.options.algorithm,
+                                    estimate_memory=obj.options.estimate_memory)
     end
 
     # Extract the operators from the operator matrix O
@@ -614,15 +624,25 @@ function compute_onepass_operators(obj::OnePassStreamingOpInf2,
         tikhonov_matrix!(Γ, dims, operator_symbols, obj.options.λ)
         Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
-        Ot = tikhonov(
-            R, D, Γ, obj.options.pinv_tol; tol_flag=obj.options.with_tol, 
-            use_gpu=obj.options.use_gpu, use_backslash=obj.options.use_backslash
-        )
+        Ot = tikhonov(R, D, Γ;
+                      tol=obj.options.tolerance,
+                      use_gpu=obj.options.use_gpu,
+                      use_normal_form=obj.options.use_normal_equations,
+                      use_svd_truncation=obj.options.use_svd_truncation,
+                      use_backslash=obj.options.use_backslash,
+                      chunk_size=obj.options.chunk_size,
+                      max_iterations=obj.options.max_iterations,
+                      estimate_memory=obj.options.estimate_memory,
+                      preconditioning=obj.options.preconditioning,)
     else
-        Ot = standard_least_squares(
-            D, R; use_gpu=obj.options.use_gpu, 
-            use_backslash=obj.options.use_backslash
-        )
+        Ot = standard_least_squares(D, R; 
+                                    use_gpu=obj.options.use_gpu, 
+                                    use_normal_equations=obj.options.use_normal_equations,
+                                    chunk_size=obj.options.chunk_size,
+                                    tolerance=obj.options.tolerance,
+                                    use_backslash=obj.options.use_backslash,
+                                    algorithm=obj.options.algorithm,
+                                    estimate_memory=obj.options.estimate_memory)
     end
 
     # Extract the operators from the operator matrix O
