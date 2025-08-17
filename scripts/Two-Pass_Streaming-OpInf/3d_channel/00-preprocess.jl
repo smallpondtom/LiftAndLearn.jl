@@ -71,7 +71,9 @@ if COMPUTE_MEAN && COMPUTE_MINMAX
     else
         @info "Starting min/max computation with $(Threads.nthreads()) threads"
         @time begin
-            x_min, x_max = compute_minmax_parallel_threads(ds, n_train, batch_size=100)
+            x_min, x_max = compute_minmax_parallel_threads(ds, n_train, 
+                                                           batch_size=100,
+                                                           means=nothing)
         end
         # Compute minmax scaling parameters
         @info "Min/max computation complete"
@@ -118,7 +120,8 @@ elseif COMPUTE_MINMAX
     else
         @info "Starting min/max computation with $(Threads.nthreads()) threads"
         @time begin
-            x_min, x_max = compute_minmax_parallel_threads(ds, n_train, batch_size=100)
+            x_min, x_max = compute_minmax_parallel_threads(ds, n_train, 
+                                                           batch_size=100)
         end
         # Compute minmax scaling parameters
         @info "Min/max computation complete"
@@ -150,3 +153,118 @@ end
 # 2) Mean shift only 
 # 3) Mean shift + scaling with [sqrt(dPdx), sqrt(dPdx), sqrt(dPdx), dPdx]
 # 4) Mean shift + scaling with [1.0, 0.01, 0.01, dPdx]
+# 5) Mean shift + minmax scaling
+
+
+# #==============================================================================#
+# ## Compute preprocessing parameters (mean and/or minmax scaling) for test data
+# #==============================================================================#
+# COMPUTE_MEAN = true
+# COMPUTE_MINMAX = true
+# SCALE_TYPE = :minmaxsym
+
+# if COMPUTE_MEAN && COMPUTE_MINMAX
+#     @info "Computing mean and min/max for preprocessing"
+#     mean_file = joinpath(FILEPATH, "data/mean_test.jld2")
+#     if isfile(mean_file)
+#         @info "Loading existing mean from file"
+#         xbar = load(mean_file, "xbar")
+#     else
+#         @info "Starting mean computation with $(Threads.nthreads()) threads"
+#         @time begin
+#             xbar = compute_mean_parallel_threads_locked(ds, (Nz*Ny*Nx*4,), 
+#                                                         n_test; batch_size=100,
+#                                                         shift=n_train)
+#         end
+#         @info "Mean computation complete"
+#         save(mean_file, "xbar", xbar)
+#     end
+
+#     minmax_file = joinpath(FILEPATH, "data/minmax_test.jld2")
+#     if isfile(minmax_file)
+#         @info "Loading existing minmax parameters from file"
+#         minmax_data = load(minmax_file, "minmax")
+#         shifts = minmax_data["shifts"]
+#         scales = minmax_data["scales"]
+#     else
+#         @info "Starting min/max computation with $(Threads.nthreads()) threads"
+#         @time begin
+#             x_min, x_max = compute_minmax_parallel_threads(ds, n_test, 
+#                                                            batch_size=100,
+#                                                            means=nothing,
+#                                                            shift=n_train)
+#         end
+#         # Compute minmax scaling parameters
+#         @info "Min/max computation complete"
+#         if SCALE_TYPE == :minmaxsym
+#             @info "Using symmetric minmax scaling in range [-1, 1]"
+#             scales = (x_max .- x_min) ./ 2
+#             shifts = (x_max .+ x_min) ./ 2
+#         elseif SCALE_TYPE == :minmax
+#             @info "Using minmax scaling in range [0, 1]"
+#             scales = x_max .- x_min
+#             shifts = x_min
+#         else
+#             error("Unknown scaling type: $SCALE_TYPE")
+#         end
+#         save(minmax_file, "minmax", Dict(
+#             "min" => x_min, "max" => x_max,
+#             "shifts" => shifts, "scales" => scales
+#         ))
+#     end
+# elseif COMPUTE_MEAN
+#     @info "Computing mean for mean-shift preprocessing"
+#     mean_file = joinpath(FILEPATH, "data/mean_test.jld2")
+#     if isfile(mean_file)
+#         @info "Loading existing mean from file"
+#         xbar = load(mean_file, "xbar")
+#     else
+#         @info "Starting mean computation with $(Threads.nthreads()) threads"
+#         @time begin
+#             xbar = compute_mean_parallel_threads_locked(ds, (Nz*Ny*Nx*4,), 
+#                                                         n_test; batch_size=100,
+#                                                         shift=n_train)
+#         end
+#         @info "Mean computation complete"
+#         save(mean_file, "xbar", xbar)
+#     end
+# elseif COMPUTE_MINMAX
+#     @info "Computing min/max for minmax shift-and-scale preprocessing"
+#     minmax_file = joinpath(FILEPATH, "data/minmax_test.jld2")
+#     if isfile(minmax_file)
+#         @info "Loading existing minmax parameters from file"
+#         minmax_data = load(minmax_file, "minmax")
+#         xbar = minmax_data["xbar"]
+#         shifts = minmax_data["shifts"]
+#         scales = minmax_data["scales"]
+#     else
+#         @info "Starting min/max computation with $(Threads.nthreads()) threads"
+#         @time begin
+#             x_min, x_max = compute_minmax_parallel_threads(ds, n_train, 
+#                                                            batch_size=100,
+#                                                            shift=n_train)
+#         end
+#         # Compute minmax scaling parameters
+#         @info "Min/max computation complete"
+#         if SCALE_TYPE == :minmaxsym
+#             @info "Using symmetric minmax scaling in range [-1, 1]"
+#             scales = (x_max .- x_min) ./ 2
+#             shifts = (x_max .+ x_min) ./ 2
+#         elseif SCALE_TYPE == :minmax
+#             @info "Using minmax scaling in range [0, 1]"
+#             scales = x_max .- x_min
+#             shifts = x_min
+#         else
+#             error("Unknown scaling type: $SCALE_TYPE")
+#         end
+#         save(minmax_file, "minmax", Dict(
+#             "min" => x_min, "max" => x_max,
+#             "shifts" => shifts, "scales" => scales
+#         ))
+#     end
+# else
+#     @info "Skipping preprocessing, using default scaling and zero mean"
+#     xbar = 0.0
+#     scales = 1.0
+#     shifts = 0.0
+# end

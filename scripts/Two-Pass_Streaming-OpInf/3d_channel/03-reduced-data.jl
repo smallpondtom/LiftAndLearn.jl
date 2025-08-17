@@ -54,7 +54,7 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 #=================#
 ## Load the bases 
 #=================#
-basis_file = joinpath(FILEPATH, "data/bases/basis.jld2")
+basis_file = joinpath(FILEPATH, "data/bases/basis_0_8000_r400.jld2")
 iVrmax = load(basis_file)["bases"]["baker"].iVr
 
 #=============================#

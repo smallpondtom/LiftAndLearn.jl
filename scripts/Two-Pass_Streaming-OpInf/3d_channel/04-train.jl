@@ -36,7 +36,8 @@ include(joinpath(FILEPATH, "datasource.jl"))
 ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 nz, ny, nx, n_fields, n_time = ds.dims
 nxyz = nz * ny * nx
-
+n_test = 2000
+n_train = n_time - n_test
 
 #===================#
 ## Setup the options
@@ -51,22 +52,24 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
-    # use_backslash=true,
-    use_svd_truncation=true,
+    use_backslash=true,
+    # use_svd_truncation=true,
     # tolerance=1e-22
 )
-rmax = 500
-
+rmax = 200
 
 #=========================#
 ## Load reduced data
 #=========================#
 CONTINUOUS_TIME = true
 if CONTINUOUS_TIME
-    Xhat = load(joinpath(FILEPATH, "data/streaming/reduced_data_r$(rmax).jld2"))["Xhat"]
-    Xhatdot = load(joinpath(FILEPATH, "data/streaming/reduced_data_r$(rmax).jld2"))["Xhatdot"]
+    Xhat = load(joinpath(FILEPATH, 
+                "data/streaming/reduced_data_r$(rmax).jld2"))["Xhat"]
+    Xhatdot = load(joinpath(FILEPATH, 
+                   "data/streaming/reduced_data_r$(rmax).jld2"))["Xhatdot"]
 else
-    Xhat = load(joinpath(FILEPATH, "data/streaming/reduced_data_r$(rmax).jld2"))["Xhat"]
+    Xhat = load(joinpath(FILEPATH, 
+                "data/streaming/reduced_data_r$(rmax).jld2"))["Xhat"]
     Xhatdot = Xhat[:, 1:end-1]  
     Xhat = Xhat[:, 2:end]
 end
@@ -78,35 +81,16 @@ size(Xhat,1) != rmax && @warn "Xhat has a different number of \
 #=========================#
 # Tikhonov Regularized OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e12, A2=1e12, K=1e12)
+# options.λ = LnL.TikhonovParameter(A=1e12, A2=1e12, K=1e12)
+options.λ = LnL.TikhonovParameter(A=best_beta1, A2=best_beta2, K=best_beta1)
 op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+save(joinpath(FILEPATH, "data/models", 
+     "batch_operators_0_8000_r200_lamGS.jld2"), 
+     "op", op)
 
-##
-save(joinpath(FILEPATH, "data/models", "operators_r500_lambda1e12.jld2"), "op", op)
-
-
-#================#
-## Simulate ROM ##
-#================#
-include(joinpath(FILEPATH, "integrate.jl"))
-
-if CONTINUOUS_TIME
-    tspan = ds["times"][:] .- ds["times"][1]
-    x0 = Xhat[:,1]
-    states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
-else
-    states = zeros(size(V,2), n_time)
-    states[:,1] = x0
-    for j in 2:n_time
-        states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.K)
-        if any(isnan.(states[:,j]))
-            @warn "NaN detected in trajectory $i at time step $j"
-            break
-        end
-    end
-    Xrom[i] = states
-end
-
+## Load the batch model
+op = load(joinpath(FILEPATH, "data/models", 
+          "batch_operators_0_8000_r$(rmax)_lamGS.jld2"))["op"]
 
 #========================================#
 ## Grid Search Regularization Parameters
@@ -121,6 +105,7 @@ function simulate_opinf(x0, n_time, op, tspan=nothing, continuous=true)
         states[:, 1] = x0
         for j in 2:n_time
             states[:, j] = reduced_model(states[:, j-1], op.A, op.A2u, op.K)
+            fidx = j
             if any(isnan.(states[:, j]))
                 @warn "NaN detected in trajectory at time step $j"
                 break
@@ -143,6 +128,7 @@ function find_best_opinf_model(
     best_final_idx = 0
     Xtilde_opt = nothing
     eval_time_opt = nothing
+    best_model = nothing
 
     mean_Xhat = mean(Xhat, dims=2)
     max_diff_Xhat = maximum(abs.(Xhat .- mean_Xhat), dims=2)
@@ -199,6 +185,7 @@ function find_best_opinf_model(
             best_train_err = train_err
             Xtilde_opt = Xtilde
             eval_time_opt = time_opinf_eval
+            best_model = ops
         end
 
         if best_final_idx < fidx
@@ -219,21 +206,68 @@ function find_best_opinf_model(
                training error = $best_train_err, evaluation time = $eval_time_opt"
     end
 
-    return best_beta1, best_beta2, best_train_err, Xtilde_opt, eval_time_opt, best_final_idx
+    return (best_model, best_beta1, best_beta2, best_train_err, 
+            Xtilde_opt, eval_time_opt, best_final_idx)
 end
 
 ## Run grid Search
-B1 = 10.0 .^ range(8.0, 12.0, length=6)
-B2 = 10.0 .^ range(8.0, 12.0, length=6)
+B1 = 10.0 .^ range(11.0, 13.0, length=10)
+B2 = 10.0 .^ range(11.0, 13.0, length=10)
 reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
 n_reg_global = length(reg_pairs_global)
 max_growth = 1.2
 options.with_reg = true
-best_beta1, best_beta2, best_train_err, states, eval_time, fidx = 
+op, best_beta1, best_beta2, best_train_err, states, eval_time, fidx = 
     find_best_opinf_model(reg_pairs_global, Xhat, Xhat, Xhatdot,
-                          n_time, Int(n_time+(n_time // 10)), max_growth, options,
-                          ds["times"][:], CONTINUOUS_TIME)
+                          n_train, n_train, max_growth, options,
+                          ds["times"][1:n_train], CONTINUOUS_TIME)
 
+## Save results
+save(joinpath(FILEPATH, "data/results", 
+     "reg_grid_search.jld2"), 
+     "beta1", best_beta1, "beta2", best_beta2, 
+     "train_err", best_train_err, "states", states, 
+     "eval_time", eval_time, "final_idx", fidx)
+
+
+#===========================#
+## Simulate ROM (training) ##
+#===========================#
+include(joinpath(FILEPATH, "integrate.jl"))
+
+if CONTINUOUS_TIME
+    tspan = ds["times"][1:n_train] .- ds["times"][1]
+    x0 = Xhat[:,1]
+    states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
+else
+    states = zeros(size(V,2), n_time)
+    states[:,1] = x0
+    for j in 2:n_train
+        states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.K)
+        if any(isnan.(states[:,j]))
+            @warn "NaN detected in trajectory $i at time step $j"
+            break
+        end
+    end
+    Xrom[i] = states
+end
+
+##
+save(joinpath(FILEPATH, "data/results", 
+     "batch_rom_train_sim_states_0_8000_r$(rmax).jld2"), 
+     "states", states)
+
+## Load the state data
+states = load(joinpath(FILEPATH, "data/results", 
+              "batch_rom_train_sim_states_0_8000_r$(rmax).jld2"))["states"]
+
+
+#=================#
+## Load the bases 
+#=================#
+# Standard basis
+basis_file = joinpath(FILEPATH, "data/bases/basis_0_8000_r400.jld2")
+iVrmax = load(basis_file)["bases"]["baker"].iVr[:, 1:rmax]
 
 
 #============================#
@@ -243,25 +277,49 @@ means  = load(joinpath(FILEPATH, "data/mean.jld2"))["xbar"]
 shifts = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["shifts"]
 scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 
+#==========================#
+## Simulate ROM (testing) ##
+#==========================#
+include(joinpath(FILEPATH, "preprocess.jl"))
 
-#=================#
-## Load the bases 
-#=================#
-# Standard basis
-basis_file = joinpath(FILEPATH, "data/bases/basis.jld2")
-iVrmax = load(basis_file)["bases"]["baker"].iVr[:, 1:rmax]
+if CONTINUOUS_TIME
+    tspan = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
+    # Make sure to preprocess the first state
+    x0 = iVrmax' * preprocess!(ds[n_train+1], means, shifts, scales)
+    # x0 = iVrmax' * preprocess!(ds[n_train+1], means_test, shifts_test, scales_test)
+    test_states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
+else
+    test_states = zeros(size(V,2), n_test)
+    test_states[:,1] = iVrmax * preprocess!(ds[n_train+1], means_test, 
+                                            shifts_test, scales_test)
+    for j in 2:n_test
+        test_states[:,j] = reduced_model(test_states[:,j-1], op.A, op.A2u, op.K)
+        if any(isnan.(test_states[:,j]))
+            @warn "NaN detected in trajectory $i at time step $j"
+            break
+        end
+    end
+end
+save(joinpath(FILEPATH, "data/results", 
+     "batch_rom_test_sim_states_0_8000_r200.jld2"), 
+     "states", test_states)
+
+## Load the test states
+test_states = load(joinpath(FILEPATH, "data/results", 
+                   "batch_rom_test_sim_states_0_8000_r400.jld2"))["states"]
 
 
 #======================#
 ## Plot the u-velocity 
 #======================#
 using CairoMakie
-include(joinpath(FILEPATH, "preprocess.jl"))
 
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1200, 900))
+    train_or_test = "train"
 
-    fld = "p"
+    fig = Figure(size=(1200, 940))
+
+    fld = "u"
     if fld == "u"
         i_s = 1
         i_f = nxyz
@@ -280,7 +338,15 @@ with_theme(theme_latexfonts()) do
     z_mid = nz ÷ 2
 
     # Select 3 time steps (beginning, middle, end)
-    time_indices = [50, 1000, length(tspan)÷2, length(tspan)]
+    if train_or_test == "train"
+        tspan = ds["times"][1:n_train] .- ds["times"][1]
+        time_indices = [50, 1000, length(tspan)÷2, length(tspan)]
+        n_shift = 0
+    else  # if test data you need to shift
+        tspan = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
+        time_indices = [10, 500, 1000, length(tspan)-10] 
+        n_shift = n_train
+    end
 
     # Pre-calculate all data for colorbar scaling
     all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
@@ -290,12 +356,18 @@ with_theme(theme_latexfonts()) do
     # Collect all data first
     for (i, t_idx) in enumerate(time_indices)
         # Get full data
-        u_full_field = reshape(ds[t_idx][i_s:i_f], nx, ny, nz)
+        u_full_field = reshape(ds[t_idx+n_shift][i_s:i_f], nx, ny, nz)
         all_full_data[i] = u_full_field[:, :, z_mid]
         
         # Get ROM data
-        x_rom_t = iVrmax * states[:, t_idx]
-        x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
+        if train_or_test == "train"
+            x_rom_t = iVrmax * states[:, t_idx]
+            x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
+        else
+            x_rom_t = iVrmax * test_states[:, t_idx]
+            x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
+            # x_rom_t = unprocess!(x_rom_t, means_test, shifts_test, scales_test)
+        end
         u_rom_field = reshape(x_rom_t[i_s:i_f], nx, ny, nz)
         all_rom_data[i] = u_rom_field[:, :, z_mid]
 
@@ -318,9 +390,13 @@ with_theme(theme_latexfonts()) do
     hm_error = nothing
 
     for (i, t_idx) in enumerate(time_indices)
+        ds_t = ds["times"][t_idx+n_shift]
+        n_label = train_or_test == "train" ? n_train : n_test
         # Create axes
         ax_full = Axis(fig[1, i], 
-            title = L"$t$ = %$(round(tspan[t_idx], digits=2))",
+            title = i == 1 ? 
+                    L"$t$=%$(round(ds_t, digits=2)) \n snapshot %$(t_idx)/%$(n_label)" : 
+                    L"$t$=%$(round(ds_t, digits=2)) \n %$(t_idx)/%$(n_label)",
             ylabel = i == 1 ? L"$y$" : "", 
             xlabelsize=30, ylabelsize=30, 
             # xticklabelsize=25, yticklabelsize=25,
@@ -358,7 +434,8 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
     
-    save(joinpath(FILEPATH, "plots", "$(fld)_slice_comparison.png"), fig)
+    # save(joinpath(FILEPATH, "plots", 
+    #      "$(fld)_slice_comparison_$(train_or_test).png"), fig)
     display(fig)
 end
 
@@ -367,6 +444,8 @@ end
 ## Plot one reconstructed state over time for each field 
 #=========================================================#
 with_theme(theme_latexfonts()) do 
+    train_or_test = "train"
+
     fig = Figure(size=(1200, 800))
     
     # Pick the first spatial point for each field
@@ -384,6 +463,11 @@ with_theme(theme_latexfonts()) do
     basis_rows = [iVrmax[idx, :] for idx in field_indices]
 
     # Reconstruct full states for 
+    if train_or_test == "train"
+        tspan = ds["times"][1:n_train] .- ds["times"][1]
+    else
+        tspan = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
+    end
     
     for (i, (idx, name, color)) in enumerate(zip(field_indices, field_names, field_colors))
         ax = Axis(fig[i, 1], 
@@ -401,16 +485,39 @@ with_theme(theme_latexfonts()) do
         basis_row = basis_rows[i]
         
         # Get factors to unprocess data
-        mean_val = means[idx]
-        shift_val = shifts[idx]
-        scale_val = scales[idx]
+        if train_or_test == "train"
+            mean_val = means[idx]
+            shift_val = shifts[idx]
+            scale_val = scales[idx]
+        else
+            mean_val = means[idx]
+            shift_val = shifts[idx]
+            scale_val = scales[idx]
+            # mean_val = means_test[idx]
+            # shift_val = shifts_test[idx]
+            # scale_val = scales_test[idx]
+        end
 
-        true_field = ds[name][nrow, 1:n_time]
-        rom_field = zeros(n_time)
-        for t in 1:n_time
-            Vrow = view(iVrmax, idx, :)
-            states_col = view(states, :, t)
-            rom_field[t] = dot(Vrow, states_col)
+        if train_or_test == "train"
+            true_field = ds[name][nrow, 1:n_train]
+            rom_field = zeros(n_train)
+        else
+            true_field = ds[name][nrow, n_train+1:n_train+n_test]
+            rom_field = zeros(n_test)
+        end
+        
+        if train_or_test == "train"
+            for t in 1:n_train
+                Vrow = view(iVrmax, idx, :)
+                states_col = view(states, :, t)
+                rom_field[t] = dot(Vrow, states_col)
+            end
+        else
+            for t in 1:n_test
+                Vrow = view(iVrmax, idx, :)
+                states_col = view(test_states, :, t)
+                rom_field[t] = dot(Vrow, states_col)
+            end
         end
         rom_field .*= scale_val
         rom_field .+= shift_val
@@ -426,10 +533,9 @@ with_theme(theme_latexfonts()) do
         end
     end
     
-    save(joinpath(FILEPATH, "plots", "state_evolution.png"), fig)
+    # save(joinpath(FILEPATH, "plots", "state_evolution_$(train_or_test).png"), fig)
     display(fig)
 end
-
 
 
 #====================================================#

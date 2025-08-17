@@ -101,7 +101,7 @@ function unscale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T
 end
 
 
-function compute_mean_parallel_threads_fixed(ds, dims, n; batch_size=50)
+function compute_mean_parallel_threads_fixed(ds, dims, n; batch_size=50, shift=0)
     
     # Infer element type from first snapshot
     T = eltype(ds[1])
@@ -130,7 +130,7 @@ function compute_mean_parallel_threads_fixed(ds, dims, n; batch_size=50)
         
         # Process each snapshot in this batch
         for i in start_idx:end_idx
-            snapshot = ds[i]  # Get snapshot only once
+            snapshot = ds[i+shift]  # Get snapshot only once
             batch_sum .+= snapshot
         end
         
@@ -154,7 +154,8 @@ function compute_mean_parallel_threads_fixed(ds, dims, n; batch_size=50)
 end
 
 # Alternative implementation with explicit locking for comparison
-function compute_mean_parallel_threads_locked(ds, dims, n; batch_size=50)
+function compute_mean_parallel_threads_locked(ds, dims, n; batch_size=50, 
+                                              shift=0)
     
     # Infer element type from first snapshot
     T = eltype(ds[1])
@@ -176,7 +177,7 @@ function compute_mean_parallel_threads_locked(ds, dims, n; batch_size=50)
         batch_sum = zeros(T, dims...)
         
         for i in start_idx:end_idx
-            batch_sum .+= ds[i]
+            batch_sum .+= ds[i+shift]
         end
         
         # Thread-safe update
@@ -191,7 +192,7 @@ function compute_mean_parallel_threads_locked(ds, dims, n; batch_size=50)
     return result_sum ./ T(n)
 end
 
-function compute_minmax_parallel_threads(ds, n; batch_size=50, means=nothing)
+function compute_minmax_parallel_threads(ds, n; batch_size=50, means=nothing, shift=0)
     
     # infer per‐snapshot shape and element type
     first_snap = ds[1]
@@ -232,7 +233,7 @@ function compute_minmax_parallel_threads(ds, n; batch_size=50, means=nothing)
 
         # scan snapshots in the batch
         for i in start_i:end_i
-            snap = ds[i] .- means_vec
+            snap = ds[i+shift] .- means_vec
             @inbounds local_min .= min.(local_min, snap)
             @inbounds local_max .= max.(local_max, snap)
         end
