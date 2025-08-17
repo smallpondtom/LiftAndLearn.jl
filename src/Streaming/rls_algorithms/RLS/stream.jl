@@ -16,8 +16,7 @@ function stream!(
     obj::RLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; 
     U::AbstractArray{T}=T[], 
     Q::Union{T,AbstractArray{<:Real}}=size(X,2)==1 ? 1.0 : 1.0I(size(X,2)),
-    Γs::Union{Real,AbstractArray{<:Real}}=0.0, use_gpu::Bool=false
-    ) where T<:Number
+    Γs::Union{Real,AbstractArray{<:Real}}=0.0) where T<:Number
 
     tdim = size(X, 2)  # number of data points (time dimension)
 
@@ -44,7 +43,7 @@ function stream!(
     end
 
     # GPU support
-    if use_gpu
+    if obj.cache.use_gpu
         D = CUDA.CuArray(D)
         R = CUDA.CuArray(R)
     end
