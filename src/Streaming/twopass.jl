@@ -131,6 +131,7 @@ function TwoPassStreamingOpInf(;
         Γs = spzeros(d)
         tikhonov_matrix!(Γs, operator_dimensions, operator_symbols, options.λ)
         Γs = diagm(0 => Γs)  # convert to sparse diagonal matrix
+        @info "Constructing Tikhonov matrix using provided `options.λ`."
     elseif !isa(Γs, Real)
         @info "We recommend using a sparse Tikhonov matrix for large systems." *
               " Or use the built-in function to construct the Tikhonov matrix." *
