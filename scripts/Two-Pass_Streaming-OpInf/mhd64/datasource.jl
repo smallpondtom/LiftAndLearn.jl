@@ -137,7 +137,11 @@ function Base.getindex(fp::FieldProxy, index...)
     # If no trajectory is specified, default to the first one
     return h5open(fp.ds.hfname, "r") do h5
         dset = h5[fp.ds.links[fp.name]]
-        dset[index...]
+        if fp.name == "z"
+            1.0 ./ dset[index...]
+        else
+            dset[index...]
+        end
     end
 end
 

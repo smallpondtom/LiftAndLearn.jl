@@ -1,5 +1,33 @@
 using Logging
 
+function preprocess!(data::Vector{T}, means::Vector{T}, 
+                     shifts::Vector{T}, scales::Vector{T}) where T<:Real
+    return scale!(center!(data, means), shifts, scales)
+end
+
+function preprocess!(data::Matrix{T}, means::Vector{T}, 
+                     shifts::Vector{T}, scales::Vector{T}) where T<:Real
+    return mapslices(
+        col -> preprocess!(
+            col, means, shifts, scales
+        ), data, dims=1
+    )
+end
+
+function unprocess!(data::Vector{T}, means::Vector{T}, 
+                    shifts::Vector{T}, scales::Vector{T}) where T<:Real
+    return uncenter!(unscale!(data, shifts, scales), means)
+end
+
+function unprocess!(data::Matrix{T}, means::Vector{T}, 
+                     shifts::Vector{T}, scales::Vector{T}) where T<:Real
+    return mapslices(
+        col -> unprocess!(
+            col, means, shifts, scales
+        ), data, dims=1
+    )
+end
+
 function center!(data::Matrix{T}, means::Vector{T}) where T<:Real
     @assert length(means) == size(data,1) "Number of means must match number of rows"
     data .-= means
@@ -24,7 +52,7 @@ function uncenter!(data::Vector{T}, means::Vector{T}) where T<:Real
     return data
 end
 
-function normalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function scale!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
     rows = length(data)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
@@ -40,7 +68,7 @@ function normalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where
     return data
 end
 
-function normalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function scale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
     rows = size(data, 1)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
@@ -56,7 +84,7 @@ function normalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where
     return data
 end
 
-function unnormalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function unscale!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
     rows = length(data)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
@@ -72,7 +100,7 @@ function unnormalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) whe
     return data
 end
 
-function unnormalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+function unscale!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
     rows = size(data, 1)
     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
     if length(shifts) == rows && length(scales) == rows
@@ -89,6 +117,8 @@ function unnormalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) whe
     end
     return data
 end
+
+
 
 function compute_mean_parallel_threads_fixed(ds, dims; batch_size=50)
     # Get total number of snapshots
@@ -247,3 +277,94 @@ function compute_minmax_parallel_threads(ds; batch_size=50, means=nothing)
     @info "Processed $n snapshots across $num_batches batches."
     return x_min, x_max
 end
+
+
+# function center!(data::Matrix{T}, means::Vector{T}) where T<:Real
+#     @assert length(means) == size(data,1) "Number of means must match number of rows"
+#     data .-= means
+#     return data
+# end
+
+# function uncenter!(data::Matrix{T}, means::Vector{T}) where T<:Real
+#     @assert length(means) == size(data,1) "Number of means must match number of rows"
+#     data .+= means
+#     return data
+# end
+
+# function center!(data::Vector{T}, means::Vector{T}) where T<:Real
+#     @assert length(means) == length(data) "Number of means must match number of rows"
+#     data .-= means
+#     return data
+# end
+
+# function uncenter!(data::Vector{T}, means::Vector{T}) where T<:Real
+#     @assert length(means) == length(data) "Number of means must match number of rows"
+#     data .+= means
+#     return data
+# end
+
+# function normalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+#     rows = length(data)
+#     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
+#     if length(shifts) == rows && length(scales) == rows
+#         data .-= shifts
+#         data ./= scales
+#     else
+#         dim = row ÷ length(shifts)
+#         for (i, (sh,sc)) in enumerate(zip(shifts, scales))
+#             data[dim*(i-1)+1:dim*i] .-= sh
+#             data[dim*(i-1)+1:dim*i] ./= sc
+#         end
+#     end
+#     return data
+# end
+
+# function normalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+#     rows = size(data, 1)
+#     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
+#     if length(shifts) == rows && length(scales) == rows
+#         data .-= shifts
+#         data ./= scales
+#     else
+#         dim = row ÷ length(shifts)
+#         for (i, (sh,sc)) in enumerate(zip(shifts, scales))
+#             data[dim*(i-1)+1:dim*i, :] .-= sh
+#             data[dim*(i-1)+1:dim*i, :] ./= sc
+#         end
+#     end
+#     return data
+# end
+
+# function unnormalize!(data::Vector{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+#     rows = length(data)
+#     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
+#     if length(shifts) == rows && length(scales) == rows
+#         data .*= scales
+#         data .+= shifts
+#     else
+#         dim = row ÷ length(shifts)
+#         for (i, (sh,sc)) in enumerate(zip(shifts, scales))
+#             data[dim*(i-1)+1:dim*i] .*= sc
+#             data[dim*(i-1)+1:dim*i] .+= sh
+#         end
+#     end
+#     return data
+# end
+
+# function unnormalize!(data::Matrix{T}, shifts::Vector{T}, scales::Vector{T}) where T<:Real
+#     rows = size(data, 1)
+#     @assert length(shifts) == length(scales) "Number of shifts must match number of scales"
+#     if length(shifts) == rows && length(scales) == rows
+#         for i in axes(data, 2)
+#             data .*= scales
+#             data .+= shifts
+#         end
+#     else
+#         dim = row ÷ length(shifts)
+#         for (i, (sh,sc)) in enumerate(zip(shifts, scales))
+#             data[dim*(i-1)+1:dim*i, :] .*= sc
+#             data[dim*(i-1)+1:dim*i, :] .+= sh
+#         end
+#     end
+#     return data
+# end

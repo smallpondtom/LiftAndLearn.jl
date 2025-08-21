@@ -1,3 +1,7 @@
+"""
+MHD64 example: Training the batch OpInf model
+"""
+
 #=================#
 ## Load packages ##
 #=================#
@@ -5,6 +9,7 @@ using LinearAlgebra
 using BlockDiagonals
 using FileIO
 using JLD2
+using Statistics
 using Revise
 using IncrementalSVD
 import LiftAndLearn as LnL
@@ -17,7 +22,9 @@ FILEPATH = occursin("scripts", pwd()) ?
            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/mhd64")
 DATAPATH = "../../../../DATA/THE_WELL/mhd64"
 train_files = readdir(DATAPATH, join=true)
+test_files = readdir(joinpath(DATAPATH, "test"), join=true)
 fn = train_files[1]
+fn_test = test_files[1] 
 X = load(joinpath(FILEPATH, "data/preprocessed_data.jld2"))["X"]["all"]
 baker = load(joinpath(FILEPATH, "data/bases/baker_basis.jld2"))["baker"]
 V = baker.Q
@@ -48,164 +55,220 @@ options = LnL.LSOpInfOption(
         deriv_type="FBCT4"
     ),
     use_backslash=true,
-    # use_normal_equations=true,
-    # use_svd_truncation=true,  
-    # tolerance=1e-3,
 )
 
 #===================#
 ## Train Operators ##
 #===================#
-CONTINUOUS_TIME = true
 # Compute the reduced data matrix
 Xtmp = V' * X
-if CONTINUOUS_TIME
-    @info "Generate finite difference data for continuous-time "
-    # Compute finite difference approximation
-    Xhat = Vector{Matrix{Float64}}(undef, n_traj)
-    Xhatdot = Vector{Matrix{Float64}}(undef, n_traj)
-    # Do it individually for each trajectory
-    for i in 1:n_traj
-        idx_start = (i-1) * n_time + 1
-        idx_end = i * n_time
-        Xhatdot[i], idx = LnL.time_derivative_approx(
-            Xtmp[:, idx_start:idx_end], options)
-        Xhat[i] = Xtmp[:, idx_start:idx_end][:, idx]
-    end
-    Xhat = reduce(hcat, Xhat)
-    Xhatdot = reduce(hcat, Xhatdot)
-else
-    @info "Generate shifted data for discrete-time "
-    # Shift the data for discrete-time data
-    Xhat = Vector{Matrix{Float64}}(undef, n_traj)
-    Xhatdot = Vector{Matrix{Float64}}(undef, n_traj)
-    # Do it individually for each trajectory
-    for i in 1:n_traj
-        idx_start = (i-1) * n_time + 1
-        idx_end = i * n_time
-        Xhat[i] = Xtmp[:, idx_start:idx_end-1]
-        Xhatdot[i] = Xtmp[:, idx_start+1:idx_end]
-    end
-    Xhat = reduce(hcat, Xhat)
-    Xhatdot = reduce(hcat, Xhatdot)
+@info "Generate finite difference data for continuous-time "
+# Compute finite difference approximation
+Xhat = Vector{Matrix{Float64}}(undef, n_traj)
+Xhatdot = Vector{Matrix{Float64}}(undef, n_traj)
+# Do it individually for each trajectory
+for i in 1:n_traj
+    idx_start = (i-1) * n_time + 1
+    idx_end = i * n_time
+    Xhatdot[i], idx = LnL.time_derivative_approx(
+        Xtmp[:, idx_start:idx_end], options)
+    Xhat[i] = Xtmp[:, idx_start:idx_end][:, idx]
+end
+Xhat = reduce(hcat, Xhat)
+Xhatdot = reduce(hcat, Xhatdot)
+
+#========================================#
+## Grid Search Regularization Parameters
+#========================================#
+include("integrate.jl")
+
+function simulate_opinf(x0, n_time, op, tspan=nothing)
+    states, final_idx = rk4_integrate(x0, tspan, op.A, op.A2u, op.A3u, op.K)
+    contains_nan = final_idx < n_time ? true : false
+    return contains_nan, states, final_idx
 end
 
-## Train the operators
+
+function find_best_opinf_model(reg_pairs, Xhat, Xhatdot, n_time, n_time_pred, 
+                               max_growth, opinf_options, tspan=nothing)
+
+    @assert options.with_reg == true "Regularization must be enabled in options."
+    
+    best_train_err = 1e20
+    best_beta1, best_beta2, best_beta3 = nothing, nothing, nothing
+    best_final_idx = 0
+    Xtilde_opt = nothing
+    eval_time_opt = nothing
+    best_model = nothing
+
+    mean_Xhat = mean(Xhat, dims=2)
+    max_diff_Xhat = maximum(abs.(Xhat .- mean_Xhat), dims=2)
+    
+    # Loop over all regularization pairs
+    for (beta1, beta2, beta3) in reg_pairs
+        
+        # Construct a regularizer that penalizes the linear and constant reduced
+        # operators using beta1 and the quadratic operator using beta2
+        reg = LnL.TikhonovParameter(A=beta1, A2=beta2, A3=beta3, K=beta1)
+        opinf_options.λ = reg
+        
+        # Solve the regularized OpInf problem
+        ops = LnL.opinf(Xhat, opinf_options; Xhatdot=Xhatdot)
+        
+        # Extract the reduced initial condition from Qhat_1
+        xhat0 = Xhat[:,1]
+        
+        # Compute the reduced solution over the trial time horizon
+        start_eval_time = time()
+        contains_nans, Xtilde, fidx = simulate_opinf(xhat0, n_time_pred, ops, tspan)
+        end_eval_time = time()
+        time_opinf_eval = end_eval_time - start_eval_time
+        
+        # If the model produced an unstable solution, move on to the next
+        # regularization candidates
+        if contains_nans
+            @info "OpInf model with (β1, β2, β3) = ($beta1, $beta2, $beta3) produced NaNs. Skipping."
+            ops = nothing
+            GC.gc() 
+            continue
+        end
+        
+        # If the ratio of the maximum coefficient growth exceeds the allowed
+        # threshold, move on to the next regularization candidates
+        max_diff_Xhat_trial = maximum(abs.(Xtilde .- mean_Xhat), dims=2)
+        max_growth_trial = maximum(max_diff_Xhat_trial) / maximum(max_diff_Xhat)
+        if max_growth_trial > max_growth
+            ops = nothing
+            GC.gc() 
+            continue
+        end
+        
+        # At this point we know the model produced a stable solution without too
+        # much growth. Compute the training error and, if it's better than the
+        # current best error, save the regularization, reduced solution, and
+        # the learning times
+        train_err = norm(
+                Xhat[:, 1:n_time] - Xtilde[:, 1:n_time]
+            )^2 / norm(Xhat[:, 1:n_time])^2
+        if train_err < best_train_err
+            best_beta1 = beta1
+            best_beta2 = beta2
+            best_beta3 = beta3
+            best_train_err = train_err
+            Xtilde_opt = Xtilde
+            eval_time_opt = time_opinf_eval
+            best_model = ops
+        end
+
+        if best_final_idx < fidx
+            best_final_idx = fidx
+        end
+
+        @info "Regularization pair (β1, β2, β3) = ($beta1, $beta2, $beta3): \
+               training error = $train_err, evaluation time = $time_opinf_eval, \
+               max growth = $max_growth_trial, final index = $fidx"
+        ops = nothing
+        GC.gc() 
+    end
+
+    if isnothing(Xtilde_opt)
+        @error "No suitable OpInf model found with the given regularization pairs."
+    else
+        @info "Best OpInf model found with β1 = $best_beta1, β2 = $best_beta2, \
+               β3 = $best_beta3, training error = $best_train_err, evaluation time = $eval_time_opt"
+    end
+    best_betas = (b1 = best_beta1, b2 = best_beta2, b3 = best_beta3)
+    return (best_model, best_betas, best_train_err, 
+            Xtilde_opt, eval_time_opt, best_final_idx)
+end
+
+## Run grid Search
+B1 = 10.0 .^ range(12.0, 16.0, length=8)
+B2 = 10.0 .^ range(12.0, 16.0, length=8)
+B2 = 10.0 .^ range(12.0, 16.0, length=8)  
+reg_pairs_global = vec([(b1, b2, b3) for b1 in B1, b2 in B2, b3 in B2])
+max_growth = 1.2
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e14, A2=1e14, A3=1e14, K=1e14)
-op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+op, best_betas, best_train_err, states, eval_time, fidx = 
+    find_best_opinf_model(reg_pairs_global, Xhat, Xhatdot,
+                          100, 100, max_growth, options,
+                          ds.grid["time"])
+
+## Save results
+save(joinpath(FILEPATH, "data/results", 
+     "reg_grid_search.jld2"), 
+     "betas", best_betas,
+     "train_err", best_train_err, "states", states, 
+     "eval_time", eval_time, "final_idx", fidx)
 
 ## Save the trained model
-save(joinpath(FILEPATH, "data/models/opinf_mdl.jld2"), "op", op)
+save(joinpath(FILEPATH, "data/models/batch_opinf_mdl.jld2"), "op", op)
 
 #================#
 ## Simulate ROM ##
 #================#
-include("integrate.jl")
-
 # Integrate a single trajectory 
-Xrom = Vector{Matrix{Float64}}(undef, n_traj)
+Xrom_train = Vector{Matrix{Float64}}(undef, n_traj)
 for i in 1:n_traj
     idx_start = (i-1) * n_time + 1
     idx_end = i * n_time
     x0 = V' * X[:, idx_start:idx_end][:,1]
-    if CONTINUOUS_TIME
-        Xrom[i] = rk4_integrate(x0, ds.grid["time"], op.A, op.A2u, op.A3u, op.K)
-    else
-        states = zeros(size(V,2), n_time)
-        states[:,1] = x0
-        for j in 2:n_time
-            states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.A3u, op.K)
-            if any(isnan.(states[:,j]))
-                @warn "NaN detected in trajectory $i at time step $j"
-                break
-            end
-        end
-        Xrom[i] = states
-    end
+    Xrom_train[i], _ = rk4_integrate(x0, ds.grid["time"], op.A, op.A2u, op.A3u, op.K)
 end
-Xrom = reduce(hcat, Xrom)
+Xrom_train = reduce(hcat, Xrom_train)
+
+## Save the ROM's training data 
+save(joinpath(FILEPATH, "data/results/rom_training_states.jld2"), 
+     "states", Xrom_train)
+
 
 #=============================#
-## Compute projection errors ##
+## Load scaling and shifting ##
 #=============================#
-# Original data (unscaled and uncentered)
-shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
-scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
-mean   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
+include("preprocess.jl")
+means = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
+scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
+shifts = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
 
-unscale = (X, scale, shift) -> (scale .* X) .+ shift
-uncenter = (X, Xbar) -> X .+ Xbar
+#=================#
+## Simulate Test ##
+#=================#
+ds_test = DataSource(fn_test)
+Xtest = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["all"]
+# Integrate a single trajectory 
+x0 = V' * preprocess!(Xtest[:,1], vec(means["all"]), vec(shifts["all"]), 
+                      vec(scales["all"]))
+Xrom_test, _ = rk4_integrate(x0, ds_test.grid["time"], op.A, op.A2u, op.A3u, op.K)
 
-## Compute rse
-X_orig = load(joinpath(FILEPATH, "data/original_data.jld2"))["X"]
-begin
-    # Processed data
-    X_recon = V * Xrom
-    X_error = X - X_recon
-    rse_processed = Dict(
-        fld => 0.0 for fld in [ds.fields, "all"]
-    )
-    for i in eachindex(ds.fields)
-        fld = ds.fields[i]
-        idx_start = (i-1) * nxyz + 1
-        idx_end = i * nxyz
-        num = norm(X_error[idx_start:idx_end, :], 2)
-        den = norm(X[idx_start:idx_end, :], 2)
-        rse_fld = num / den 
-        rse_processed[ds.fields[i]] = rse_fld
-        println("Reconstruction error for field $(fld): $rse_fld")
-    end
-    tmp = norm(X_error, 2) / norm(X, 2)
-    rse_processed["all"] = tmp
-    println("Overall reconstruction error: $(tmp)")
-
-    scale_all = reduce(vcat, [scale[fld] for fld in ds.fields])
-    shift_all = reduce(vcat, [shift[fld] for fld in ds.fields])
-    mean_all  = reduce(vcat, [mean[fld] for fld in ds.fields])
-
-    X_recon = unscale(X_recon, scale_all, shift_all)
-    X_recon = uncenter(X_recon, mean_all)
-    X_error = X_orig["all"] - X_recon
-
-    rse_orig = Dict(
-        fld => 0.0 for fld in [ds.fields, "all"]
-    )
-
-    for i in eachindex(ds.fields)
-        fld = ds.fields[i]
-        idx_start = (i-1) * nxyz + 1
-        idx_end = i * nxyz
-        X_error_field = X_error[idx_start:idx_end, :] 
-        num = norm(X_error_field, 2)
-        den = norm(X_orig[fld], 2)
-        rse_fld = num / den
-        rse_orig[fld] = rse_fld
-        println("Relative reconstruction error for $fld: $rse_fld")
-    end
-    rse_orig["all"] = norm(X_recon) / norm(X_orig["all"])
-    println("Overall relative reconstruction error: $(rse_orig["all"])")
-
-    ## Save relative errors
-    rse_file = joinpath(FILEPATH, "data/results/rse.jld2")
-    if !isfile(rse_file)
-        @info "Saving relative projection errors to file"
-        save(rse_file, "rse", Dict("processed" => rse_processed, "original" => rse_orig))
-    end
-end
+## Save the ROM's training data 
+save(joinpath(FILEPATH, "data/results/rom_testing_states.jld2"), 
+     "states", Xrom_test)
 
 #===========================#
 ## Plot the sliced density ##
 #===========================#
 using CairoMakie
+
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1200, 900))
+    fig = Figure(size=(1200, 940))
     # Pick trajectory
-    traj_idx = 2
+    traj_idx = 1
     # Get midpoint index for z-direction
     x_slice = nx ÷ 2
     y_slice = 1:ny
     z_slice = 1:nz
+    # Pick state 
+    var = "rho"  # "rho", "z", "mx", "my", "mz", "Bx", "By", "Bz"
+    # Pick training or testing 
+    train_or_test = "train"
+    if train_or_test == "train"
+        Xrom = Xrom_train
+        ds = DataSource(fn)
+    else
+        Xrom = Xrom_test
+        ds = DataSource(fn_test)
+        traj_idx = 1  # Only one trajectory in test set
+    end
 
     if x_slice isa Int 
         axis_label = [L"$y$", L"$z$"] 
@@ -219,6 +282,46 @@ with_theme(theme_latexfonts()) do
         axis_label = [L"$x$", L"$y$"]
         horz_span = ds.grid["x"]
         vert_span = ds.grid["y"]
+    end
+
+    is_momentum = false
+    is_magnetic = false
+    if var == "rho"
+        start_idx = 1
+        end_idx = nxyz
+    elseif var == "z"
+        start_idx = nxyz + 1
+        end_idx = nxyz*2
+    elseif var == "mx"
+        start_idx = nxyz*2 + 1
+        end_idx = nxyz*3
+        c = 1
+        is_momentum = true
+    elseif var == "my"
+        start_idx = nxyz*3 + 1
+        end_idx = nxyz*4
+        c = 2
+        is_momentum = true
+    elseif var == "mz"
+        start_idx = nxyz*4 + 1
+        end_idx = nxyz*5
+        c = 3
+        is_momentum = true
+    elseif var == "Bx"
+        start_idx = nxyz*5 + 1
+        end_idx = nxyz*6
+        c = 1
+        is_magnetic = true
+    elseif var == "By"
+        start_idx = nxyz*6 + 1
+        end_idx = nxyz*7
+        c = 2
+        is_magnetic = true
+    elseif var == "Bz"
+        start_idx = nxyz*7 + 1
+        end_idx = nxyz*8
+        c = 3
+        is_magnetic = true
     end
 
     # Select 3 time steps (beginning, middle, end)
@@ -235,290 +338,19 @@ with_theme(theme_latexfonts()) do
     # Collect all data first
     for (i, t_idx) in enumerate(time_indices)
         # Get full data
-        full_field = ds["rho"][:, :, :, t_idx, traj_idx]
+        if is_momentum || is_magnetic
+            full_field = ds[var][c, :, :, :, t_idx, traj_idx]
+        else
+            full_field = ds[var][:, :, :, t_idx, traj_idx]
+        end
         all_full_data[i] = full_field[x_slice, y_slice, z_slice]
-        
-        # Get ROM data
-        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
-        Xrecon = V * Xrom_traj
-        Xrecon = Xrecon[1:nxyz]
-        Xrecon = unscale(Xrecon, scale["rho"], shift["rho"])
-        Xrecon = uncenter(Xrecon, mean["rho"])
-        min_clip = minimum(abs.(Xrecon))
-        Xrecon = max.(Xrecon, min_clip)
-        rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
-        all_rom_data[i] = rom_field[x_slice, y_slice, z_slice]
 
-        # Compute error
-        all_error_data[i] = abs.(all_full_data[i] - all_rom_data[i])
-    end
-
-    # Calculate global min/max for each row type
-    full_min, full_max = extrema(vcat(all_full_data...))
-    rom_min, rom_max = extrema(vcat(all_rom_data...))
-    error_min, error_max = extrema(vcat(all_error_data...))
-
-    # Align the color ranges for first and second rows (full and ROM)
-    common_min = min(full_min, rom_min)
-    common_max = max(full_max, rom_max)
-
-    # Create axes and heatmaps
-    hm_full = nothing
-    hm_rom = nothing
-    hm_error = nothing
-
-    for (i, t_idx) in enumerate(time_indices)
-        # Create axes
-        time_value = ds.grid["time"][t_idx]
-        ax_full = Axis(fig[1, i], 
-            title = L"$t$ = %$(round(time_value, digits=2))",
-            ylabel = i == 1 ? axis_label[2] : "",
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # xticklabelsvisible=false, xticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-            titlesize=30, 
-        )
-        ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? axis_label[2] : "", 
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # xticklabelsvisible=false, xticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-        )
-        ax_error = Axis(fig[3, i], 
-            ylabel = i == 1 ? axis_label[2] : "", 
-            xlabel = axis_label[1],
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-        )
-
-        # Create heatmaps with aligned color ranges
-        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max),
-            colorscale=log10)
-        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max),
-            colorscale=log10)
-        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
-            colormap = :matter, colorrange = (error_min, error_max),
-            colorscale=log10)
-    end
-    
-    # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", 
-             labelsize=30, ticklabelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", 
-             labelsize=30, ticklabelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
-             labelsize=30, ticklabelsize=20)
-    
-    # save(joinpath(FILEPATH, "plots/sliced_density.png"), fig)
-    display(fig)
-end
-
-
-
-#===================================#
-## Plot the sliced specific volume ##
-#===================================#
-using CairoMakie
-with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1200, 900))
-    # Pick trajectory
-    traj_idx = 1
-    # Get midpoint index for z-direction
-    x_slice = nx ÷ 2
-    y_slice = 1:ny
-    z_slice = 1:nz
-
-    if x_slice isa Int 
-        axis_label = [L"$y$", L"$z$"] 
-        horz_span = ds.grid["y"]
-        vert_span = ds.grid["z"]
-    elseif y_slice isa Int
-        axis_label = [L"$x$", L"$z$"]
-        horz_span = ds.grid["x"]
-        vert_span = ds.grid["z"]
-    else
-        axis_label = [L"$x$", L"$y$"]
-        horz_span = ds.grid["x"]
-        vert_span = ds.grid["y"]
-    end
-
-    # Select 3 time steps (beginning, middle, end)
-    time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time])
-
-    # Pre-calculate all data for colorbar scaling
-    all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-    all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-    all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-
-    unscale = (X, scale, shift) -> (scale .* X) .+ shift
-    uncenter = (X, Xbar) -> X .+ Xbar
-
-    # Collect all data first
-    for (i, t_idx) in enumerate(time_indices)
-        # Get full data
-        full_field = ds["z"][:, :, :, t_idx, traj_idx]
-        all_full_data[i] = full_field[x_slice, y_slice, z_slice]
-        
-        # Get ROM data
-        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
-        Xrecon = V * Xrom_traj
-        Xrecon = Xrecon[1:nxyz]
-        Xrecon = unscale(Xrecon, scale["z"], shift["z"])
-        Xrecon = uncenter(Xrecon, mean["z"])
-        # min_clip = minimum(abs.(Xrecon))
-        # Xrecon = max.(Xrecon, min_clip)
-        rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
-        all_rom_data[i] = rom_field[x_slice, y_slice, z_slice]
-
-        # Compute error
-        all_error_data[i] = abs.(all_full_data[i] - all_rom_data[i])
-    end
-
-    # Calculate global min/max for each row type
-    full_min, full_max = extrema(vcat(all_full_data...))
-    rom_min, rom_max = extrema(vcat(all_rom_data...))
-    error_min, error_max = extrema(vcat(all_error_data...))
-
-    # Align the color ranges for first and second rows (full and ROM)
-    common_min = min(full_min, rom_min)
-    common_max = max(full_max, rom_max)
-
-    # Create axes and heatmaps
-    hm_full = nothing
-    hm_rom = nothing
-    hm_error = nothing
-
-    for (i, t_idx) in enumerate(time_indices)
-        # Create axes
-        time_value = ds.grid["time"][t_idx]
-        ax_full = Axis(fig[1, i], 
-            title = L"$t$ = %$(round(time_value, digits=2))",
-            ylabel = i == 1 ? axis_label[2] : "",
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-            titlesize=30, 
-        )
-        ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? axis_label[2] : "", 
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-        )
-        ax_error = Axis(fig[3, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
-            xlabel = axis_label[1],
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-        )
-
-        # Create heatmaps with aligned color ranges
-        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max),
-            colorscale=log10)
-        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max),
-            colorscale=log10)
-        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
-            colormap = :matter, colorrange = (error_min, error_max),
-            colorscale=log10)
-    end
-    
-    # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", 
-             labelsize=30, ticklabelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", 
-             labelsize=30, ticklabelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
-             labelsize=30, ticklabelsize=20)
-    save(joinpath(FILEPATH, "plots/sliced_volume.png"), fig)
-    display(fig)
-end
-
-
-
-#============================#
-## Plot the sliced momentum ##
-#============================#
-using CairoMakie
-with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1200, 900))
-    # Pick trajectory
-    traj_idx = 1
-    # Get midpoint index for z-direction
-    x_slice = 1:nx
-    y_slice = ny ÷ 2
-    z_slice = 1:nz
-
-    if x_slice isa Int 
-        axis_label = [L"$y$", L"$z$"] 
-        horz_span = ds.grid["y"]
-        vert_span = ds.grid["z"]
-    elseif y_slice isa Int
-        axis_label = [L"$x$", L"$z$"]
-        horz_span = ds.grid["x"]
-        vert_span = ds.grid["z"]
-    else
-        axis_label = [L"$x$", L"$y$"]
-        horz_span = ds.grid["x"]
-        vert_span = ds.grid["y"]
-    end
-
-    # Select 3 time steps (beginning, middle, end)
-    time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time])
-
-    # Pre-calculate all data for colorbar scaling
-    all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-    all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-    all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-
-    # Collect all data first
-    momentum = "mx"
-    if momentum == "mx"
-        start_idx = nxyz*2 + 1
-        end_idx = nxyz*3
-    elseif momentum == "my"
-        start_idx = nxyz*3 + 1
-        end_idx = nxyz*4
-    elseif momentum == "mz"
-        start_idx = nxyz*4 + 1
-        end_idx = nxyz*5
-    end
-    for (i, t_idx) in enumerate(time_indices)
-        # Get full data
-        full_field = ds[momentum][1, :, :, :, t_idx, traj_idx]
-        all_full_data[i] = full_field[x_slice, y_slice, z_slice]
-        
         # Get ROM data
         Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
         Xrecon = V * Xrom_traj
         Xrecon = Xrecon[start_idx:end_idx]
-        Xrecon = unscale(Xrecon, scale[momentum], shift[momentum])
-        Xrecon = uncenter(Xrecon, mean[momentum])
+        Xrecon = unscale(Xrecon, scales[var], shifts[var])
+        Xrecon = uncenter(Xrecon, means[var])
         rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
         all_rom_data[i] = rom_field[x_slice, y_slice, z_slice]
 
@@ -543,44 +375,41 @@ with_theme(theme_latexfonts()) do
     for (i, t_idx) in enumerate(time_indices)
         # Create axes
         time_value = ds.grid["time"][t_idx]
+        n_label = length(ds) ÷ ds.dims[end]
         ax_full = Axis(fig[1, i], 
-            title = L"$t$ = %$(round(time_value, digits=2))",
+            title = i == 1 ? 
+                    L"$t$=%$(round(time_value, digits=2)) \n snapshot %$(t_idx)/%$(n_label)" : 
+                    L"$t$=%$(round(time_value, digits=2)) \n %$(t_idx)/%$(n_label)",
             ylabel = i == 1 ? axis_label[2] : "",
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
             titlesize=30, 
         )
         ax_rom = Axis(fig[2, i], 
             ylabel = i == 1 ? axis_label[2] : "", 
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
         )
         ax_error = Axis(fig[3, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
+            ylabel = i == 1 ? axis_label[2] : "", 
             xlabel = axis_label[1],
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
             xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
         )
 
         # Create heatmaps with aligned color ranges
         hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max))
+            colormap = :viridis, colorrange = (common_min, common_max),
+            colorscale = is_momentum || is_magnetic ? identity : log10)
         hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max))
+            colormap = :viridis, colorrange = (common_min, common_max),
+            colorscale = is_momentum || is_magnetic ? identity : log10)
         hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
-            colormap = :matter, colorrange = (error_min, error_max))
+            colormap = :matter, colorrange = (error_min, error_max),
+            colorscale = is_momentum || is_magnetic ? identity : log10)
     end
     
     # Add colorbars at the end of each row
@@ -590,141 +419,8 @@ with_theme(theme_latexfonts()) do
              labelsize=30, ticklabelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
              labelsize=30, ticklabelsize=20)
-    save(joinpath(FILEPATH, "plots/sliced_momentum.png"), fig)
-    display(fig)
-end
-
-
-#==================================#
-## Plot the sliced magnetic field ##
-#==================================#
-using CairoMakie
-with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1200, 900))
-    # Pick trajectory
-    traj_idx = 2
-    # Get midpoint index for z-direction
-    x_slice = 1:nx
-    y_slice = ny ÷ 2
-    z_slice = 1:nz
-
-    if x_slice isa Int 
-        axis_label = [L"$y$", L"$z$"] 
-        horz_span = ds.grid["y"]
-        vert_span = ds.grid["z"]
-    elseif y_slice isa Int
-        axis_label = [L"$x$", L"$z$"]
-        horz_span = ds.grid["x"]
-        vert_span = ds.grid["z"]
-    else
-        axis_label = [L"$x$", L"$y$"]
-        horz_span = ds.grid["x"]
-        vert_span = ds.grid["y"]
-    end
-
-    # Select 3 time steps (beginning, middle, end)
-    time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time])
-
-    # Pre-calculate all data for colorbar scaling
-    all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-    all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-    all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-
-    # Collect all data first
-    magnetic = "Bx"
-    if magnetic == "Bx"
-        start_idx = nxyz*5 + 1
-        end_idx = nxyz*6
-    elseif magnetic == "By"
-        start_idx = nxyz*6 + 1
-        end_idx = nxyz*7
-    elseif magnetic == "Bz"
-        start_idx = nxyz*7 + 1
-        end_idx = nxyz*8
-    end
-    for (i, t_idx) in enumerate(time_indices)
-        # Get full data
-        full_field = ds[magnetic][1, :, :, :, t_idx, traj_idx]
-        all_full_data[i] = full_field[x_slice, y_slice, z_slice]
-        
-        # Get ROM data
-        Xrom_traj = Xrom[:, (traj_idx-1) * n_time + t_idx]
-        Xrecon = V * Xrom_traj
-        Xrecon = Xrecon[start_idx:end_idx]
-        Xrecon = unscale(Xrecon, scale[magnetic], shift[magnetic])
-        Xrecon = uncenter(Xrecon, mean[magnetic])
-        rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
-        all_rom_data[i] = rom_field[x_slice, y_slice, z_slice]
-
-        # Compute error
-        all_error_data[i] = abs.(all_full_data[i] - all_rom_data[i])
-    end
-
-    # Calculate global min/max for each row type
-    full_min, full_max = extrema(vcat(all_full_data...))
-    rom_min, rom_max = extrema(vcat(all_rom_data...))
-    error_min, error_max = extrema(vcat(all_error_data...))
-
-    # Align the color ranges for first and second rows (full and ROM)
-    common_min = min(full_min, rom_min)
-    common_max = max(full_max, rom_max)
-
-    # Create axes and heatmaps
-    hm_full = nothing
-    hm_rom = nothing
-    hm_error = nothing
-
-    for (i, t_idx) in enumerate(time_indices)
-        # Create axes
-        time_value = ds.grid["time"][t_idx]
-        ax_full = Axis(fig[1, i], 
-            title = L"$t$ = %$(round(time_value, digits=2))",
-            ylabel = i == 1 ? axis_label[2] : "",
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-            titlesize=30, 
-        )
-        ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? axis_label[2] : "", 
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-        )
-        ax_error = Axis(fig[3, i], 
-            ylabel = i == 1 ? L"$x$" : "", 
-            xlabel = axis_label[1],
-            xticklabelsvisible=false, xticksvisible=false,
-            yticklabelsvisible=false, yticksvisible=false,
-            # yticklabelsvisible=i==1 ? true : false,
-            # yticksvisible=i==1 ? true : false,
-            xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
-        )
-
-        # Create heatmaps with aligned color ranges
-        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max))
-        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max))
-        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
-            colormap = :matter, colorrange = (error_min, error_max))
-    end
     
-    # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", 
-             labelsize=30, ticklabelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", 
-             labelsize=30, ticklabelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
-             labelsize=30, ticklabelsize=20)
-    save(joinpath(FILEPATH, "plots/sliced_magnetic.png"), fig)
+    save(joinpath(FILEPATH, "plots/$(train_or_test)_sliced_$(var).png"), fig)
     display(fig)
 end
 

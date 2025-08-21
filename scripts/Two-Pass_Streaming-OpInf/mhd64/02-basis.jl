@@ -1,5 +1,5 @@
 """
-Supernova 64^3 example: Computing the POD basis
+MHD64 example: Computing the POD basis
 """
 
 #=================#
@@ -36,17 +36,14 @@ n = n_time * n_traj
 @info "Computing POD basis for all fields combined"
 target_r = load(joinpath(FILEPATH, "data/target_ranks.jld2"))["target_ranks"]
 extra_ranks = 0
-V = svd(X).U[:, 1:min(sum(values(target_r))+extra_ranks*n_fields, n)]
+F = svd(X)
+V = F.U[:, 1:min(sum(values(target_r))+extra_ranks*n_fields, n)]
+Σ = F.S[1:min(sum(values(target_r))+extra_ranks*n_fields, n)]
 println("POD basis of size $(size(V))")
 
 ## Save basis 
 basis_file = joinpath(FILEPATH, "data/bases/basis.jld2")
-save(basis_file, "V", V)
-
-## Load the basis instead
-basis_file = joinpath(FILEPATH, "data/bases/basis.jld2")
-V = load(basis_file)["V"]
-
+save(basis_file, "Vr", V, "Σr", Σ)
 
 #====================================================#
 ## Compute the POD bases using streaming algorithms ##
@@ -86,60 +83,65 @@ save(joinpath(FILEPATH, "data/bases/sketchy_basis.jld2"), "sketchy", sketchy)
 #=============================#
 ## Compute projection errors ##
 #=============================#
-# Data projected onto orthogonal complement of the basis
-X_perp_batch = X - V[:,1:rmax] * (V[:,1:rmax]' * X)
-X_perp_baker = X - baker.Q * (baker.Q' * X)
-X_perp_brand = X - brand.Q * (brand.Q' * X)
-X_perp_sketchy = X - sketchy.Q * (sketchy.Q' * X)
-
+rspan = 5:5:rmax
 # Preallocate relative projection errors
 rpe = Dict(
     "batch" => Dict(
-        fld => 0.0 for fld in [ds.fields, "all"]
+        fld => zeros(length(rspan)) for fld in vcat(ds.fields, "all")
     ),
     "baker" => Dict(
-        fld => 0.0 for fld in [ds.fields, "all"]
+        fld => zeros(length(rspan)) for fld in vcat(ds.fields, "all")
     ),
     "brand" => Dict(
-        fld => 0.0 for fld in [ds.fields, "all"]
+        fld => zeros(length(rspan)) for fld in vcat(ds.fields, "all")
     ),
     "sketchy" => Dict(
-        fld => 0.0 for fld in [ds.fields, "all"]
+        fld => zeros(length(rspan)) for fld in vcat(ds.fields, "all")
     )
 )
 
-for i in eachindex(ds.fields)
-    fld = ds.fields[i]
-    idx_start = (i-1) * nxyz + 1
-    idx_end = i * nxyz
+for (ri, r) in enumerate(rspan)
+    @info "Computing projection errors for r = $r"
+    # Data projected onto orthogonal complement of the basis
+    X_perp_batch = X - V[:,1:r] * (V[:,1:r]' * X)
+    X_perp_baker = X - baker.Q[:,1:r] * (baker.Q[:,1:r]' * X)
+    X_perp_brand = X - brand.Q[:,1:r] * (brand.Q[:,1:r]' * X)
+    X_perp_sketchy = X - sketchy.Q[:,1:r] * (sketchy.Q[:,1:r]' * X)
 
-    num_batch = @views norm(X_perp_batch[idx_start:idx_end, :], 2)
-    num_baker = @views norm(X_perp_baker[idx_start:idx_end, :], 2)
-    num_brand = @views norm(X_perp_brand[idx_start:idx_end, :], 2)
-    num_sketchy = @views norm(X_perp_sketchy[idx_start:idx_end, :], 2)
-    den = @views norm(X[idx_start:idx_end, :], 2)
+    for i in eachindex(ds.fields)
+        fld = ds.fields[i]
+        idx_start = (i-1) * nxyz + 1
+        idx_end = i * nxyz
 
-    rpe["batch"][fld] = num_batch / den
-    rpe["baker"][fld] = num_baker / den
-    rpe["brand"][fld] = num_brand / den
-    rpe["sketchy"][fld] = num_sketchy / den
+        num_batch = @views norm(X_perp_batch[idx_start:idx_end, :], 2)
+        num_baker = @views norm(X_perp_baker[idx_start:idx_end, :], 2)
+        num_brand = @views norm(X_perp_brand[idx_start:idx_end, :], 2)
+        num_sketchy = @views norm(X_perp_sketchy[idx_start:idx_end, :], 2)
+        den = @views norm(X[idx_start:idx_end, :], 2)
 
-    println("Relative projection error for field $(fld):")
-    println("  Batch:   $num_batch / $den = $(rpe["batch"][fld])")
-    println("  Baker:   $num_baker / $den = $(rpe["baker"][fld])")
-    println("  Brand:   $num_brand / $den = $(rpe["brand"][fld])")
-    println("  Sketchy: $num_sketchy / $den = $(rpe["sketchy"][fld])")
+        rpe["batch"][fld][ri] = num_batch / den
+        rpe["baker"][fld][ri] = num_baker / den
+        rpe["brand"][fld][ri] = num_brand / den
+        rpe["sketchy"][fld][ri] = num_sketchy / den
+
+        println("Relative projection error for field $(fld):")
+        println("  Batch:   $num_batch / $den = $(rpe["batch"][fld][ri])")
+        println("  Baker:   $num_baker / $den = $(rpe["baker"][fld][ri])")
+        println("  Brand:   $num_brand / $den = $(rpe["brand"][fld][ri])")
+        println("  Sketchy: $num_sketchy / $den = $(rpe["sketchy"][fld][ri])")
+    end
+    Xnorm = norm(X, 2)
+    rpe["batch"]["all"][ri] = norm(X_perp_batch) / Xnorm
+    rpe["baker"]["all"][ri] = norm(X_perp_baker) / Xnorm
+    rpe["brand"]["all"][ri] = norm(X_perp_brand) / Xnorm
+    rpe["sketchy"]["all"][ri] = norm(X_perp_sketchy) / Xnorm
+    println("Overall relative projection error:")
+    println("  Batch:   $(rpe["batch"]["all"][ri])")
+    println("  Baker:   $(rpe["baker"]["all"][ri])")
+    println("  Brand:   $(rpe["brand"]["all"][ri])")
+    println("  Sketchy: $(rpe["sketchy"]["all"][ri])")
 end
-Xnorm = norm(X, 2)
-rpe["batch"]["all"] = norm(X_perp_batch) / Xnorm
-rpe["baker"]["all"] = norm(X_perp_baker) / Xnorm
-rpe["brand"]["all"] = norm(X_perp_brand) / Xnorm
-rpe["sketchy"]["all"] = norm(X_perp_sketchy) / Xnorm
-println("Overall relative projection error:")
-println("  Batch:   $(rpe["batch"]["all"])")
-println("  Baker:   $(rpe["baker"]["all"])")
-println("  Brand:   $(rpe["brand"]["all"])")
-println("  Sketchy: $(rpe["sketchy"]["all"])")
 
 ## Save results
-save(joinpath(FILEPATH, "data/projection_errors.jld2"), rpe)
+save(joinpath(FILEPATH, "data/results/projection_errors.jld2"), 
+     "rpe", rpe, "rspan", rspan)
