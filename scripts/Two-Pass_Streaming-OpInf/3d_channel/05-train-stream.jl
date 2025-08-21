@@ -116,20 +116,15 @@ stream_error = Dict(
 rls_stream  = LnL.TwoPassStreamingOpInf(
     options=options, n=rmax, m=0, algorithm=:RLS, qr_method=:givens, use_gpu=false) 
 Ostar = op.O'
+Ostar_norm = norm(Ostar, 2)  
+
+##
 tmp = nothing  # temporary variable to store previous stream error
 @showprogress for i in 1:n_train
     xhat_i = @views Xhat[:,i]
     xhatdot_i = @views Xhatdot[:,i]  
     LnL.stream!(rls_stream, xhat_i, xhatdot_i)
-
-    # Compute the streaming error
-    if i == 1
-        tmp = rls_stream.cache.O - Ostar
-        stream_error[:rls][i] = norm(tmp)
-    else
-        tmp -= rls_stream.cache.K * rls_stream.cache.ξpre
-        stream_error[:rls][i] = norm(tmp)
-    end
+    stream_error[:rls][i] = norm(rls_stream.cache.O - Ostar) / Ostar_norm
 end
 op_rls = LnL.terminate_stream(rls_stream)
 rls_stream = nothing
@@ -143,15 +138,7 @@ tmp = nothing  # temporary variable to store previous stream error
     xhat_i = @views Xhat[:,i]
     xhatdot_i = @views Xhatdot[:,i]  
     LnL.stream!(iqrrls_stream, xhat_i, xhatdot_i)
-
-    # Compute the streaming error
-    if i == 1
-        tmp = iqrrls_stream.cache.O - Ostar
-        stream_error[:iqrrls][i] = norm(tmp)
-    else
-        tmp = tmp - iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
-        stream_error[:iqrrls][i] = norm(tmp)
-    end
+    stream_error[:iqrrls][i] = norm(iqrrls_stream.cache.O - Ostar) / Ostar_norm
 end
 op_iqrrls = LnL.terminate_stream(iqrrls_stream)
 iqrrls_stream = nothing
@@ -165,15 +152,7 @@ tmp = nothing  # temporary variable to store previous stream error
     xhat_i = @views Xhat[:,i]
     xhatdot_i = @views Xhatdot[:,i]  
     LnL.stream!(qrrls_stream, xhat_i, xhatdot_i)
-
-    # Compute the streaming error
-    if i == 1
-        tmp = qrrls_stream.cache.O - Ostar
-        stream_error[:qrrls][i] = norm(tmp)
-    else
-        tmp = tmp - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
-        stream_error[:qrrls][i] = norm(tmp)
-    end
+    stream_error[:qrrls][i] = norm(qrrls_stream.cache.O - Ostar) / Ostar_norm
 end
 op_qrrls = LnL.terminate_stream(qrrls_stream)
 qrrls_stream = nothing
@@ -189,321 +168,51 @@ save(joinpath(
     "op_qrrls", op_qrrls,
 )
 
-
 #============================#
-## Load the mean and scaling
+## Save the streaming errors
 #============================#
-means  = load(joinpath(FILEPATH, "data/mean.jld2"))["xbar"]
-shifts = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["shifts"]
-scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
-
-
-#=================#
-## Load the bases 
-#=================#
-# Standard basis
-basis_file = joinpath(FILEPATH, "data/bases/basis.jld2")
-iVrmax = load(basis_file)["bases"]["baker"].iVr[:, 1:rmax]
-
-# #=========================#
-# ## Train streaming model
-# #=========================#
-# # The reduced dimensions to evaluate on
-# rspan = [rmax ÷ 2, rmax]
-
-# num_of_streams = n - 1
-# tmp_res = (
-#     stream_err  = zeros(length(rspan), num_of_streams),
-#     rse         = zeros(length(rspan), num_of_streams),
-#     post_err    = zeros(num_of_streams),
-#     conv_factor = zeros(num_of_streams),
-#     cost        = zeros(num_of_streams),
-# )
-
-# # Dict to store all streaming results for different algorithms 
-# stream_res = Dict(
-#     :rls    => deepcopy(tmp_res),
-#     :iqrrls => deepcopy(tmp_res),
-#     :qrrls  => deepcopy(tmp_res),
-# )
-
-# ## Initialize the streaming OpInfs
-# rls_stream  = LnL.TwoPassStreamingOpInf(
-#     options=options, n=rmax, m=0, algorithm=:RLS, Γs=Γsq) 
-# # iqrrls_stream = LnL.TwoPassStreamingOpInf(
-# #     options=options, n=rmax, m=0, algorithm=:iQRRLS, Γs=Γsq)
-# # qrrls_stream = LnL.TwoPassStreamingOpInf(
-# #     options=options, n=rmax, m=0, algorithm=:QRRLS, Γs=Γsq)
-
-# ## Preallocate a dictionary to store the streaming results
-# Eps = Dict{Symbol, Matrix{Float64}}(
-#     :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 
-#     :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 
-#     :qrrls  => Matrix{Float64}(undef, rls_stream.dims[:d], rmax)
-# )
-
-# ## Stream one-by-one and collect data
-# @showprogress for i in 1:num_of_streams
-#     # Get the i-th snapshot
-#     # x_i = ds[i]  
-#     # xhat_i = iVrmax' * x_i  # Project the snapshot onto the basis
-#     xhat1_i = Xhat1[:,i]
-    
-#     # # Compute the i-th time derivative 
-#     # if i == 1
-#     #     # First snapshot, use forward finite difference
-#     #     dt = ds["times"][5] - ds["times"][1]
-#     #     xdot_i = fwd4(ds[i:i+4], dt/4, true)
-#     # elseif i == 2
-#     #     # Second snapshot, use forward finite difference but with adjusted stencil
-#     #     dt = ds["times"][5] - ds["times"][1]
-#     #     xdot_i = fwd4(ds[i-1:i+3], dt/4, false)
-#     # elseif i == n-1
-#     #     # Second to last snapshot, use backward finite difference
-#     #     dt = ds["times"][n] - ds["times"][n-4]
-#     #     xdot_i = bwd4(ds[i-3:i+1], dt/4, false)
-#     # elseif i == n 
-#     #     # Last snapshot, use backward finite difference with adjusted stencil
-#     #     dt = ds["times"][n] - ds["times"][n-4]
-#     #     xdot_i = bwd4(ds[i-4:i], dt/4, true)
-#     # else
-#     #     # For all other snapshots, use central finite difference
-#     #     dt = ds["times"][i+2] - ds["times"][i-2]
-#     #     xdot_i = ctd4(ds[i-2:i+2], dt/4)
-#     # end
-#     # xhatdot_i = iVrmax' * xdot_i  # Project the time derivative onto the basis
-
-#     xhat2_i = Xhat2[:,i]  # Use the precomputed time derivative
-
-#     # Stream, update, and get data matrix for the state system
-#     LnL.stream!(rls_stream, xhat1_i, xhat2_i)      # RLS
-#     # LnL.stream!(iqrrls_stream, xhat_i, xhatdot_i)   # iQRRLS
-#     # LnL.stream!(qrrls_stream, xhat_i, xhatdot_i)    # QRRLS
-
-#     # Streaming errors (cannot be computed since we don't have Ostar)
-#     if i == 1
-#         Eps[:rls]    = Ostar - rls_stream.cache.O 
-#         Eps[:iqrrls] = Ostar - iqrrls_stream.cache.O
-#         Eps[:qrrls]  = Ostar - qrrls_stream.cache.O
-#     else
-#         Eps[:rls]    .= Eps[:rls] - rls_stream.cache.K * rls_stream.cache.ξpre
-#         Eps[:iqrrls] .= Eps[:iqrrls] - iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
-#         Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
-#     end
-
-#     # # Streaming error factors
-#     # Eps[:rls]    = rls_stream.cache.K * rls_stream.cache.ξpre
-#     # Eps[:iqrrls] = iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
-#     # Eps[:qrrls]  = qrrls_stream.cache.K * qrrls_stream.cache.ξpre
-
-#     stream_skip = num_of_streams ÷ 5
-#     if (i-1) % stream_skip == 0 || i ∈ num_of_streams-2:num_of_streams
-#         # Unpack operators
-#         # # RLS
-#         # op_rls = LnL.Operators()
-#         # LnL.unpack_operators!(
-#         #     op_rls, rls_stream.cache.O', 
-#         #     rls_stream.termination_settings[:dims], 
-#         #     rls_stream.termination_settings[:syms]
-#         # )
-
-#         # # iQRRLS
-#         # op_iqrrls = LnL.Operators()
-#         # LnL.unpack_operators!(
-#         #     op_iqrrls, iqrrls_stream.cache.O', 
-#         #     iqrrls_stream.termination_settings[:dims], 
-#         #     iqrrls_stream.termination_settings[:syms]
-#         # )
-
-#         # # QRRLS
-#         # op_qrrls = LnL.Operators()
-#         # LnL.unpack_operators!(
-#         #     op_qrrls, qrrls_stream.cache.O', 
-#         #     qrrls_stream.termination_settings[:dims], 
-#         #     qrrls_stream.termination_settings[:syms]
-#         # )
-
-#         # # Collect all the (temporary) operators into a dictionary
-#         # op_tmp = Dict(:rls => op_rls, :iqrrls => op_iqrrls, :qrrls => op_qrrls)
-#         # algo_keys = [key for key in keys(op_tmp)]       # Get the keys of the operators
-
-#         algo_keys = [:rls]
-
-#         Threads.@threads for k in eachindex(algo_keys)  # Loop through each algorithm
-#             key = algo_keys[k]
-#             # iterate through the reduced dimensions
-#             Threads.@threads for (j, rj) in collect(enumerate(rspan))
-#                 # # Extract the quadratic matrix for lower dimensions
-#                 # F_extract = UniqueKronecker.extractF(op_tmp[key].A2u, rj)
-#                 # # Integrate to reconstruct the state
-#                 # Xtmp = zeros(rj, n)
-#                 # Xtmp[:,1] = iVrmax[:,1:rj]' * ds[1]
-#                 # for k in 1:n-1
-#                 #     dt = tspan[k+1] - tspan[k]
-#                 #     Xtmp[:,k+1] = rk4_step(
-#                 #         Xtmp[:,k], U[k], dt, 
-#                 #         op_tmp[key].A[1:rj, 1:rj], F_extract, 
-#                 #         op_tmp[key].B[1:rj,:]
-#                 #     )
-#                 # end
-
-#                 # # Compute the relative state error or reconstruction error
-#                 # rse_tmp = 0.0
-#                 # tot_tmp = 0.0
-#                 # for k in 1:n
-#                 #     rse_tmp += norm(ds[k] - iVrmax[:,1:rj] * Xtmp[:,k], 2)
-#                 #     tot_tmp += norm(ds[k], 2)
-#                 # end
-#                 # stream_res[key].rse[j,i] += rse_tmp / tot_tmp
-
-#                 # Index to extract for lower dimensions
-#                 idx = extract_indices(rls_stream, rmax, rj, options.system)
-
-#                 # Extract for lower dimensions
-#                 @views Eps_sub = Eps[key][idx,1:rj]
-
-#                 # Streaming error factors
-#                 stream_res[key].stream_err[j,i] += norm(Eps_sub,2)
-
-#                 @info "Done: Stream $i / $num_of_streams, Algorithm: $key, Reduced dimension: $rj"
-#             end
-#         end
-#     end
-
-#     # A posteriori error, conversion factors, and costs
-#     # RLS
-#     stream_res[:rls].post_err[i] += norm(rls_stream.cache.ξpost,2)
-#     stream_res[:rls].conv_factor[i] += rls_stream.cache.C[1] 
-#     stream_res[:rls].cost[i] += rls_stream.cache.J[1]
-#     # # iQRRLS
-#     # stream_res[:iqrrls].post_err[i] += norm(iqrrls_stream.cache.ξpost,2)
-#     # stream_res[:iqrrls].conv_factor[i] += iqrrls_stream.cache.C[1]
-#     # stream_res[:iqrrls].cost[i] += iqrrls_stream.cache.J[1]
-#     # # QRRLS
-#     # stream_res[:qrrls].post_err[i] += norm(qrrls_stream.cache.ξpost,2)
-#     # stream_res[:qrrls].conv_factor[i] += qrrls_stream.cache.C[1]
-#     # stream_res[:qrrls].cost[i] += qrrls_stream.cache.J[1]
-
-#     @info "Stream $i / $num_of_streams completed"
-# end
-
-# ## Terminate the streaming operators
-# op_stream_rls    = LnL.terminate_stream(rls_stream)
-# # op_stream_iqrrls = LnL.terminate_stream(iqrrls_stream)
-# # op_stream_qrrls  = LnL.terminate_stream(qrrls_stream)
-
-# # ## Print the final relative state errors
-# # @printf("(RLS)    ||Xtrue - Xrecon||_F / ||Xtrue||_F = %.5e\n", 
-# #     stream_res[:rls].rse[end,end])
-# # @printf("(iQRRLS) ||Xtrue - Xrecon||_F / ||Xtrue||_F = %.5e\n", 
-# #     stream_res[:iqrrls].rse[end,end])
-# # @printf("(QRRLS)  ||Xtrue - Xrecon||_F / ||Xtrue||_F = %.5e\n",
-# #     stream_res[:qrrls].rse[end,end])
-
-# ## Save the model
-# ops = Dict(
-#     "opinf" => op_inf, "tropinf" => op_trinf, 
-#     # "stream_rls" => op_stream_rls, 
-#     # "stream_iqrrls" => op_stream_iqrrls, 
-#     # "stream_qrrls" => op_stream_qrrls, 
-#     # "rspan" => rspan
-# )
-# filename = joinpath(FILEPATH, "data/models", "operators.jld2")
-# save(filename, ops)
-
-# ## Interpolate some of the results
-# # for key in keys(stream_res)
-# #     interpolate_zero_columns!(stream_res[key].rse)
-# #     interpolate_zero_columns!(stream_res[key].stream_err)
-# # end
-# interpolate_zero_columns!(stream_res[:rls].rse)
-# interpolate_zero_columns!(stream_res[:rls].stream_err)
-
-# ## Save the streaming results
-# filename = joinpath(FILEPATH, "data/streaming", "stream_results.jld2")
-# save(filename, "stream_res", stream_res, "rspan", rspan)
-
-# #====================================#
-# ## Compute the relative state errors 
-# #====================================#
-# # Error analysis 
-# rspan = [25, 50, 100]
-# train_errors = Dict(
-#     # :pod           => zeros(length(rspan),1),
-#     :opinf         => zeros(length(rspan),1),
-#     :tropinf       => zeros(length(rspan),1),
-#     :stream_rls    => zeros(length(rspan),1),
-#     :stream_iqrrls => zeros(length(rspan),1),
-#     :stream_qrrls  => zeros(length(rspan),1)
-# )
-
-# ops = load(joinpath(FILEPATH, "data/streamwise/models/operators.jld2"))
-# op_keys = [key for key in keys(train_errors)]
-# Threads.@threads for i in eachindex(op_keys)
-#     key = op_keys[i]
-#     Threads.@threads for (i,r) = collect(enumerate(rspan))
-
-#         Vr = iVrmax[:, 1:r]
-
-#         # Integrate the model
-#         tspan_rk4 = 0:0.01:tspan[end]
-#         F_extract = UniqueKronecker.extractF(ops[string(key)].A2u, r)
-#         Xrecon = zeros(r, length(tspan_rk4))
-#         Xrecon[:,1] = Vr' * ds[1]
-#         for k in 1:length(tspan_rk4)-1
-#             dt = tspan_rk4[k+1] - tspan_rk4[k]
-#             Xrecon[:,k+1] = rk4_step(
-#                 Xrecon[:,k], U[1], dt, 
-#                 ops[string(key)].A[1:r, 1:r], F_extract, 
-#                 ops[string(key)].B[1:r,:]
-#             )
-#         end
-
-#         # Compute relative state error (averaged over parameters)
-#         X_interp = cubic_interpolate_matrix(X, tspan, tspan_rk4)
-#         train_errors[key][i] += norm(X_interp - Vr * Xrecon) / norm(X_interp)
-
-#         @info "Done: Algorithm: $key, Reduced dimension: $r"
-#     end
-# end
-
-# # Save the errors
-# save(joinpath(FILEPATH, "data/streamwise/training_errors.jld2"), 
-#     "train_errors", train_errors, 
-#     "rspan", rspan
-# )
-
+save(joinpath(FILEPATH, "data/results", 
+     "streaming_errors_0_8000_r$(rmax).jld2"), 
+     "stream_error", stream_error)
 
 #===========================#
 ## Simulate ROM (training) ##
 #===========================#
 include(joinpath(FILEPATH, "integrate.jl"))
-
-if CONTINUOUS_TIME
-    tspan = ds["times"][1:n_train] .- ds["times"][1]
-    x0 = Xhat[:,1]
-    states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
-else
-    states = zeros(size(V,2), n_time)
-    states[:,1] = x0
-    for j in 2:n_train
-        states[:,j] = reduced_model(states[:,j-1], op.A, op.A2u, op.K)
-        if any(isnan.(states[:,j]))
-            @warn "NaN detected in trajectory $i at time step $j"
-            break
+states = Dict(
+    :rls    => zeros(size(Xhat,1), n_train),
+    :iqrrls => zeros(size(Xhat,1), n_train),
+    :qrrls  => zeros(size(Xhat,1), n_train),
+)
+for (algo, op_stream) in zip([:rls, :iqrrls, :qrrls], 
+                             [op_rls, op_iqrrls, op_qrrls])
+    if CONTINUOUS_TIME
+        tspan = ds["times"][1:n_train] .- ds["times"][1]
+        x0 = Xhat[:,1]
+        states[algo] = rk4_integrate(x0, tspan, op_stream.A, 
+                                     op_stream.A2u, op_stream.K)
+    else
+        states[algo][:,1] = x0
+        for j in 2:n_train
+            states[algo][:,j] = reduced_model(
+                states[algo][:,j-1], 
+                op_stream.A, op_stream.A2u, op_stream.K)
+            if any(isnan.(states[algo][:,j]))
+                @warn "NaN detected in trajectory $i at time step $j"
+                break
+            end
         end
     end
-    Xrom[i] = states
 end
 
-##
+## Save the training states
 save(joinpath(FILEPATH, "data/results", 
-     "batch_rom_train_sim_states_0_8000_r$(rmax).jld2"), 
+     "stream_rom_train_sim_states_0_8000_r$(rmax).jld2"), 
      "states", states)
 
-## Load the state data
+## Load the state states
 states = load(joinpath(FILEPATH, "data/results", 
-              "batch_rom_train_sim_states_0_8000_r400.jld2"))["states"]
+              "stream_rom_train_sim_states_0_8000_r400.jld2"))["states"]
 
 
 #=================#
@@ -525,32 +234,42 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 ## Simulate ROM (testing) ##
 #==========================#
 include(joinpath(FILEPATH, "preprocess.jl"))
-
-if CONTINUOUS_TIME
-    tspan = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
-    # Make sure to preprocess the first state
-    x0 = iVrmax' * preprocess!(ds[n_train+1], means, shifts, scales)
-    # x0 = iVrmax' * preprocess!(ds[n_train+1], means_test, shifts_test, scales_test)
-    test_states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
-else
-    test_states = zeros(size(V,2), n_test)
-    test_states[:,1] = iVrmax * preprocess!(ds[n_train+1], means_test, 
-                                            shifts_test, scales_test)
-    for j in 2:n_test
-        test_states[:,j] = reduced_model(test_states[:,j-1], op.A, op.A2u, op.K)
-        if any(isnan.(test_states[:,j]))
-            @warn "NaN detected in trajectory $i at time step $j"
-            break
+test_states = Dict(
+    :rls    => zeros(size(Xhat,1), n_test),
+    :iqrrls => zeros(size(Xhat,1), n_test),
+    :qrrls  => zeros(size(Xhat,1), n_test),
+)
+for (alg, op_stream) in zip([:rls, :iqrrls, :qrrls], 
+                            [op_rls, op_iqrrls, op_qrrls])
+    if CONTINUOUS_TIME
+        tspan = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
+        # Make sure to preprocess the first state
+        x0 = iVrmax' * preprocess!(ds[n_train+1], means, shifts, scales)
+        # x0 = iVrmax' * preprocess!(ds[n_train+1], means_test, shifts_test, scales_test)
+        test_states[alg] = rk4_integrate(
+            x0, tspan, op_stream.A, op_stream.A2u, op_stream.K)
+    else
+        test_states[alg][:,1] = iVrmax * preprocess!(
+            ds[n_train+1], means_test, shifts_test, scales_test)
+        for j in 2:n_test
+            test_states[alg][:,j] = reduced_model(
+                test_states[alg][:,j-1], op_stream.A, op_stream.A2u, op_stream.K)
+            if any(isnan.(test_states[alg][:,j]))
+                @warn "NaN detected in trajectory $i at time step $j"
+                break
+            end
         end
     end
 end
+
+## Save the test states
 save(joinpath(FILEPATH, "data/results", 
-     "batch_rom_test_sim_states_0_8000_r200.jld2"), 
+     "stream_rom_test_sim_states_0_8000_r$(rmax).jld2"), 
      "states", test_states)
 
 ## Load the test states
 test_states = load(joinpath(FILEPATH, "data/results", 
-                   "batch_rom_test_sim_states_0_8000_r400.jld2"))["states"]
+                   "stream_rom_test_sim_states_0_8000_r$(rmax).jld2"))["states"]
 
 
 #======================#
@@ -560,6 +279,7 @@ using CairoMakie
 
 with_theme(theme_latexfonts()) do 
     train_or_test = "test"
+    alg = :rls
 
     fig = Figure(size=(1200, 940))
 
@@ -605,12 +325,11 @@ with_theme(theme_latexfonts()) do
         
         # Get ROM data
         if train_or_test == "train"
-            x_rom_t = iVrmax * states[:, t_idx]
+            x_rom_t = iVrmax * states[alg][:, t_idx]
             x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
         else
-            x_rom_t = iVrmax * test_states[:, t_idx]
+            x_rom_t = iVrmax * test_states[alg][:, t_idx]
             x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
-            # x_rom_t = unprocess!(x_rom_t, means_test, shifts_test, scales_test)
         end
         u_rom_field = reshape(x_rom_t[i_s:i_f], nx, ny, nz)
         all_rom_data[i] = u_rom_field[:, :, z_mid]
@@ -634,7 +353,7 @@ with_theme(theme_latexfonts()) do
     hm_error = nothing
 
     for (i, t_idx) in enumerate(time_indices)
-        ds_t = ds["times"][t_idx+n_shift]
+        ds_t = ds["times"][t_idx+n_shift] .- ds["times"][1+n_shift]
         n_label = train_or_test == "train" ? n_train : n_test
         # Create axes
         ax_full = Axis(fig[1, i], 
@@ -678,8 +397,8 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
     
-    # save(joinpath(FILEPATH, "plots", 
-    #      "$(fld)_slice_comparison_$(train_or_test).png"), fig)
+    save(joinpath(FILEPATH, "plots", 
+         "$(fld)_slice_comparison_$(train_or_test)_$(String(alg)).png"), fig)
     display(fig)
 end
 

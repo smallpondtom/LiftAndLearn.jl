@@ -76,22 +76,6 @@ end
 size(Xhat,1) != rmax && @warn "Xhat has a different number of \
     rows than the basis. This might lead to unexpected results."
 
-#=========================#
-## Train Batch model
-#=========================#
-# Tikhonov Regularized OpInf
-options.with_reg = true
-# options.λ = LnL.TikhonovParameter(A=1e12, A2=1e12, K=1e12)
-options.λ = LnL.TikhonovParameter(A=best_beta1, A2=best_beta2, K=best_beta1)
-op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
-save(joinpath(FILEPATH, "data/models", 
-     "batch_operators_0_8000_r200_lamGS.jld2"), 
-     "op", op)
-
-## Load the batch model
-op = load(joinpath(FILEPATH, "data/models", 
-          "batch_operators_0_8000_r$(rmax)_lamGS.jld2"))["op"]
-
 #========================================#
 ## Grid Search Regularization Parameters
 #========================================#
@@ -99,7 +83,8 @@ function simulate_opinf(x0, n_time, op, tspan=nothing, continuous=true)
     contains_nan = false
     final_idx = 0
     if continuous
-        states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
+        states, final_idx = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
+        contains_nan = final_idx < n_time ? true : false
     else
         states = zeros(size(op.A, 1), n_time)
         states[:, 1] = x0
@@ -108,6 +93,7 @@ function simulate_opinf(x0, n_time, op, tspan=nothing, continuous=true)
             fidx = j
             if any(isnan.(states[:, j]))
                 @warn "NaN detected in trajectory at time step $j"
+                contains_nan = true
                 break
             end
         end
@@ -229,6 +215,24 @@ save(joinpath(FILEPATH, "data/results",
      "train_err", best_train_err, "states", states, 
      "eval_time", eval_time, "final_idx", fidx)
 
+## Save the best model
+save(joinpath(FILEPATH, "data/models", 
+     "batch_operators_0_8000_r$(rmax)_lamGS.jld2"), 
+     "op", op)
+
+## Load the batch model
+op = load(joinpath(FILEPATH, "data/models", 
+          "batch_operators_0_8000_r$(rmax)_lamGS.jld2"))["op"]
+
+
+# #=========================#
+# ## Train Batch model
+# #=========================#
+# # Tikhonov Regularized OpInf
+# options.with_reg = true
+# options.λ = LnL.TikhonovParameter(A=best_beta1, A2=best_beta2, K=best_beta1)
+# op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+
 
 #===========================#
 ## Simulate ROM (training) ##
@@ -236,9 +240,12 @@ save(joinpath(FILEPATH, "data/results",
 include(joinpath(FILEPATH, "integrate.jl"))
 
 if CONTINUOUS_TIME
+    t1 = time()
     tspan = ds["times"][1:n_train] .- ds["times"][1]
     x0 = Xhat[:,1]
     states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
+    t2 = time()
+    @info "ROM integration time: $(t2 - t1) seconds"
 else
     states = zeros(size(V,2), n_time)
     states[:,1] = x0
@@ -286,8 +293,11 @@ if CONTINUOUS_TIME
     tspan = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
     # Make sure to preprocess the first state
     x0 = iVrmax' * preprocess!(ds[n_train+1], means, shifts, scales)
+    t1 = time()
     # x0 = iVrmax' * preprocess!(ds[n_train+1], means_test, shifts_test, scales_test)
     test_states = rk4_integrate(x0, tspan, op.A, op.A2u, op.K)
+    t2 = time()
+    @info "ROM integration time for test data: $(t2 - t1) seconds"
 else
     test_states = zeros(size(V,2), n_test)
     test_states[:,1] = iVrmax * preprocess!(ds[n_train+1], means_test, 
@@ -300,6 +310,8 @@ else
         end
     end
 end
+
+##
 save(joinpath(FILEPATH, "data/results", 
      "batch_rom_test_sim_states_0_8000_r200.jld2"), 
      "states", test_states)
@@ -390,7 +402,7 @@ with_theme(theme_latexfonts()) do
     hm_error = nothing
 
     for (i, t_idx) in enumerate(time_indices)
-        ds_t = ds["times"][t_idx+n_shift]
+        ds_t = ds["times"][t_idx+n_shift] .- ds["times"][1+n_shift]
         n_label = train_or_test == "train" ? n_train : n_test
         # Create axes
         ax_full = Axis(fig[1, i], 
@@ -544,8 +556,9 @@ end
 # Compute mean flows of ROM
 include(joinpath(FILEPATH, "preprocess.jl"))
 means_rom = compute_mean_parallel_threads_fixed_rom(states, iVrmax, 4*nxyz, 
-                                                    n_time; batch_size=100)
+                                                    n_train; batch_size=100)
 save(joinpath(FILEPATH, "data/results/mean_rom.jld2"), "means_rom", means_rom)
+
 
 ##
 

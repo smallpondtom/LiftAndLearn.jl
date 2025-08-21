@@ -32,16 +32,18 @@ function rk4_integrate(x0, tspan, A, A2u, A3u, K)
     n = length(x0)     # dimension of the state
     xs = zeros(n, N)
     xs[:, 1] = x0
+    fidx = 0
     @inbounds for i in 1:(N-1)
         x = xs[:,i]
         dt = tspan[i+1] - tspan[i]
         xs[:, i+1] .= rk4_step(x, dt, A, A2u, A3u, K)
+        fidx = i+1
         if any(isnan.(xs[:, i+1]))
             @info "NaN encountered in RK4 integration at time step $i"
             break
         end
     end
-    return xs
+    return xs, fidx
 end
 
 
@@ -77,15 +79,17 @@ function rk4_integrate(x0, tspan, A, A2u, K)
     n = length(x0)     # dimension of the state
     xs = zeros(n, N)
     xs[:, 1] = x0
+    fidx = 0
     @inbounds for i in 1:(N-1)
         x = xs[:,i]
         dt = tspan[i+1] - tspan[i]
         xs[:, i+1] .= rk4_step(x, dt, A, A2u, K)
+        fidx = i+1
         if any(isnan.(xs[:, i+1]))
             @info "NaN encountered in RK4 integration at time step $i"
             break
         end
     end
-    return xs
+    return xs, fidx
 end
 

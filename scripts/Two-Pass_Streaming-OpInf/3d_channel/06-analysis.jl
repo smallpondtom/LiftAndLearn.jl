@@ -1,5 +1,5 @@
 """
-3D Channel flow: training models
+3D Channel flow: Compute the QoIs of the reduced model
 """
 
 #================#
@@ -44,6 +44,7 @@ n_train = n_time - n_test
 #===================#
 batch_or_stream = "batch"
 rmax = 200
+rls_algo = :iqrrls
 
 
 #=================#
@@ -68,6 +69,9 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 states = load(joinpath(FILEPATH, "data/results", 
              "$(batch_or_stream)_rom_train_sim_states_0_8000_r$(rmax).jld2")
              )["states"]
+if batch_or_stream == "stream"
+    states = states[rls_algo]
+end
 
 #====================================================#
 ## Compute the QoIs of the reduced model (training)
