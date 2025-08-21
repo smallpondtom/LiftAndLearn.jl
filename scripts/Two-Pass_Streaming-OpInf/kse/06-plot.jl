@@ -360,6 +360,7 @@ with_theme(theme_latexfonts()) do
         yscale=log10, 
         xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 2e-11, 8e0),
     )
     for j in eachindex(rrange)  # over all reduced dimensions
         scatterlines!(ax1, 1:num_of_streams, stream_res[:rls].true_stream_err[j,:], color=line_colors[j])
@@ -371,6 +372,7 @@ with_theme(theme_latexfonts()) do
         yscale=log10, 
         xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 2e-11, 8e0),
     )
     for j in eachindex(rrange)  # over all reduced dimensions
         scatterlines!(ax2, 1:num_of_streams, stream_res[:iqrrls].true_stream_err[j,:], color=line_colors[j])
@@ -382,6 +384,7 @@ with_theme(theme_latexfonts()) do
         yscale=log10, 
         xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+        limits=(nothing, nothing, 2e-11, 8e0),
     )
     lines = []
     labels = []
@@ -392,7 +395,7 @@ with_theme(theme_latexfonts()) do
     end
     Legend(fig[1,4], lines, labels, labelsize=30)
     display(fig)
-    save(joinpath(FILEPATH, "plots/rel_stream_err_per_stream.pdf"), fig)
+    # save(joinpath(FILEPATH, "plots/rel_stream_err_per_stream.pdf"), fig)
 end
 
 #=====================================================#
