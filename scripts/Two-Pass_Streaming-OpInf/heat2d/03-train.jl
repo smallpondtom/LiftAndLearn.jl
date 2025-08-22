@@ -18,8 +18,9 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : 
-                                        joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
+FILEPATH = occursin("scripts", pwd()) ? 
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
 
 #======================================#
 ## Obtain all the saved training files
@@ -40,7 +41,7 @@ heat2d = setup["heat2d"]
 #=================#
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
-iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
+iVrmax = basis_data["sketchy"].iVr  # choose Baker's iSVD basis
 rmax = size(iVrmax,2)
 
 #=======================#
@@ -125,16 +126,13 @@ for (file_idx, data_file) in enumerate(training_data_files)
         rls_stream  = LnL.TwoPassStreamingOpInf(
             options=options, n=rmax, m=4, algorithm=:RLS, Γs=Γ)
         iqrrls_stream = LnL.TwoPassStreamingOpInf(
-            options=options, n=rmax, m=4, algorithm=:iQRRLS, Γs=Γ)
+            options=options, n=rmax, m=4, algorithm=:iQRRLS, 
+            Γs=Γ, qr_method=:givens)
         qrrls_stream = LnL.TwoPassStreamingOpInf(
-            options=options, n=rmax, m=4, algorithm=:QRRLS, Γs=Γ)
+            options=options, n=rmax, m=4, algorithm=:QRRLS, 
+            Γs=Γ, qr_method=:givens)
 
         # Preallocate a dictionary to store the streaming results
-        # error_factors = Dict{Symbol, Matrix{Float64}}(
-        #     :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d]), 
-        #     :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d]), 
-        #     :qrrls  => Matrix{Float64}(undef, rls_stream.dims[:d], rls_stream.dims[:d])
-        # )
         Eps_true = Dict{Symbol, Matrix{Float64}}(
             :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 
             :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 
@@ -154,11 +152,6 @@ for (file_idx, data_file) in enumerate(training_data_files)
             LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i)  # iQRRLS
             LnL.stream!(qrrls_stream, x_i, xdot_i; U=u_i)   # QRRLS
 
-            # Compute the error factor 
-            # error_factors[:rls]    = 1.0I - rls_stream.cache.K * d
-            # error_factors[:iqrrls] = 1.0I - iqrrls_stream.cache.K * d
-            # error_factors[:qrrls]  = 1.0I - qrrls_stream.cache.K * d
-
             # Compute the true streaming error
             Eps_true[:rls]    .= Ostar - rls_stream.cache.O
             Eps_true[:iqrrls] .= Ostar - Array(iqrrls_stream.cache.O)
@@ -170,9 +163,6 @@ for (file_idx, data_file) in enumerate(training_data_files)
                 Eps[:iqrrls] = copy(Eps_true[:iqrrls])
                 Eps[:qrrls]  = copy(Eps_true[:qrrls])
             else
-                # Eps[:rls]    .= error_factors[:rls] * Eps[:rls]
-                # Eps[:iqrrls] .= error_factors[:iqrrls] * Eps[:iqrrls]
-                # Eps[:qrrls]  .= error_factors[:qrrls] * Eps[:qrrls]
                 Eps[:rls]    .= Eps[:rls] - rls_stream.cache.K * rls_stream.cache.ξpre
                 Eps[:iqrrls] .= Eps[:iqrrls] - iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
                 Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
@@ -322,12 +312,6 @@ train_errors = Dict(
         Threads.@threads for i in eachindex(op_keys)
             key = op_keys[i]
             for (i,r) = enumerate(1:rmax)
-
-                # if occursin(r"stream", string(key))
-                #     Vr = iVrmax[:, 1:r]
-                # else
-                #     Vr = Vrmax[:, 1:r]
-                # end
 
                 Vr = iVrmax[:, 1:r]
 

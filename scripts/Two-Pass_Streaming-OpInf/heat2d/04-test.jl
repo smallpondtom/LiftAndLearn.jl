@@ -16,7 +16,9 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
+FILEPATH = occursin("scripts", pwd()) ?
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/heat2d") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/heat2d")
 
 #======================================#
 ## Obtain all the saved training files
@@ -38,7 +40,7 @@ heat2d = setup["heat2d"]
 #=================#
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
-iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
+iVrmax = basis_data["sketchy"].iVr  # choose Baker's iSVD basis
 rmax = size(Vrmax, 2)
 
 #=================#
@@ -120,11 +122,6 @@ param_region = collect(heat2d.diffusion_coeffs)
         Threads.@threads for i in eachindex(op_keys)
             key = op_keys[i]
             for (i,r) = enumerate(1:rmax)
-                # if occursin(r"stream", key)
-                #     Vr = iVrmax[:, 1:r]
-                # else
-                #     Vr = Vrmax[:, 1:r]
-                # end
 
                 Vr = iVrmax[:, 1:r]
 
