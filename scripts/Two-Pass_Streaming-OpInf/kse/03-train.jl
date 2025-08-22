@@ -18,7 +18,9 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/kse") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/kse")
+FILEPATH = occursin("scripts", pwd()) ? 
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/kse") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/kse")
 
 #======================================#
 ## Obtain all the saved training files
