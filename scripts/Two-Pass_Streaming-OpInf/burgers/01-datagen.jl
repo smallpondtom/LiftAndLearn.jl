@@ -18,7 +18,9 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/burgers") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/burgers")
+FILEPATH = occursin("scripts", pwd()) ? 
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/burgers") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/burgers")
 
 #=========================#
 ## Burgers equation setup
