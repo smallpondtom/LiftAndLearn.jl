@@ -52,11 +52,11 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
-    use_backslash=true,
-    # use_svd_truncation=true,
+    # use_backslash=true,
+    use_svd_truncation=true,
     # tolerance=1e-22
 )
-rmax = 200
+rmax = 350
 
 #=========================#
 ## Load reduced data
@@ -225,14 +225,18 @@ op = load(joinpath(FILEPATH, "data/models",
           "batch_operators_0_8000_r$(rmax)_lamGS.jld2"))["op"]
 
 
-# #=========================#
-# ## Train Batch model
-# #=========================#
-# # Tikhonov Regularized OpInf
-# options.with_reg = true
-# options.λ = LnL.TikhonovParameter(A=best_beta1, A2=best_beta2, K=best_beta1)
-# op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+#=========================#
+## Train Batch model
+#=========================#
+# Tikhonov Regularized OpInf
+options.with_reg = true
+options.λ = LnL.TikhonovParameter(A=1e12, A2=1e12, K=1e12)
+op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
+## Save the model
+save(joinpath(FILEPATH, "data/models", 
+     "batch_operators_0_8000_r$(rmax)_lam1e12.jld2"), 
+     "op", op)
 
 #===========================#
 ## Simulate ROM (training) ##

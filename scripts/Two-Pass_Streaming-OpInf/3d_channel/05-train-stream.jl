@@ -161,7 +161,7 @@ GC.gc()
 ## Save operators
 save(joinpath(
         FILEPATH, "data/models", 
-        "stream_rls_operators_0_8000_r$(rmax)_lam1e12.jld2"
+        "stream_rls_operators_0_8000_r$(rmax)_lamGS.jld2"
     ), 
     "op_rls", op_rls,
     "op_iqrrls", op_iqrrls,
@@ -179,17 +179,14 @@ save(joinpath(FILEPATH, "data/results",
 ## Simulate ROM (training) ##
 #===========================#
 include(joinpath(FILEPATH, "integrate.jl"))
-states = Dict(
-    :rls    => zeros(size(Xhat,1), n_train),
-    :iqrrls => zeros(size(Xhat,1), n_train),
-    :qrrls  => zeros(size(Xhat,1), n_train),
-)
-for (algo, op_stream) in zip([:rls, :iqrrls, :qrrls], 
-                             [op_rls, op_iqrrls, op_qrrls])
+algos = [:rls, :iqrrls, :qrrls]
+operators = [op_rls, op_iqrrls, op_qrrls]
+states = Dict(alg => zeros(size(Xhat,1), n_train) for alg in algos)
+for (algo, op_stream) in zip(algos, operators)
     if CONTINUOUS_TIME
         tspan = ds["times"][1:n_train] .- ds["times"][1]
         x0 = Xhat[:,1]
-        states[algo] = rk4_integrate(x0, tspan, op_stream.A, 
+        states[algo], _ = rk4_integrate(x0, tspan, op_stream.A, 
                                      op_stream.A2u, op_stream.K)
     else
         states[algo][:,1] = x0
@@ -212,8 +209,7 @@ save(joinpath(FILEPATH, "data/results",
 
 ## Load the state states
 states = load(joinpath(FILEPATH, "data/results", 
-              "stream_rom_train_sim_states_0_8000_r400.jld2"))["states"]
-
+              "stream_rom_train_sim_states_0_8000_r$(rmax).jld2"))["states"]
 
 #=================#
 ## Load the bases 
@@ -234,19 +230,14 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 ## Simulate ROM (testing) ##
 #==========================#
 include(joinpath(FILEPATH, "preprocess.jl"))
-test_states = Dict(
-    :rls    => zeros(size(Xhat,1), n_test),
-    :iqrrls => zeros(size(Xhat,1), n_test),
-    :qrrls  => zeros(size(Xhat,1), n_test),
-)
-for (alg, op_stream) in zip([:rls, :iqrrls, :qrrls], 
-                            [op_rls, op_iqrrls, op_qrrls])
+test_states = Dict(alg => zeros(size(Xhat,1), n_test) for alg in algos)
+for (alg, op_stream) in zip(algos, operators)
     if CONTINUOUS_TIME
         tspan = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
         # Make sure to preprocess the first state
         x0 = iVrmax' * preprocess!(ds[n_train+1], means, shifts, scales)
         # x0 = iVrmax' * preprocess!(ds[n_train+1], means_test, shifts_test, scales_test)
-        test_states[alg] = rk4_integrate(
+        test_states[alg], _ = rk4_integrate(
             x0, tspan, op_stream.A, op_stream.A2u, op_stream.K)
     else
         test_states[alg][:,1] = iVrmax * preprocess!(
@@ -398,7 +389,7 @@ with_theme(theme_latexfonts()) do
     Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
     
     save(joinpath(FILEPATH, "plots", 
-         "$(fld)_slice_comparison_$(train_or_test)_$(String(alg)).png"), fig)
+         "$(fld)_slice_comparison_$(train_or_test)_$(String(alg))_$(rmax).png"), fig)
     display(fig)
 end
 
@@ -408,11 +399,12 @@ end
 #=========================================================#
 with_theme(theme_latexfonts()) do 
     train_or_test = "test"
+    alg = :rls
 
     fig = Figure(size=(1200, 800))
     
     # Pick the first spatial point for each field
-    nrow = 50
+    nrow = 1
     idx_u = nrow            # First point in u field
     idx_v = nxyz + nrow     # First point in v field  
     idx_w = 2*nxyz + nrow   # First point in w field
@@ -436,11 +428,13 @@ with_theme(theme_latexfonts()) do
         ax = Axis(fig[i, 1], 
             ylabel = L"%$(name)", 
             xlabel = i == 4 ? "Time" : "",
-            xlabelsize = 20, 
-            ylabelsize = 20,
-            xticklabelsize = 15, 
-            yticklabelsize = 15,
-            title = i == 1 ? "Reconstructed vs True States" : "",
+            xlabelsize = 28, 
+            ylabelsize = 28,
+            xticklabelsize = 22, 
+            yticklabelsize = 18,
+            xticksvisible = i == 4 ? true : false,
+            xticklabelsvisible = i == 4 ? true : false,
+            # title = i == 1 ? "Reconstructed vs True States" : "",
             titlesize = 20
         )
         
@@ -456,9 +450,6 @@ with_theme(theme_latexfonts()) do
             mean_val = means[idx]
             shift_val = shifts[idx]
             scale_val = scales[idx]
-            # mean_val = means_test[idx]
-            # shift_val = shifts_test[idx]
-            # scale_val = scales_test[idx]
         end
 
         if train_or_test == "train"
@@ -472,13 +463,13 @@ with_theme(theme_latexfonts()) do
         if train_or_test == "train"
             for t in 1:n_train
                 Vrow = view(iVrmax, idx, :)
-                states_col = view(states, :, t)
+                states_col = view(states[alg], :, t)
                 rom_field[t] = dot(Vrow, states_col)
             end
         else
             for t in 1:n_test
                 Vrow = view(iVrmax, idx, :)
-                states_col = view(test_states, :, t)
+                states_col = view(test_states[alg], :, t)
                 rom_field[t] = dot(Vrow, states_col)
             end
         end
@@ -491,12 +482,12 @@ with_theme(theme_latexfonts()) do
         lines!(ax, tspan, rom_field, color=color, linewidth=2, label="ROM")
         
         # Add legend only to the top subplot
-        if i == 1
+        if i == 4
             axislegend(ax, position=:rt, labelsize=25)
         end
     end
-    
-    # save(joinpath(FILEPATH, "plots", "state_evolution_$(train_or_test).png"), fig)
+    save(joinpath(FILEPATH, "plots", 
+         "state_evolution_$(train_or_test)_$(alg)_$(rmax).png"), fig)
     display(fig)
 end
 

@@ -78,13 +78,6 @@ tmp = @elapsed  sketchy = iSVD(
 push!(time_sketchy, tmp)
 tmp = full_increment!(sketchy, data["X"], verbose=true, runtime=true, dump_all=true)
 push!(time_sketchy, tmp.runtime)
-# mergingsketchy
-# blk = 10
-# blksize = size(data["X"],2) ÷ blk
-# tmp = @elapsed mergingsketchy = iSVD(algo=:mergingsketchy; m=burgers.spatial_dim, b=blksize, r=rmax, ReduxMap=:Sparse)
-# push!(time_mergingsketchy, tmp)
-# tmp = full_increment!(mergingsketchy, data["X"], verbose=true, runtime=true)
-# push!(time_mergingsketchy, tmp)
 
 push!(Xall, data["X"])
 
@@ -103,9 +96,6 @@ for (i,data_file) in enumerate(training_data_files[2:end])
         # Compute the POD basis using SketchySVD
         tmp = full_increment!(sketchy, X, verbose=true, runtime=true, dump_all=true)
         push!(time_sketchy, tmp.runtime)
-        # Compute the POD basis using MergingSketchySVD
-        # tmp = full_increment!(mergingsketchy, X, verbose=true, runtime=true)
-        # push!(time_mergingsketchy, tmp)
         # Save the data for batch SVD
         push!(Xall, X)
     end
@@ -123,7 +113,6 @@ bases = Dict(
     "baker" => (iVr=baker.Q[:,1:rmax], iΣr=baker.Σ[1:rmax]),
     "brand" => (iVr=brand.Q[:,1:rmax], iΣr=brand.Σ[1:rmax]),
     "sketchy" => (iVr=sketchy.Q[:,1:rmax], iΣr=sketchy.Σ[1:rmax]),
-    # "mergingsketchy" => (iVr=mergingsketchy.Q[:,1:rmax], iΣr=mergingsketchy.Σ[1:rmax]),
     "batch" => (Vr=F.U[:,1:rmax], Σr=F.S[1:rmax]),
 )
 save(joinpath(FILEPATH, "data/streaming/basis.jld2"), bases)
@@ -138,7 +127,6 @@ time_sketchy = reduce(vcat, time_sketchy)
 save(
     joinpath(FILEPATH, "data/streaming/basis_runtime.jld2"),
     "baker", time_baker, "brand", time_brand, "sketchy", time_sketchy, 
-    # "mergingsketchy", time_mergingsketchy, 
     "batch", time_batch,
 )
 
@@ -150,14 +138,12 @@ proj_error = Dict(
     "baker" => zeros(rmax),
     "brand" => zeros(rmax),
     "sketchy" => zeros(rmax),
-    # "mergingsketchy" => zeros(rmax),
     "batch" => zeros(rmax),
 )
 for i in 1:rmax
     proj_error["baker"][i] = norm(X - bases["baker"].iVr[:,1:i] * bases["baker"].iVr[:,1:i]' * X, 2) / norm(X, 2)
     proj_error["brand"][i] = norm(X - bases["brand"].iVr[:,1:i] * bases["brand"].iVr[:,1:i]' * X, 2) / norm(X, 2)
     proj_error["sketchy"][i] = norm(X - bases["sketchy"].iVr[:,1:i] * bases["sketchy"].iVr[:,1:i]' * X, 2) / norm(X, 2)
-    # proj_error["mergingsketchy"][i] = norm(X - bases["mergingsketchy"].iVr[:,1:i] * bases["mergingsketchy"].iVr[:,1:i]' * X, 2) / norm(X, 2)
     proj_error["batch"][i] = norm(X - bases["batch"].Vr[:,1:i] * bases["batch"].Vr[:,1:i]' * X, 2) / norm(X, 2)
 end
 

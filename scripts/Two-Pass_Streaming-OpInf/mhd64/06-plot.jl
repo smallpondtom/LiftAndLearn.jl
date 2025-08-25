@@ -82,11 +82,70 @@ with_theme(theme_latexfonts()) do
     axislegend(ax, 
         lines, labels,
         position=:rb,
-        labelsize=30
+        labelsize=30,
+        patchsize=(80,20)
     )
     display(fig)
     save(joinpath(FILEPATH, "plots/relative_sval_error.pdf"), fig)
 end
+
+#====================================================#
+## Plot the subspace angle errors between the bases ##
+#====================================================#
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(800, 600))      
+    ax = Axis(
+        fig[1, 1], xlabel=L"reduced dimension, $r$", 
+        ylabel="subspace angle error",
+        yscale=log10, xticks=vcat(1, 5:5:rmax), titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    lines = []
+    labels = []
+    marker_styles = [:diamond, :cross, :circle, :rect]
+    line_styles = [:solid, :solid, :solid, :dash]
+    Algorithms = ["Baker", "Brand", "Sketchy" ]
+    i = 1
+    for Algo in Algorithms
+        algo = lowercase(Algo)
+        basis = bases[algo]
+        angle_errs = zeros(rmax)
+        for r in 1:rmax
+            # angle_errs[r] = norm(
+            #     bases["batch"]["Vr"][:, 1:r] * bases["batch"]["Vr"][:, 1:r]' - 
+            #     basis.Q[:, 1:r] * basis.Q[:, 1:r]', 2
+            # ) / sqrt(2)
+
+            # More memory-efficient calculation using SVD of the cross-correlation
+            U_batch = bases["batch"]["Vr"][:, 1:r]
+            U_approx = basis.Q[:, 1:r]
+            
+            # Compute cross-correlation matrix (much smaller: r×r instead of n×n)
+            C = U_batch' * U_approx
+            σ = svdvals(C)
+            
+            # Principal angles from singular values
+            angle_errs[r] = sqrt(r - sum(σ.^2))
+        end
+        l = scatterlines!(
+            ax, 1:rmax, angle_errs, 
+            marker=marker_styles[i], markersize=(35-(i-1)*2),
+            linestyle=line_styles[i], linewidth=7,
+        )
+        i += 1
+        push!(lines, l)
+        push!(labels, Algo)
+    end
+    axislegend(ax, 
+        lines, labels,
+        position=:rb,
+        labelsize=30,
+        patchsize=(80,20)
+    )
+    display(fig)
+    save(joinpath(FILEPATH, "plots/subspace_angle_error.pdf"), fig)
+end
+
 
 #====================================================#
 ## Plot the subspace angle errors between the bases ##
@@ -178,7 +237,8 @@ with_theme(theme_latexfonts()) do
     axislegend(
         ax, lines, algos,
         position=:rt,
-        labelsize=30
+        labelsize=30,
+        patchsize=(80,20)
     )
     display(fig)
     save(joinpath(FILEPATH, "plots/projection_errors.pdf"), fig)
@@ -187,17 +247,57 @@ end
 #=============================#
 ## Plot the streaming errors ##
 #=============================#
+streaming_errors = load(
+    joinpath(FILEPATH, "data/results/streaming_errors.jld2"),
+    "stream_errors"
+)
 
-
-
-
-
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(800, 600))
+    ytick_vals = 10.0 .^ (-14:2:0)
+    ax = Axis(
+        fig[1, 1], 
+        xlabel=L"$k$-th stream", 
+        ylabel="relative streaming error",
+        yscale=log10,
+        titlesize=30, xlabelsize=30, ylabelsize=30, 
+        xticklabelsize=25, yticklabelsize=25,
+        yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
+    )
+    
+    lines = []
+    labels = ["RLS", "iQRRLS", "QRRLS"]
+    methods = ["rls", "iqrrls", "qrrls"]
+    marker_styles = [:rect, :star5, :hexagon]
+    line_styles = [:dot, :dash, :dashdot]
+    colors = Makie.wong_colors()[1:3]
+    
+    for (i, method) in enumerate(methods)
+        num_streams = length(streaming_errors[Symbol(method)])
+        l = scatterlines!(
+            ax, 1:num_streams, streaming_errors[Symbol(method)],
+            marker=marker_styles[i], markersize=(35-(i-1)*5),
+            linestyle=line_styles[i], linewidth=7,
+            color=colors[i]
+        )
+        push!(lines, l)
+    end
+    
+    axislegend(
+        ax, lines, labels,
+        position=:lb,
+        labelsize=30,
+        patchsize=(80,20)
+    )
+    
+    display(fig)
+    save(joinpath(FILEPATH, "plots/streaming_errors.pdf"), fig)
+end
 
 
 #==========================#
 ## Plot the power spectra ##
 #==========================#
-
 # Load the power spectrum results
 power_data = load(joinpath(FILEPATH, "data/results/power_spectrum.jld2"))
 
@@ -325,7 +425,7 @@ with_theme(theme_latexfonts()) do
                 color=:gray, linewidth=3, linestyle=:dot, label=L"k^{-5/3}")
     
     push!(lines4, l10, l11, l12)
-    axislegend(ax4, lines4, ["Original", "ROM", L"k^{-5/3}"], 
+    axislegend(ax4, lines4, ["Original", "Streaming-OpInf", L"k^{-5/3}"], 
                position=:lb, labelsize=32, patchsize=(60,20))
     
     display(fig)

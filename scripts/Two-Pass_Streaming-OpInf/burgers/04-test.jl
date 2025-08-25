@@ -17,7 +17,9 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/burgers") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/burgers")
+FILEPATH = occursin("scripts", pwd()) ? 
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/burgers") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/burgers")
 
 #======================================#
 ## Obtain all the saved training files
@@ -39,7 +41,7 @@ burgers = setup["burgers"]
 #=================#
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
-iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
+iVrmax = basis_data["brand"].iVr  # choose Baker's iSVD basis
 rmax = size(Vrmax, 2)
 
 #=================#
@@ -129,11 +131,7 @@ param_region = collect(burgers.diffusion_coeffs)
         Threads.@threads for i in eachindex(op_keys)
             key = op_keys[i]
             for (i,r) = enumerate(1:rmax)
-                if occursin(r"stream", key)
-                    Vr = iVrmax[:, 1:r]
-                else
-                    Vr = Vrmax[:, 1:r]
-                end
+                Vr = iVrmax[:, 1:r]
 
                 # Integrate the model
                 Fextract = UniqueKronecker.extractF(op_tmp[key].A2u, r)

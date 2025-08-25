@@ -49,6 +49,7 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
+    use_backslash=true,
 )
 
 #=========================#

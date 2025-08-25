@@ -41,17 +41,25 @@ n_train = n_time - n_test
 #===================#
 ## Setup the options
 #===================#
-batch_or_stream = "batch"
+batch_or_stream = "stream"
 rmax = 200
 
 
 #=================#
 ## Plot the QoIs
 #=================#
-qois_train = load(joinpath(FILEPATH, 
-      "data/results/$(batch_or_stream)_rom_train_qois_0_8000_r$(rmax).jld2"))
-qois_test = load(joinpath(FILEPATH, 
-      "data/results/$(batch_or_stream)_rom_test_qois_0_8000_r$(rmax).jld2"))
+if batch_or_stream == "batch"
+    qois_train = load(joinpath(FILEPATH, 
+        "data/results/$(batch_or_stream)_rom_train_qois_0_8000_r$(rmax).jld2"))
+    qois_test = load(joinpath(FILEPATH, 
+        "data/results/$(batch_or_stream)_rom_test_qois_0_8000_r$(rmax).jld2"))
+else
+    algo = "iqrrls"
+    qois_train = load(joinpath(FILEPATH, 
+        "data/results/$(batch_or_stream)_rom_train_qois_0_8000_r$(rmax)_$(algo).jld2"))
+    qois_test = load(joinpath(FILEPATH, 
+        "data/results/$(batch_or_stream)_rom_test_qois_0_8000_r$(rmax)_$(algo).jld2"))
+end
 
 
 #===========================================#
@@ -128,7 +136,7 @@ with_theme(theme_latexfonts()) do
 
     display(fig)
     save(joinpath(FILEPATH, 
-        "plots/$(batch_or_stream)_zprofile_error_r$(rmax).png"), fig)
+        "plots/$(batch_or_stream)_zprofile_error_r$(rmax)_$(algo).png"), fig)
 end
 
 #===========================================#
@@ -148,7 +156,7 @@ with_theme(theme_latexfonts()) do
     
     # Center subplot: ROM training data heatmap
     ax2 = Axis(fig[1, 2], 
-        title = "Reduced Model (Training)",
+        title = "Streaming-OpInf (Training)",
         titlesize=30, xlabelsize=30, ylabelsize=30, 
         xticklabelsize=25, yticklabelsize=25
     )
@@ -173,7 +181,7 @@ with_theme(theme_latexfonts()) do
     # Center subplot: ROM testing data heatmap
     ax5 = Axis(fig[2, 2], 
         xlabel = L"Time, $s$",
-        title = "Reduced Model (Testing)",
+        title = "Streaming-OpInf (Testing)",
         titlesize=30, xlabelsize=30, ylabelsize=30, 
         xticklabelsize=25, yticklabelsize=25
     )
@@ -224,7 +232,7 @@ with_theme(theme_latexfonts()) do
     
     display(fig)
     save(joinpath(FILEPATH, 
-        "plots/$(batch_or_stream)_zprofile_heatmap_r$(rmax).png"), fig)
+        "plots/$(batch_or_stream)_zprofile_heatmap_r$(rmax)_$(algo).png"), fig)
 end
 
 
@@ -261,7 +269,7 @@ with_theme(theme_latexfonts()) do
     # First row - Training data
     # Left subplot: Training utau values
     ax1 = Axis(fig[1, 1], 
-        ylabel = L"$u_\tau \,/\, \langle u_\tau \rangle$",
+        ylabel = L"$v_{x,\tau} \,/\, \langle v_{x,\tau} \rangle$",
         title = "Training Data",
         limits = (nothing, nothing, utau_limits...),
         titlesize=30, xlabelsize=30, ylabelsize=30, 
@@ -282,7 +290,7 @@ with_theme(theme_latexfonts()) do
     # Left subplot: Testing utau values
     ax3 = Axis(fig[2, 1], 
         xlabel = "Time Step",
-        ylabel = L"$u_\tau \,/\, \langle u_\tau \rangle$",
+        ylabel = L"$v_{x,\tau} \,/\, \langle v_{x,\tau} \rangle$",
         title = "Testing Data",
         limits = (nothing, nothing, utau_limits...),
         titlesize=30, xlabelsize=30, ylabelsize=30, 
@@ -308,7 +316,7 @@ with_theme(theme_latexfonts()) do
     lines!(ax1, time_steps_train, utau_train_norm, 
            label="Original", linewidth=3, color=:black)
     lines!(ax1, time_steps_train, utau_train_rom_norm, 
-           label="ROM", linewidth=3, color=c2, linestyle=:dash)
+           label="Streaming-OpInf", linewidth=3, color=c2, linestyle=:dash)
     axislegend(ax1, position=:rt, labelsize=25, patchsize=(80, 20))
 
     lines!(ax2, time_steps_train, utau_error_train, 
@@ -318,7 +326,7 @@ with_theme(theme_latexfonts()) do
     lines!(ax3, time_steps_test, utau_test_norm, 
            label="Original", linewidth=3, color=:black)
     lines!(ax3, time_steps_test, utau_test_rom_norm, 
-           label="ROM", linewidth=3, color=c2, linestyle=:dash)
+           label="Streaming-OpInf", linewidth=3, color=c2, linestyle=:dash)
     axislegend(ax3, position=:rt, labelsize=25, patchsize=(80, 20))
 
     lines!(ax4, time_steps_test, utau_error_test, 
@@ -326,13 +334,215 @@ with_theme(theme_latexfonts()) do
 
     # Add super title
     Label(fig[0, :], 
-        text=L"Wall Shear Flow $u_\tau$ and Relative Errors", 
+        text=L"Wall Shear Flow $v_{x,\tau}$ and Relative Errors", 
         fontsize = 32)
 
     display(fig)
     save(joinpath(FILEPATH, 
-        "plots/$(batch_or_stream)_utau_r$(rmax).png"), fig)
+        "plots/$(batch_or_stream)_utau_r$(rmax)_$(algo).png"), fig)
 end
+
+
+#===========================================#
+## Plot 4: Z Profile 
+#===========================================#
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1440, 1200))
+
+    # Calculate error ranges first to ensure consistent scaling
+    zprof_error_train = abs.(mean(zprof_train_rom, dims=2)[:] - mean(zprof_train, dims=2)[:]) ./ 
+                        abs.(mean(zprof_train, dims=2)[:])
+    zprof_error_test = abs.(mean(zprof_test_rom, dims=2)[:] - mean(zprof_test, dims=2)[:]) ./ 
+                       abs.(mean(zprof_test, dims=2)[:])
+    
+    # Find common error range for both training and testing
+    error_min = min(minimum(zprof_error_train), minimum(zprof_error_test))
+    error_max = max(maximum(zprof_error_train), maximum(zprof_error_test))
+    common_error_limits = (error_min * 0.8, error_max * 1.2)
+    
+    # Find common velocity range for both training and testing
+    vel_min = min(minimum(mean(zprof_train, dims=2)), minimum(mean(zprof_train_rom, dims=2)),
+                  minimum(mean(zprof_test, dims=2)), minimum(mean(zprof_test_rom, dims=2)))
+    vel_max = max(maximum(mean(zprof_train, dims=2)), maximum(mean(zprof_train_rom, dims=2)),
+                  maximum(mean(zprof_test, dims=2)), maximum(mean(zprof_test_rom, dims=2)))
+    common_vel_limits = (vel_min * 0.95, vel_max * 1.05)
+
+    # Add super title
+    Label(fig[1, 1:2], text="Training", fontsize = 40)
+
+    # Left subplot: Original vs ROM z profiles
+    ax1_left = Axis(fig[2, 1], 
+        ylabel = "Z Coordinate",
+        yticks=round.(vcat(0, ds["z"][4:4:nz]), digits=3), 
+        titlesize=30, xlabelsize=30, ylabelsize=30, 
+        xticklabelsize=28, yticklabelsize=28,
+        width=600,
+        limits = (common_vel_limits..., nothing, nothing)  # Set common x-axis limits
+    )
+
+    # Plot mean profiles over time
+    zprof_train_mean = mean(zprof_train, dims=2)[:]
+    zprof_train_rom_mean = mean(zprof_train_rom, dims=2)[:]
+    l1 = lines!(ax1_left, zprof_train_mean, z_coords, 
+                label="Original", linewidth=8)
+    l2 = lines!(ax1_left, zprof_train_rom_mean, z_coords, 
+                label="Streaming-OpInf", 
+                linewidth=8, linestyle=:dash)
+    axislegend(ax1_left, position=:lt, labelsize=40, patchsize=(120, 30))
+
+    # Right subplot: Error in z profile
+    ax1_right = Axis(fig[2, 2],
+        yticks=round.(vcat(0, ds["z"][4:4:nz]), digits=3), 
+        xscale=log10,
+        titlesize=30, xlabelsize=30, ylabelsize=30, 
+        xticklabelsize=28, yticklabelsize=28,
+        width=600,
+        limits = (common_error_limits..., nothing, nothing)  # Set common error limits
+    )
+
+    lines!(ax1_right, zprof_error_train, z_coords, color=:red, linewidth=8)
+
+    # Add super title
+    Label(fig[3, 1:2], text="Testing", fontsize = 40)
+
+    # Left subplot: Original vs ROM z profiles
+    ax2_left = Axis(fig[4, 1], 
+        xlabel = "Time-Averaged Wall Normal Profile",
+        ylabel = "Z Coordinate",
+        yticks=round.(vcat(0, ds["z"][4:4:nz]), digits=3), 
+        titlesize=30, xlabelsize=30, ylabelsize=30, 
+        xticklabelsize=25, yticklabelsize=25,
+        width=600,
+        limits = (common_vel_limits..., nothing, nothing)  # Set common x-axis limits
+    )
+
+    # Plot mean profiles over time
+    zprof_test_mean = mean(zprof_test, dims=2)[:]
+    zprof_test_rom_mean = mean(zprof_test_rom, dims=2)[:]
+
+    lines!(ax2_left, zprof_test_mean, z_coords, label="Original", linewidth=6)
+    lines!(ax2_left, zprof_test_rom_mean, z_coords, label="ROM", 
+           linewidth=6, linestyle=:dash)
+
+    # Right subplot: Error in z profile
+    ax2_right = Axis(fig[4, 2],
+        xlabel = "Relative Error",
+        yticks=round.(vcat(0, ds["z"][4:4:nz]), digits=3), 
+        xscale=log10,
+        titlesize=30, xlabelsize=30, ylabelsize=30, 
+        xticklabelsize=25, yticklabelsize=25,
+        width=600,
+        limits = (common_error_limits..., nothing, nothing)  # Set common error limits
+    )
+
+    lines!(ax2_right, zprof_error_test, z_coords, color=:red, linewidth=6)
+    
+    display(fig)
+    save(joinpath(FILEPATH, 
+        "plots/$(batch_or_stream)_zprofile_r$(rmax)_$(algo).png"), fig)
+end
+
+
+#=============================#
+## Plot the streaming errors ##
+#=============================#
+streaming_errors = load(
+    joinpath(FILEPATH, "data/results/streaming_errors_0_8000_r$(rmax).jld2"),
+    "stream_error"
+)
+
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(800, 600))
+    ytick_vals = 10.0 .^ (-14:2:0)
+    ax = Axis(
+        fig[1, 1], 
+        xlabel=L"$k$-th stream", 
+        ylabel="relative streaming error",
+        yscale=log10,
+        titlesize=30, xlabelsize=30, ylabelsize=30, 
+        xticklabelsize=25, yticklabelsize=25,
+        yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
+    )
+    
+    lines = []
+    labels = ["RLS"]
+    methods = ["rls"]
+    # labels = ["RLS", "iQRRLS", "QRRLS"]
+    # methods = ["rls", "iqrrls", "qrrls"]
+    marker_styles = [:rect, :star5, :hexagon]
+    line_styles = [:dot, :dash, :dashdot]
+    colors = Makie.wong_colors()[1:3]
+    
+    for (i, method) in enumerate(methods)
+        num_streams = length(streaming_errors[Symbol(method)])
+        l = scatterlines!(
+            ax, 1:num_streams, streaming_errors[Symbol(method)],
+            marker=marker_styles[i], markersize=(35-(i-1)*5),
+            linestyle=line_styles[i], linewidth=7,
+            color=colors[i]
+        )
+        push!(lines, l)
+    end
+    
+    axislegend(
+        ax, lines, labels,
+        position=:lb,
+        labelsize=30,
+        patchsize=(80,20)
+    )
+    
+    display(fig)
+    save(joinpath(FILEPATH, "plots/streaming_errors_r$(rmax).pdf"), fig)
+end
+
+
+# #===========================================#
+# ## Plot 2: Z Profile - Testing Data
+# #===========================================#
+# with_theme(theme_latexfonts()) do 
+#     fig2 = Figure(size=(1200, 600))
+
+#     # Left subplot: Original vs ROM z profiles
+#     ax2_left = Axis(fig2[1, 1], 
+#         xlabel = "Z Coordinate",
+#         ylabel = L"Time-Averaged $u_z$ velocity",
+#         xticks=round.(vcat(0, ds["z"][8:8:nz]), digits=3), 
+#         titlesize=30, xlabelsize=30, ylabelsize=30, 
+#         xticklabelsize=25, yticklabelsize=25
+#     )
+
+#     # Plot mean profiles over time
+#     zprof_test_mean = mean(zprof_test, dims=2)[:]
+#     zprof_test_rom_mean = mean(zprof_test_rom, dims=2)[:]
+
+#     lines!(ax2_left, z_coords, zprof_test_mean, label="Original", linewidth=6)
+#     lines!(ax2_left, z_coords, zprof_test_rom_mean, label="ROM", linewidth=6, linestyle=:dash)
+#     axislegend(ax2_left, position=:rb, labelsize=28, patchsize=(80, 30))
+
+#     # Right subplot: Error in z profile
+#     ax2_right = Axis(fig2[1, 2],
+#         xlabel = "Z Coordinate",
+#         ylabel = "Relative Error",
+#         xticks=round.(vcat(0, ds["z"][8:8:nz]), digits=3), 
+#         yscale=log10,
+#         titlesize=30, xlabelsize=30, ylabelsize=30, 
+#         xticklabelsize=25, yticklabelsize=25
+#     )
+
+#     zprof_error_test = abs.(zprof_test_rom_mean - zprof_test_mean) ./ 
+#                         abs.(zprof_test_mean)
+#     lines!(ax2_right, z_coords, zprof_error_test, color=:red, linewidth=6)
+
+#     # Add super title
+#     Label(fig2[0, :], 
+#         text=L"Time-Averaged $u_z$ Profile (left) and Relative Errors (right) for Testing Data", 
+#         fontsize = 30)
+
+#     display(fig2)
+#     # save(joinpath(FILEPATH, 
+#     #     "plots/$(batch_or_stream)_zprofile_testing_comparison.png"), fig2)
+# end
+
 
 
 # #===========================================#

@@ -74,7 +74,7 @@ stream_res = Dict(
     :qrrls  => deepcopy(tmp_res)
 )
 
-for (file_idx, data_file) in enumerate(training_data_files[1:2])
+for (file_idx, data_file) in enumerate(training_data_files)
     jldopen(data_file, "r") do data
         """
         Data 
@@ -236,16 +236,17 @@ for (file_idx, data_file) in enumerate(training_data_files[1:2])
                     stream_res[:qrrls].conv_factor[i] += qrrls_stream.cache.C[1]
                     stream_res[:qrrls].cost[i] += qrrls_stream.cache.J[1]
                 end
-                
+                Ostar_norm = norm(Ostar, 2)
+
                 # Streaming errors
-                stream_res[:rls].true_stream_err[k,i] += norm(Eps_true[:rls], 2) / norm(Ostar, 2)
-                stream_res[:rls].stream_err[k,i] += norm(Eps[:rls], 2) / norm(Ostar, 2)
+                stream_res[:rls].true_stream_err[k,i] += norm(Eps_true[:rls], 2) / Ostar_norm
+                stream_res[:rls].stream_err[k,i] += norm(Eps[:rls], 2) / Ostar_norm
 
-                stream_res[:iqrrls].true_stream_err[k,i] += norm(Eps_true[:iqrrls], 2) / norm(Ostar, 2)
-                stream_res[:iqrrls].stream_err[k,i] += norm(Eps[:iqrrls], 2) / norm(Ostar, 2)
+                stream_res[:iqrrls].true_stream_err[k,i] += norm(Eps_true[:iqrrls], 2) / Ostar_norm
+                stream_res[:iqrrls].stream_err[k,i] += norm(Eps[:iqrrls], 2) / Ostar_norm
 
-                stream_res[:qrrls].true_stream_err[k,i] += norm(Eps_true[:qrrls], 2) / norm(Ostar, 2)
-                stream_res[:qrrls].stream_err[k,i] += norm(Eps[:qrrls], 2) / norm(Ostar, 2)
+                stream_res[:qrrls].true_stream_err[k,i] += norm(Eps_true[:qrrls], 2) / Ostar_norm
+                stream_res[:qrrls].stream_err[k,i] += norm(Eps[:qrrls], 2) / Ostar_norm
             end
 
             # Terminate the streaming operators

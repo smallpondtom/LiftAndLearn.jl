@@ -174,16 +174,16 @@ include("integrate.jl")
 
 # Integrate a single trajectory 
 tmp = Dict(
-    :rls    => Vector{Matrix{Float64}}(undef, n_traj),
+    # :rls    => Vector{Matrix{Float64}}(undef, n_traj),
     :iqrrls => Vector{Matrix{Float64}}(undef, n_traj),
     :qrrls  => Vector{Matrix{Float64}}(undef, n_traj)
 )
 Xrom_train = Dict(
-    :rls    => Matrix{Float64}(undef, rmax, n),
+    # :rls    => Matrix{Float64}(undef, rmax, n),
     :iqrrls => Matrix{Float64}(undef, rmax, n),
     :qrrls  => Matrix{Float64}(undef, rmax, n)
 )
-for alg in [:rls, :iqrrls, :qrrls]
+for alg in [:iqrrls, :qrrls]
     op_ = alg == :rls ? op_rls :
           alg == :iqrrls ? op_iqrrls : 
           op_qrrls
@@ -211,11 +211,13 @@ save(joinpath(FILEPATH, "data/results/stream_rom_training_states.jld2"),
 #=============================#
 include("preprocess.jl")
 # Original data (unscaled and uncentered)
-shift  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
-scale  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
-mean   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
+shifts  = load(joinpath(FILEPATH, "data/minmax.jld2"))["shift"]
+scales  = load(joinpath(FILEPATH, "data/minmax.jld2"))["scale"]
+means   = load(joinpath(FILEPATH, "data/mean.jld2"))["mean"]
 
 ##
+fn_test = joinpath(DATAPATH, "test")
+fn_test = readdir(fn_test, join=true)[1]
 ds_test = DataSource(fn_test)
 Xtest = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["all"]
 # Integrate a single trajectory 
@@ -223,12 +225,12 @@ x0 = V' * preprocess!(Xtest[:,1], vec(means["all"]), vec(shifts["all"]),
                       vec(scales["all"]))
 
 Xrom_test = Dict(
-    :rls    => Matrix{Float64}(undef, rmax, n),
+    # :rls    => Matrix{Float64}(undef, rmax, n),
     :iqrrls => Matrix{Float64}(undef, rmax, n),
     :qrrls  => Matrix{Float64}(undef, rmax, n)
 )
 
-for alg in [:rls, :iqrrls, :qrrls]
+for alg in [:iqrrls, :qrrls]
     op_ = alg == :rls ? op_rls :
           alg == :iqrrls ? op_iqrrls : 
           op_qrrls
@@ -249,7 +251,7 @@ save(joinpath(FILEPATH, "data/results/stream_rom_testing_states.jld2"),
 using CairoMakie
 
 with_theme(theme_latexfonts()) do 
-    alg = "rls"
+    alg = "iqrrls"
     algsym = Symbol(alg)
 
     fig = Figure(size=(1200, 940))
@@ -262,7 +264,7 @@ with_theme(theme_latexfonts()) do
     # Pick state 
     var = "rho"  # "rho", "z", "mx", "my", "mz", "Bx", "By", "Bz"
     # Pick training or testing 
-    train_or_test = "train"
+    train_or_test = "test"
     if train_or_test == "train"
         Xrom = Xrom_train
         ds = DataSource(fn)

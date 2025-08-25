@@ -17,7 +17,9 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/kse") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/kse")
+FILEPATH = occursin("scripts", pwd()) ? 
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/kse") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/kse")
 
 #============#
 ## KSE setup
@@ -57,6 +59,7 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
+    use_backslash=true,
 )
 
 #=========================#

@@ -19,7 +19,9 @@ import LiftAndLearn as LnL
 #================================#
 ## Configure filepath for saving
 #================================#
-FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"Two-Pass_Streaming-OpInf/burgers") : joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/burgers")
+FILEPATH = occursin("scripts", pwd()) ? 
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/burgers") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/burgers")
 
 #======================================#
 ## Obtain all the saved training files
@@ -40,7 +42,7 @@ burgers = setup["burgers"]
 #=================#
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
-iVrmax = basis_data["baker"].iVr  # choose Baker's iSVD basis
+iVrmax = basis_data["brand"].iVr  # choose Baker's iSVD basis
 rmax = size(iVrmax,2)
 
 #=======================#
@@ -55,6 +57,7 @@ include(joinpath(FILEPATH, "../utilities/interpolate.jl"))
 Γ = 1e-9  # Regularization parameter
 
 num_of_streams = 5000  # -1 for the derivative and -1 for the removed last state
+rspan = 1:rmax
 tmp_res = (
     true_stream_err = zeros(rmax, num_of_streams),
     stream_err      = zeros(rmax, num_of_streams),
@@ -90,183 +93,194 @@ for (file_idx, data_file) in enumerate(training_data_files)
         F = data["F"]
         μ = data["mu"]
 
-        # Obtain the reduced data
-        Xhat = iVrmax' * X
-        Xhatdot = iVrmax' * Xdot
+        for (k, rloop) in enumerate(rspan)
+            @info "r = $(rloop) for model $(file_idx) out of $(length(training_data_files))"
+            iVr = iVrmax[:,1:rloop]  # Use the first rloop columns of iVrmax
 
-        """
-        Train the batch models 
-        """
-        # POD-Galerkin 
-        tmp = LnL.Operators(A=A, B=B, A2u=F)
-        op_pod = LnL.pod(tmp, iVrmax, options.system)
+            # Obtain the reduced data
+            Xhat = iVr' * X
+            Xhatdot = iVr' * Xdot
 
-        # OpInf
-        options.with_reg = false
-        op_inf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
+            """
+            Train the batch models 
+            """
+            # POD-Galerkin 
+            tmp = LnL.Operators(A=A, B=B, A2u=F)
+            op_pod = LnL.pod(tmp, iVr, options.system)
 
-        # Tikhonov Regularized OpInf
-        options.with_reg = true
-        options.λ = LnL.TikhonovParameter(A=Γ, B=Γ, A2=Γ)
-        op_trinf = LnL.opinf(X, iVrmax, options; U=U, Xdot=Xdot)
+            # OpInf
+            options.with_reg = false
+            op_inf = LnL.opinf(X, iVr, options; U=U, Xdot=Xdot)
 
-        # Keep the reference batch model to compare with the streaming models
-        Ostar = op_trinf.O'
+            # Tikhonov Regularized OpInf
+            options.with_reg = true
+            options.λ = LnL.TikhonovParameter(A=Γ, B=Γ, A2=Γ)
+            op_trinf = LnL.opinf(X, iVr, options; U=U, Xdot=Xdot)
 
-        """
-        Train and analyze the streaming models
-        """
-        # Streamify the data based on the selected streamsizes
-        streamsize = 1
-        X_stream = LnL.streamify(Xhat, streamsize)
-        U_stream = LnL.streamify(U, streamsize)
-        Xdot_stream = LnL.streamify(Xhatdot, streamsize)
-        foo = length(X_stream)
-        @assert foo == num_of_streams "Wrong number of streams"
+            # Keep the reference batch model to compare with the streaming models
+            Ostar = op_trinf.O'
 
-        # Initialize the streaming OpInfs
-        # rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS, Γs=Γ) 
-        # iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS, Γs=Γ)
-        # qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS, Γs=Γ)
-        rls_stream  = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:RLS) 
-        iqrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:iQRRLS)
-        qrrls_stream = LnL.TwoPassStreamingOpInf(options=options, n=rmax, m=1, algorithm=:QRRLS)
+            """
+            Train and analyze the streaming models
+            """
+            # Streamify the data based on the selected streamsizes
+            streamsize = 1
+            X_stream = LnL.streamify(Xhat, streamsize)
+            U_stream = LnL.streamify(U, streamsize)
+            Xdot_stream = LnL.streamify(Xhatdot, streamsize)
+            foo = length(X_stream)
+            @assert foo == num_of_streams "Wrong number of streams"
 
-        # Preallocate a dictionary to store the streaming results
-        Eps_true = Dict{Symbol, Matrix{Float64}}(
-            :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 
-            :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rmax), 
-            :qrrls  => Matrix{Float64}(undef, rls_stream.dims[:d], rmax)
-        )
-        Eps = deepcopy(Eps_true)  # Initialize the error factor
+            # Initialize the streaming OpInfs
+            rls_stream  = LnL.TwoPassStreamingOpInf(
+                options=options, n=rloop, m=1, algorithm=:RLS
+            ) 
+            iqrrls_stream = LnL.TwoPassStreamingOpInf(
+                options=options, n=rloop, m=1, algorithm=:iQRRLS, qr_method=:givens
+            )
+            qrrls_stream = LnL.TwoPassStreamingOpInf(
+                options=options, n=rloop, m=1, algorithm=:QRRLS, qr_method=:givens
+            )
 
-        # Stream one-by-one and collect data
-        @showprogress for i in 1:num_of_streams
-            # The stream of data
-            x_i    = X_stream[i]
-            xdot_i = Xdot_stream[i]
-            u_i    = U_stream[i]
+            # Preallocate a dictionary to store the streaming results
+            Eps_true = Dict{Symbol, Matrix{Float64}}(
+                :rls    => Matrix{Float64}(undef, rls_stream.dims[:d], rloop), 
+                :iqrrls => Matrix{Float64}(undef, rls_stream.dims[:d], rloop), 
+                :qrrls  => Matrix{Float64}(undef, rls_stream.dims[:d], rloop)
+            )
+            Eps = deepcopy(Eps_true)  # Initialize the error factor
 
-            # Stream, update, and get data matrix for the state system
-            LnL.stream!(rls_stream, x_i, xdot_i; U=u_i)  # RLS
-            LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i)   # iQRRLS
-            LnL.stream!(qrrls_stream, x_i, xdot_i; U=u_i)    # QRRLS
+            # Stream one-by-one and collect data
+            @showprogress for i in 1:num_of_streams
+                # The stream of data
+                x_i    = X_stream[i]
+                xdot_i = Xdot_stream[i]
+                u_i    = U_stream[i]
 
-            # Compute the true streaming error
-            Eps_true[:rls]    .= Ostar - rls_stream.cache.O
-            Eps_true[:iqrrls] .= Ostar - iqrrls_stream.cache.O
-            Eps_true[:qrrls]  .= Ostar - qrrls_stream.cache.O
+                # Stream, update, and get data matrix for the state system
+                LnL.stream!(rls_stream, x_i, xdot_i; U=u_i)  # RLS
+                LnL.stream!(iqrrls_stream, x_i, xdot_i; U=u_i)   # iQRRLS
+                LnL.stream!(qrrls_stream, x_i, xdot_i; U=u_i)    # QRRLS
 
-            # Streaming error for first update
-            if i == 1
-                Eps[:rls]    = copy(Eps_true[:rls])
-                Eps[:iqrrls] = copy(Eps_true[:iqrrls])
-                Eps[:qrrls]  = copy(Eps_true[:qrrls])
-            else
-                Eps[:rls]    .= Eps[:rls] - rls_stream.cache.K * rls_stream.cache.ξpre
-                Eps[:iqrrls] .= Eps[:iqrrls] - iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
-                Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
-            end
+                # Compute the true streaming error
+                Eps_true[:rls]    .= Ostar - rls_stream.cache.O
+                Eps_true[:iqrrls] .= Ostar - iqrrls_stream.cache.O
+                Eps_true[:qrrls]  .= Ostar - qrrls_stream.cache.O
 
-            if (i-1) % 4 == 0 || i ∈ num_of_streams-10:num_of_streams
-                # Unpack operators
-                # RLS
-                op_rls = LnL.Operators()
-                LnL.unpack_operators!(
-                    op_rls, rls_stream.cache.O', 
-                    rls_stream.termination_settings[:dims], 
-                    rls_stream.termination_settings[:syms]
-                )
+                # Streaming error for first update
+                if i == 1
+                    Eps[:rls]    = copy(Eps_true[:rls])
+                    Eps[:iqrrls] = copy(Eps_true[:iqrrls])
+                    Eps[:qrrls]  = copy(Eps_true[:qrrls])
+                else
+                    Eps[:rls]    .= Eps[:rls] - rls_stream.cache.K * rls_stream.cache.ξpre
+                    Eps[:iqrrls] .= Eps[:iqrrls] - iqrrls_stream.cache.K * iqrrls_stream.cache.ξpre
+                    Eps[:qrrls]  .= Eps[:qrrls] - qrrls_stream.cache.K * qrrls_stream.cache.ξpre
+                end
 
-                # iQRRLS
-                op_iqrrls = LnL.Operators()
-                LnL.unpack_operators!(
-                    op_iqrrls, iqrrls_stream.cache.O', 
-                    iqrrls_stream.termination_settings[:dims], 
-                    iqrrls_stream.termination_settings[:syms]
-                )
-
-                # QRRLS
-                op_qrrls = LnL.Operators()
-                LnL.unpack_operators!(
-                    op_qrrls, qrrls_stream.cache.O', 
-                    qrrls_stream.termination_settings[:dims], 
-                    qrrls_stream.termination_settings[:syms]
-                )
-
-                # Collect all the (temporary) operators into a dictionary
-                op_tmp = Dict(:rls => op_rls, :iqrrls => op_iqrrls, :qrrls => op_qrrls)
-
-                algo_keys = [key for key in keys(op_tmp)]       # Get the keys of the operators
-                Threads.@threads for k in eachindex(algo_keys)  # Loop through each algorithm
-                    key = algo_keys[k]
-                    # iterate through the reduced dimensions
-                    for (j, rj) in enumerate(1:rmax)
-                        # Extract the quadratic matrix for lower dimensions
-                        F_extract = UniqueKronecker.extractF(op_tmp[key].A2u, rj)
-                        # Integrate to reconstruct the state
-                        Xtmp = burgers.integrate_model(
-                            burgers.tspan, iVrmax[:,1:rj]' * burgers.IC, Uref; 
-                            linear_matrix=op_tmp[key].A[1:rj, 1:rj],
-                            control_matrix=op_tmp[key].B[1:rj,:], 
-                            quadratic_matrix=F_extract, system_input=true
+                if rloop == rmax
+                    if (i-1) % 5 == 0 || i ∈ num_of_streams-10:num_of_streams
+                        # Unpack operators
+                        # RLS
+                        op_rls = LnL.Operators()
+                        LnL.unpack_operators!(
+                            op_rls, rls_stream.cache.O', 
+                            rls_stream.termination_settings[:dims], 
+                            rls_stream.termination_settings[:syms]
                         )
 
-                        # Compute the relative state error or reconstruction error
-                        stream_res[key].rse[j,i] += LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:rj])
+                        # iQRRLS
+                        op_iqrrls = LnL.Operators()
+                        LnL.unpack_operators!(
+                            op_iqrrls, iqrrls_stream.cache.O', 
+                            iqrrls_stream.termination_settings[:dims], 
+                            iqrrls_stream.termination_settings[:syms]
+                        )
 
-                        # Index to extract for lower dimensions
-                        idx = extract_indices(rls_stream, rmax, rj, options.system)
+                        # QRRLS
+                        op_qrrls = LnL.Operators()
+                        LnL.unpack_operators!(
+                            op_qrrls, qrrls_stream.cache.O', 
+                            qrrls_stream.termination_settings[:dims], 
+                            qrrls_stream.termination_settings[:syms]
+                        )
 
-                        # Extract for lower dimensions
-                        Ostar_norm = norm(Ostar[idx,1:rj], 2)
-                        @views Eps_true_sub = Eps_true[key][idx,1:rj]
-                        @views Eps_sub = Eps[key][idx,1:rj]
+                        # Collect all the (temporary) operators into a dictionary
+                        op_tmp = Dict(:rls => op_rls, :iqrrls => op_iqrrls, :qrrls => op_qrrls)
 
-                        # Streaming errors
-                        stream_res[key].true_stream_err[j,i] += norm(Eps_true_sub, 2) / Ostar_norm 
-                        stream_res[key].stream_err[j,i] += norm(Eps_sub,2) / Ostar_norm
+                        algo_keys = [key for key in keys(op_tmp)]       # Get the keys of the operators
+                        Threads.@threads for k in eachindex(algo_keys)  # Loop through each algorithm
+                            key = algo_keys[k]
+                            # iterate through the reduced dimensions
+                            for (j, rj) in enumerate(1:rmax)
+                                # Extract the quadratic matrix for lower dimensions
+                                F_extract = UniqueKronecker.extractF(op_tmp[key].A2u, rj)
+                                # Integrate to reconstruct the state
+                                Xtmp = burgers.integrate_model(
+                                    burgers.tspan, iVrmax[:,1:rj]' * burgers.IC, Uref; 
+                                    linear_matrix=op_tmp[key].A[1:rj, 1:rj],
+                                    control_matrix=op_tmp[key].B[1:rj,:], 
+                                    quadratic_matrix=F_extract, system_input=true
+                                )
+
+                                # Compute the relative state error or reconstruction error
+                                stream_res[key].rse[j,i] += LnL.rel_state_error(Xref, Xtmp, iVrmax[:,1:rj])
+                            end
+                        end
                     end
+
+                    # A posteriori error, conversion factors, and costs
+                    # RLS
+                    stream_res[:rls].post_err[i] += norm(rls_stream.cache.ξpost,2)
+                    stream_res[:rls].conv_factor[i] += rls_stream.cache.C[1] 
+                    stream_res[:rls].cost[i] += rls_stream.cache.J[1]
+                    # iQRRLS
+                    stream_res[:iqrrls].post_err[i] += norm(iqrrls_stream.cache.ξpost,2)
+                    stream_res[:iqrrls].conv_factor[i] += iqrrls_stream.cache.C[1]
+                    stream_res[:iqrrls].cost[i] += iqrrls_stream.cache.J[1]
+                    # QRRLS
+                    stream_res[:qrrls].post_err[i] += norm(qrrls_stream.cache.ξpost,2)
+                    stream_res[:qrrls].conv_factor[i] += qrrls_stream.cache.C[1]
+                    stream_res[:qrrls].cost[i] += qrrls_stream.cache.J[1]
                 end
+                Ostar_norm = norm(Ostar, 2)
+
+                # Streaming errors
+                stream_res[:rls].true_stream_err[k,i] += norm(Eps_true[:rls], 2) / Ostar_norm
+                stream_res[:rls].stream_err[k,i] += norm(Eps[:rls], 2) / Ostar_norm
+
+                stream_res[:iqrrls].true_stream_err[k,i] += norm(Eps_true[:iqrrls], 2) / Ostar_norm
+                stream_res[:iqrrls].stream_err[k,i] += norm(Eps[:iqrrls], 2) / Ostar_norm
+
+                stream_res[:qrrls].true_stream_err[k,i] += norm(Eps_true[:qrrls], 2) / Ostar_norm
+                stream_res[:qrrls].stream_err[k,i] += norm(Eps[:qrrls], 2) / Ostar_norm 
             end
 
-            # A posteriori error, conversion factors, and costs
-            # RLS
-            stream_res[:rls].post_err[i] += norm(rls_stream.cache.ξpost,2)
-            stream_res[:rls].conv_factor[i] += rls_stream.cache.C[1] 
-            stream_res[:rls].cost[i] += rls_stream.cache.J[1]
-            # iQRRLS
-            stream_res[:iqrrls].post_err[i] += norm(iqrrls_stream.cache.ξpost,2)
-            stream_res[:iqrrls].conv_factor[i] += iqrrls_stream.cache.C[1]
-            stream_res[:iqrrls].cost[i] += iqrrls_stream.cache.J[1]
-            # QRRLS
-            stream_res[:qrrls].post_err[i] += norm(qrrls_stream.cache.ξpost,2)
-            stream_res[:qrrls].conv_factor[i] += qrrls_stream.cache.C[1]
-            stream_res[:qrrls].cost[i] += qrrls_stream.cache.J[1]
+            # Terminate the streaming operators
+            op_stream_rls    = LnL.terminate_stream(rls_stream)
+            op_stream_iqrrls = LnL.terminate_stream(iqrrls_stream)
+            op_stream_qrrls  = LnL.terminate_stream(qrrls_stream)
+
+            # Compute final streaming errors for debugging
+            @printf("(RLS)    ||O - Ostar||_F / ||Ostar||_F = %.5e\n", 
+                norm(op_stream_rls.O - Ostar, 2)/norm(Ostar, 2))
+            @printf("(iQRRLS) ||O - Ostar||_F / ||Ostar||_F = %.5e\n", 
+                norm(op_stream_iqrrls.O - Ostar, 2)/norm(Ostar, 2))
+            @printf("(QRRLS)  ||O - Ostar||_F / ||Ostar||_F = %.5e\n", 
+                norm(op_stream_qrrls.O - Ostar, 2)/norm(Ostar, 2))
+
+            if rloop == rmax
+                # Save the model
+                mu_str = @sprintf("%1.4f", μ)
+                ops = Dict(
+                    "pod" => op_pod, "opinf" => op_inf, "tropinf" => op_trinf, 
+                    "stream_rls" => op_stream_rls, "stream_iqrrls" => op_stream_iqrrls, 
+                    "stream_qrrls" => op_stream_qrrls, "mu" => μ
+                )
+                filename = joinpath(FILEPATH, "data/models", "op_mu$(mu_str).jld2")
+                save(filename, ops)
+            end
         end
-
-        # Terminate the streaming operators
-        op_stream_rls    = LnL.terminate_stream(rls_stream)
-        op_stream_iqrrls = LnL.terminate_stream(iqrrls_stream)
-        op_stream_qrrls  = LnL.terminate_stream(qrrls_stream)
-
-        # Compute final streaming errors for debugging
-        @printf("(RLS)    ||O - Ostar||_F / ||Ostar||_F = %.5e\n", 
-            norm(op_stream_rls.O - Ostar, 2)/norm(Ostar, 2))
-        @printf("(iQRRLS) ||O - Ostar||_F / ||Ostar||_F = %.5e\n", 
-            norm(op_stream_iqrrls.O - Ostar, 2)/norm(Ostar, 2))
-        @printf("(QRRLS)  ||O - Ostar||_F / ||Ostar||_F = %.5e\n", 
-            norm(op_stream_qrrls.O - Ostar, 2)/norm(Ostar, 2))
-
-        # Save the model
-        mu_str = @sprintf("%1.4f", μ)
-        ops = Dict(
-            "pod" => op_pod, "opinf" => op_inf, "tropinf" => op_trinf, 
-            "stream_rls" => op_stream_rls, "stream_iqrrls" => op_stream_iqrrls, 
-            "stream_qrrls" => op_stream_qrrls, "mu" => μ
-        )
-        filename = joinpath(FILEPATH, "data/models", "op_mu$(mu_str).jld2")
-        save(filename, ops)
     end
     @info "Streaming for model $(file_idx) out of $(length(training_data_files)) is completed"
 end
@@ -324,11 +338,6 @@ train_errors = Dict(
         Threads.@threads for i in eachindex(op_keys)
             key = op_keys[i]
             for (i,r) = enumerate(1:rmax)
-                # if occursin(r"stream", string(key))
-                #     Vr = iVrmax[:, 1:r]
-                # else
-                #     Vr = Vrmax[:, 1:r]
-                # end
 
                 Vr = iVrmax[:, 1:r]
 

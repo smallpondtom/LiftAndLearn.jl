@@ -101,7 +101,8 @@ Xbx = nothing; Xby = nothing; Xbz = nothing
 GC.gc()
 
 ## Load the training ROM simulation trajectory data
-Xrom_train = load(joinpath(FILEPATH, "data/results/rom_training_states.jld2"))["states"]
+Xrom_train = load(joinpath(
+    FILEPATH, "data/results/stream_rom_training_states.jld2"))["states"][:iqrrls]
 
 ## Load the basis
 baker = load(joinpath(FILEPATH, "data/bases/baker_basis.jld2"))["baker"]
@@ -169,7 +170,7 @@ GC.gc()
 
 ##-------- Test --------#
 # Load the original density data
-Xrho = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["rho"]
+Xrho_test = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["rho"]
 
 # Load the test velocities
 Xmx = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["mx"]
@@ -216,7 +217,8 @@ Xbx = nothing; Xby = nothing; Xbz = nothing
 GC.gc()
 
 ## Load the testing ROM simulation trajectory data
-Xrom_test = load(joinpath(FILEPATH, "data/results/rom_testing_states.jld2"))["states"]
+Xrom_test = load(joinpath(
+    FILEPATH, "data/results/stream_rom_testing_states.jld2"))["states"][:iqrrls]
 
 # Reproject the data back to full space
 Xrom_test_full = V * Xrom_test
@@ -281,16 +283,76 @@ save(joinpath(FILEPATH, "data/results/power_spectrum.jld2"),
 #====================#
 ## Compute the 3PCF ##
 #====================#
+using Statistics
+# Compute the density fluctuation
+density_fluct = (X) -> (log.(X) .- mean(log.(X), dims=2)) ./ std(log.(X), dims=2)
+Xrho_fluct = density_fluct(Xrho)
+Xrho_test_fluct = density_fluct(Xrho_test)
+Xrho_rom_train_fluct = density_fluct(Xr_rom_train_full)
+Xrho_rom_test_fluct = density_fluct(Xr_rom_test_full)
+
+## Time index 
+time_idx = [33, 66, 99]
+grid_vals = zeros(nxyz, 4)
+grid_vals[:,1] = repeat(ds.grid["x"][:], inner=(ny * nz,))
+grid_vals[:,2] = repeat(ds.grid["y"][:], inner=(nx * nz,))'
+grid_vals[:,3] = repeat(ds.grid["z"][:], inner=(nx * ny,))
+
+## Preallocate dictionary to store the 3PCF results
+npcf3_results = Dict(
+    "train" => Vector{Array{Float64,3}}(undef, length(time_idx)),
+    "test" => Vector{Array{Float64,3}}(undef, length(time_idx)),
+    "rom_train" => Vector{Array{Float64,3}}(undef, length(time_idx)),
+    "rom_test" => Vector{Array{Float64,3}}(undef, length(time_idx)),
+)
+
+## Load some packages for parallel computing
 using Distributed 
 addprocs(50)
 using NPCFs
 @everywhere using NPCFs
 
-## Initialize the 2PCF object
-npcf2 = NPCFs.NPCF(
-    N=3, D=3, periodic=true, volume=1.0^3,
+## Initialize the 3PCF object
+npcf3 = NPCFs.NPCF(
+    N=3, D=3, periodic=true, volume=1.0^3, verb=true,
     coords="cartesian", r_min=0.1, r_max=0.4, nbins=8, lmax=5
 )
 
-## Compute the 2PCF for the original data
-npcf2_output = NPCFs.compute_npcf_pairwise(grid_vals, npcf2)
+## Compute the grid values assembled as [x, y, z, fluctuation]
+for (i,tidx) in enumerate(time_idx)
+    # Original data
+    grid_vals[:, 4] = vec(Xrho_fluct[:, tidx])
+    t1 = time()
+    npcf3_results["train"][i] = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
+    t2 = time()
+    @info "3PCF for original data done. Took $(t2 - t1) seconds"
+
+    # ROM training data
+    grid_vals[:, 4] = vec(Xrho_rom_train_fluct[:, tidx])
+    t1 = time()
+    npcf3_results["rom_train"][i] = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
+    t2 = time()
+    @info "3PCF for ROM training data done. Took $(t2 - t1) seconds"
+
+    ## Oiriginal test data 
+    grid_vals[:, 4] = vec(Xrho_test_fluct[:, tidx])
+    t1 = time()
+    npcf3_results["test"][1] = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
+    t2 = time()
+    @info "3PCF for original testing data done. Took $(t2 - t1) seconds"
+
+    # ROM testing data
+    grid_vals[:, 4] = vec(Xrho_rom_test_fluct[:, tidx])
+    t1 = time()
+    npcf3_results["rom_test"][1] = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
+    t2 = time()
+    @info "3PCF for ROM testing data done. Took $(t2 - t1) seconds"
+
+    # Free some memory 
+    GC.gc()
+
+    @info "Finished 3PCF computation for time index $i"
+end
+
+## Save the 3PCF results
+save(joinpath(FILEPATH, "data/results/3pcf.jld2"), "npcf3_results", npcf3_results)

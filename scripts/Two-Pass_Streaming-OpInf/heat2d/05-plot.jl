@@ -55,7 +55,7 @@ with_theme(theme_latexfonts()) do
         basis = bases[algo]
         Σr = basis.iΣr
         Σr_batch = bases["batch"].Σr
-        error = abs.(Σr - Σr_batch) ./ Σr_batch
+        error = abs.(Σr - Σr_batch) 
         l = scatterlines!(
             ax, 1:rmax, error, 
             marker=marker_styles[i], markersize=(35-(i-1)*2),
@@ -73,6 +73,50 @@ with_theme(theme_latexfonts()) do
     )
     display(fig)
     save(joinpath(FILEPATH, "plots/absolute_sval_error.pdf"), fig)
+end
+
+#============================================================#
+## Plot the error between the batch and iSVD singular values
+#============================================================#
+basis_file = joinpath(FILEPATH, "data/streaming/basis.jld2")
+bases = load(basis_file)
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(800, 600))
+    ax = Axis(
+        fig[1, 1], xlabel=L"singular value index, $i$", 
+        ylabel="relative error of singular values",
+        yscale=log10, xticks=1:rmax, titlesize=30, 
+        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    )
+    lines = []
+    labels = []
+    marker_styles = [:diamond, :cross, :circle, :rect]
+    line_styles = [:solid, :solid, :solid, :solid]
+    Algorithms = ["Baker", "Brand", "Sketchy"]
+    i = 1
+    for Algo in Algorithms
+        algo = lowercase(Algo)
+        basis = bases[algo]
+        Σr = basis.iΣr
+        Σr_batch = bases["batch"].Σr
+        error = abs.(Σr - Σr_batch) ./ Σr_batch
+        l = scatterlines!(
+            ax, 1:rmax, error, 
+            marker=marker_styles[i], markersize=(35-(i-1)*2),
+            linestyle=line_styles[i], linewidth=7,
+        )
+        i += 1
+        push!(lines, l)
+        push!(labels, Algo)
+    end
+    axislegend(ax, 
+        lines, labels,
+        position=:lt,
+        labelsize=30,
+        patchsize=(80,20)
+    )
+    display(fig)
+    save(joinpath(FILEPATH, "plots/relative_sval_error.pdf"), fig)
 end
 
 
@@ -400,7 +444,7 @@ with_theme(theme_latexfonts()) do
         xticks=xtick_vals, titlesize=30, 
         yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-11, 3e0),
+        limits=(nothing, nothing, 5e-12, 5e1),
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
         scatterlines!(
@@ -416,7 +460,7 @@ with_theme(theme_latexfonts()) do
         xticks=xtick_vals, titlesize=30, 
         yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-11, 3e0),
+        limits=(nothing, nothing, 5e-12, 5e1),
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
         scatterlines!(
@@ -432,7 +476,7 @@ with_theme(theme_latexfonts()) do
         xticks=xtick_vals, titlesize=30, 
         yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-11, 3e0),
+        limits=(nothing, nothing, 5e-12, 5e1),
     )
     lines = []
     labels = []
@@ -446,7 +490,7 @@ with_theme(theme_latexfonts()) do
     end
     Legend(fig[1,4], lines, labels, labelsize=30, patchsize=(30,10))
     display(fig)
-    save(joinpath(FILEPATH, "plots/rel_stream_err_per_stream.pdf"), fig)
+    # save(joinpath(FILEPATH, "plots/rel_stream_err_per_stream.pdf"), fig)
 end
 
 #=====================================================#
