@@ -20,18 +20,6 @@ FILEPATH = occursin("scripts", pwd()) ?
            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/mhd64")
 DATAPATH = "../../../../DATA/THE_WELL/mhd64"
 rmax = 50
-# train_files = readdir(DATAPATH, join=true)
-# fn = train_files[1]
-
-# # Include the data sourcing module for data access
-# include(joinpath(FILEPATH, "datasource.jl"))
-
-# # Load data source 
-# ds = DataSource(fn)
-# nx, ny, nz, n_fields, n_time, n_traj = ds.dims
-# nxyz = nx * ny * nz
-# n = n_time * n_traj
-
 
 #============================================================#
 ## Plot the error between the batch and iSVD singular values
@@ -484,4 +472,472 @@ with_theme(theme_latexfonts()) do
     
     display(fig)
     save(joinpath(FILEPATH, "plots/power_spectra_errors.pdf"), fig)
+end
+
+
+
+#=================#
+## Plot the 3PCF ##
+#=================#
+include(joinpath(FILEPATH, "analysis.jl"))
+# Load all the 3PCF data
+npcf_files = readdir(joinpath(FILEPATH, "data/results"), join=true)
+npcf_files = filter(f -> occursin("3pcf", f), npcf_files)
+npcf3 = Dict()
+for (i, npcf_file) in enumerate(npcf_files)
+    npcf = load(npcf_file)
+    if i == 1
+        for (key, value) in npcf
+            npcf3[key] = value
+        end
+    else
+        for (key, value) in npcf
+            npcf3[key] .+= value
+        end
+    end 
+end
+for key in keys(npcf3)
+    npcf3[key] ./= length(npcf_files)  # Average over all files
+end
+
+## Combined plot: 3PCF coefficients and relative errors
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1800, 1700))
+    
+    # Data keys and row labels for main heatmaps
+    data_keys = ["npcf3_orig", "npcf3_rom_train", "npcf3_orig_test", 
+                 "npcf3_rom_test"]
+    row_labels = ["Original (Train)", "Streaming-OpInf (Train)", 
+                  "Original (Test)", "Streaming-OpInf (Test)"]
+    
+    # Process all matrices to find global min/max for colorbar
+    all_processed = []
+    for data_key in data_keys
+        for ell in 1:6  # ℓ = 0, 1, 2, 3, 4, 5
+            processed = process_3pcf_matrix(npcf3[data_key], ell)
+            push!(all_processed, processed)
+        end
+    end
+    
+    # Find global min/max for consistent colorbar
+    global_min = minimum([minimum(m) for m in all_processed])
+    global_max = maximum([maximum(m) for m in all_processed])
+    color_limit = max(abs(global_min), abs(global_max))
+    
+    # Create main 3PCF heatmaps (rows 1-4)
+    heatmaps = []
+    for (row_idx, data_key) in enumerate(data_keys)
+        for ell in 1:6  # ℓ = 0, 1, 2, 3, 4, 5
+            ax = Axis(
+                fig[row_idx, ell],
+                xlabel = "",
+                ylabel = ell == 1 ? L"%$(row_labels[row_idx]) \n $r_2$ bin" : "",
+                title = row_idx == 1 ? L"$\ell = %$(ell-1)$" : "",
+                titlesize = 24,
+                xlabelsize = 18,
+                ylabelsize = 18,
+                xticklabelsize = 14,
+                yticklabelsize = 14,
+                xticksvisible = false,
+                yticksvisible = ell == 1 ? true : false,
+                xticklabelsvisible = false,
+                yticklabelsvisible = ell == 1 ? true : false,
+                yreversed = true,
+                # ylabelpadding = ell == 1 ? 20.0 : 3.0,
+                aspect = 1
+            )
+            
+            # Process matrix for this multipole
+            processed_matrix = process_3pcf_matrix(npcf3[data_key], ell)
+            
+            # Create heatmap
+            hm = heatmap!(
+                ax, processed_matrix,
+                colormap = CairoMakie.Reverse(:RdBu),
+                colorrange = (-color_limit, color_limit)
+            )
+            
+            # Store first heatmap for colorbar reference
+            if row_idx == 1 && ell == 1
+                push!(heatmaps, hm)
+            end
+            
+            # Set ticks to show bin indices
+            n_bins = size(processed_matrix, 1)
+            tick_positions = 1:n_bins
+            tick_labels = string.(n_bins:-1:1)
+            ax.xticks = (tick_positions, tick_labels)
+            ax.yticks = (tick_positions, tick_labels)
+        end
+    end
+    
+    # Calculate relative errors for error plots (rows 6-7)
+    error_train = []
+    error_test = []
+    
+    for ell in 1:6
+        # Training error
+        orig_train = process_3pcf_matrix(npcf3["npcf3_orig"], ell)
+        rom_train = process_3pcf_matrix(npcf3["npcf3_rom_train"], ell)
+        err_train = abs.(rom_train .- orig_train) # ./ (abs.(orig_train) .+ 1e-10)
+        push!(error_train, err_train)
+        
+        # Testing error
+        orig_test = process_3pcf_matrix(npcf3["npcf3_orig_test"], ell)
+        rom_test = process_3pcf_matrix(npcf3["npcf3_rom_test"], ell)
+        err_test = abs.(rom_test .- orig_test) # ./ (abs.(orig_test) .+ 1e-10)
+        push!(error_test, err_test)
+    end
+    
+    # Find global max for error colorbar
+    error_max = maximum([maximum(e) for e in vcat(error_train, error_test)])
+    
+    # Plot training errors (row 6)
+    for ell in 1:6
+        ax = Axis(
+            fig[6, ell],
+            xlabel = "",
+            ylabel = ell == 1 ? L"Training Error \n $r_2$ bin" : "",
+            titlesize = 22,
+            xlabelsize = 18,
+            ylabelsize = 18,
+            xticklabelsize = 14,
+            yticklabelsize = 14,
+            xticksvisible = false,
+            yticksvisible = ell == 1 ? true : false,
+            xticklabelsvisible = false,
+            yticklabelsvisible = ell == 1 ? true : false,
+            yreversed = true,
+            # ylabelpadding = ell == 1 ? 23.0 : 3.0,
+            aspect = 1
+        )
+        
+        hm = heatmap!(
+            ax, error_train[ell],
+            colormap = :plasma,
+            colorrange = (0, error_max)
+        )
+        
+        n_bins = size(error_train[ell], 1)
+        tick_positions = 1:n_bins
+        tick_labels = string.(1:(n_bins))
+        ax.xticks = (tick_positions, tick_labels)
+        ax.yticks = (tick_positions, tick_labels)
+    end
+    
+    # Plot testing errors (row 7)
+    hm_err = nothing
+    for ell in 1:6
+        ax = Axis(
+            fig[7, ell],
+            xlabel = L"$r_1$ bin",
+            ylabel = ell == 1 ? L"Testing Error \n $r_2$ bin" : "",
+            titlesize = 22,
+            xlabelsize = 18,
+            ylabelsize = 18,
+            xticklabelsize = 14,
+            yticklabelsize = 14,
+            xticksvisible = true,
+            yticksvisible = ell == 1 ? true : false,
+            xticklabelsvisible = true,
+            yticklabelsvisible = ell == 1 ? true : false,
+            yreversed = true,
+            # xlabelpadding = ell != 1 ? 25.0 : 3.0,
+            # ylabelpadding = ell == 1 ? 23.0 : 3.0,
+            aspect = 1
+        )
+        
+        hm_err = heatmap!(
+            ax, error_test[ell],
+            colormap = :plasma,
+            colorrange = (0, error_max)
+        )
+        
+        n_bins = size(error_test[ell], 1)
+        tick_positions = 1:n_bins
+        tick_labels = string.(1:(n_bins))
+        ax.xticks = (tick_positions, tick_labels)
+        ax.yticks = (tick_positions, reverse(tick_labels))
+    end
+    
+    # Add colorbars
+    cb1 = Colorbar(
+        fig[1:4, 7], 
+        heatmaps[1],
+        label = "Normalized 3PCF",
+        labelsize = 20,
+        ticklabelsize = 16,
+        width = 25
+    )
+    
+    cb2 = Colorbar(
+        fig[6:7, 7], 
+        hm_err,
+        label = "Absolute Error",
+        labelsize = 18,
+        ticklabelsize = 14,
+        width = 25
+    )
+    
+    # Add section titles
+    Label(
+        fig[0, 1:6], 
+        "3-Point Correlation Function Normalized by Standard Deviation for Multipole",
+        fontsize = 28,
+        font = "TeX Gyre Termes Bold"
+    )
+    
+    # Add a separator label between sections (using row 5)
+    Label(
+        fig[5, 1:6], 
+        "Absolute Errors",
+        fontsize = 24,
+        font = "TeX Gyre Termes Bold"
+    )
+    
+    # Adjust layout
+    colgap!(fig.layout, 10)
+    rowgap!(fig.layout, 15)
+    
+    display(fig)
+    save(joinpath(FILEPATH, "plots/3pcf_combined.pdf"), fig)
+end
+
+#=====================#
+## 3PCF coefficients ##
+#=====================#
+npcf_files = readdir(joinpath(FILEPATH, "data/results"), join=true)
+npcf_files = filter(f -> occursin("3pcf", f), npcf_files)
+
+zeta_l_orig_train = nothing
+zeta_l_rom_train = nothing
+zeta_l_orig_test = nothing
+zeta_l_rom_test = nothing
+for (i, npcf_file) in enumerate(npcf_files)
+    npcf = load(npcf_file)
+    if i == 1
+        zeta_l_orig_train = project_to_legendre(npcf["npcf3_orig"])
+        zeta_l_rom_train = project_to_legendre(npcf["npcf3_rom_train"])
+        zeta_l_orig_test = project_to_legendre(npcf["npcf3_orig_test"])
+        zeta_l_rom_test = project_to_legendre(npcf["npcf3_rom_test"])
+    else
+        foo = project_to_legendre(npcf["npcf3_orig"])
+        bar = project_to_legendre(npcf["npcf3_rom_train"])
+        baz = project_to_legendre(npcf["npcf3_orig_test"])
+        qux = project_to_legendre(-npcf["npcf3_rom_test"])
+        for ell in keys(zeta_l_orig_train)
+            zeta_l_orig_train[ell] .+= foo[ell]
+            zeta_l_rom_train[ell] .+= bar[ell]
+            zeta_l_orig_test[ell] .+= baz[ell]
+            zeta_l_rom_test[ell] .+= qux[ell]
+        end
+    end 
+end
+for ell in keys(zeta_l_orig_train)
+    zeta_l_orig_train[ell] ./= length(npcf_files)
+    zeta_l_rom_train[ell] ./= length(npcf_files)
+    zeta_l_orig_test[ell] ./= length(npcf_files)
+    zeta_l_rom_test[ell] ./= length(npcf_files)
+end
+
+## Combined plot: Legendre coefficients and relative errors
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1800, 1700))
+    
+    # Data dictionaries and row labels for main heatmaps
+    data_dicts = [zeta_l_orig_train, zeta_l_rom_train, zeta_l_orig_test, 
+                  zeta_l_rom_test]
+    row_labels = ["Original (Train)", "Streaming-OpInf (Train)", 
+                  "Original (Test)", "Streaming-OpInf (Test)"]
+    
+    # Process all matrices to find global min/max for colorbar
+    all_processed = []
+    for data_dict in data_dicts
+        for ell in 0:5  # ℓ = 0, 1, 2, 3, 4, 5
+            processed = process_legendre_matrix(data_dict, ell)
+            push!(all_processed, processed)
+        end
+    end
+    
+    # Find global min/max for consistent colorbar
+    global_min = minimum([minimum(m) for m in all_processed])
+    global_max = maximum([maximum(m) for m in all_processed])
+    color_limit = max(abs(global_min), abs(global_max))
+    
+    # Create main Legendre coefficient heatmaps (rows 1-4)
+    heatmaps = []
+    for (row_idx, data_dict) in enumerate(data_dicts)
+        for ell in 0:5  # ℓ = 0, 1, 2, 3, 4, 5
+            col = ell + 1
+            ax = Axis(
+                fig[row_idx, col],
+                xlabel = "",
+                ylabel = ell == 0 ? L"%$(row_labels[row_idx]) \n $r_2$ bin" : "",
+                title = row_idx == 1 ? L"$\ell = %$ell$" : "",
+                titlesize = 24,
+                xlabelsize = 18,
+                ylabelsize = 18,
+                xticklabelsize = 14,
+                yticklabelsize = 14,
+                xticksvisible = false,
+                yticksvisible = ell == 0 ? true : false,
+                xticklabelsvisible = false,
+                yticklabelsvisible = ell == 0 ? true : false,
+                yreversed = true,
+                aspect = 1
+            )
+            
+            # Process matrix for this multipole
+            processed_matrix = process_legendre_matrix(data_dict, ell)
+            
+            # Create heatmap
+            hm = heatmap!(
+                ax, processed_matrix,
+                colormap = CairoMakie.Reverse(:RdBu),
+                colorrange = (-color_limit, color_limit)
+            )
+            
+            # Store first heatmap for colorbar reference
+            if row_idx == 1 && ell == 0
+                push!(heatmaps, hm)
+            end
+            
+            # Set ticks to show bin indices
+            n_bins = size(processed_matrix, 1)
+            tick_positions = 1:n_bins
+            tick_labels = string.(n_bins:-1:1)
+            ax.xticks = (tick_positions, tick_labels)
+            ax.yticks = (tick_positions, tick_labels)
+        end
+    end
+    
+    # Calculate relative errors for error plots (rows 6-7)
+    error_train = []
+    error_test = []
+    
+    for ell in 0:5
+        # Training error
+        orig_train = process_legendre_matrix(zeta_l_orig_train, ell)
+        rom_train = process_legendre_matrix(zeta_l_rom_train, ell)
+        err_train = abs.(rom_train .- orig_train) # ./ (abs.(orig_train))
+        push!(error_train, err_train)
+        
+        # Testing error
+        orig_test = process_legendre_matrix(zeta_l_orig_test, ell)
+        rom_test = process_legendre_matrix(zeta_l_rom_test, ell)
+        err_test = abs.(rom_test .- orig_test) # ./ (abs.(orig_test))
+        push!(error_test, err_test)
+    end
+    
+    # Find global max for error colorbar
+    error_max = maximum([maximum(e) for e in vcat(error_train, error_test)])
+    
+    # Plot training errors (row 6)
+    for ell in 0:5
+        col = ell + 1
+        ax = Axis(
+            fig[6, col],
+            xlabel = "",
+            ylabel = ell == 0 ? L"Training Error \n $r_2$ bin" : "",
+            titlesize = 22,
+            xlabelsize = 18,
+            ylabelsize = 18,
+            xticklabelsize = 14,
+            yticklabelsize = 14,
+            xticksvisible = false,
+            yticksvisible = ell == 0 ? true : false,
+            xticklabelsvisible = false,
+            yticklabelsvisible = ell == 0 ? true : false,
+            yreversed = true,
+            aspect = 1,
+        )
+        
+        hm = heatmap!(
+            ax, error_train[ell + 1],
+            colormap = :plasma,
+            colorrange = (0, error_max),
+        )
+        
+        n_bins = size(error_train[ell + 1], 1)
+        tick_positions = 1:n_bins
+        tick_labels = string.(1:n_bins)
+        ax.xticks = (tick_positions, tick_labels)
+        ax.yticks = (tick_positions, tick_labels)
+    end
+    
+    # Plot testing errors (row 7)
+    hm_err = nothing
+    for ell in 0:5
+        col = ell + 1
+        ax = Axis(
+            fig[7, col],
+            xlabel = L"$r_1$ bin",
+            ylabel = ell == 0 ? L"Testing Error \n $r_2$ bin" : "",
+            titlesize = 22,
+            xlabelsize = 18,
+            ylabelsize = 18,
+            xticklabelsize = 14,
+            yticklabelsize = 14,
+            xticksvisible = true,
+            yticksvisible = ell == 0 ? true : false,
+            xticklabelsvisible = true,
+            yticklabelsvisible = ell == 0 ? true : false,
+            yreversed = true,
+            aspect = 1,
+        )
+        
+        hm_err = heatmap!(
+            ax, error_test[ell + 1],
+            colormap = :plasma,
+            colorrange = (0, error_max),
+        )
+        
+        n_bins = size(error_test[ell + 1], 1)
+        tick_positions = 1:n_bins
+        tick_labels = string.(1:n_bins)
+        ax.xticks = (tick_positions, tick_labels)
+        ax.yticks = (tick_positions, reverse(tick_labels))
+    end
+    
+    # Add colorbars
+    cb1 = Colorbar(
+        fig[1:4, 7], 
+        heatmaps[1],
+        label = "Normalized Legendre Coefficients",
+        labelsize = 20,
+        ticklabelsize = 16,
+        width = 25
+    )
+    
+    cb2 = Colorbar(
+        fig[6:7, 7], 
+        hm_err,
+        label = "Absolute Error",
+        labelsize = 18,
+        ticklabelsize = 14,
+        width = 25,
+    )
+    
+    # Add section titles
+    Label(
+        fig[0, 1:6], 
+        "3PCF Legendre Coefficients Normalized by Standard Deviation for Multipole",
+        fontsize = 28,
+        font = "TeX Gyre Termes Bold"
+    )
+    
+    # Add a separator label between sections (using row 5)
+    Label(
+        fig[5, 1:6], 
+        "Absolute Errors",
+        fontsize = 24,
+        font = "TeX Gyre Termes Bold",
+    )
+    
+    # Adjust layout
+    colgap!(fig.layout, 10)
+    rowgap!(fig.layout, 15)
+    
+    display(fig)
+    save(joinpath(FILEPATH, "plots/3pcf_legendre_combined.pdf"), fig)
 end

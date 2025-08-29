@@ -57,7 +57,7 @@ Xby = load(joinpath(FILEPATH, "data/original_data.jld2"))["X"]["By"]
 Xbz = load(joinpath(FILEPATH, "data/original_data.jld2"))["X"]["Bz"]
 
 ## Load the necessary functions 
-include("analysis.jl")
+include(joinpath(FILEPATH, "analysis.jl"))
 
 # Obtain the grids
 xspan = ds.grid["x"][:]
@@ -291,24 +291,24 @@ Xrho_test_fluct = density_fluct(Xrho_test)
 Xrho_rom_train_fluct = density_fluct(Xr_rom_train_full)
 Xrho_rom_test_fluct = density_fluct(Xr_rom_test_full)
 
-## Time index 
-time_idx = [33, 66, 99]
-grid_vals = zeros(nxyz, 4)
-grid_vals[:,1] = repeat(ds.grid["x"][:], inner=(ny * nz,))
-grid_vals[:,2] = repeat(ds.grid["y"][:], inner=(nx * nz,))'
-grid_vals[:,3] = repeat(ds.grid["z"][:], inner=(nx * ny,))
+## Free some memory
+Xrho = nothing; Xrho_test = nothing
+Xr_rom_train_full = nothing; Xr_rom_test_full = nothing
+GC.gc()
 
-## Preallocate dictionary to store the 3PCF results
-npcf3_results = Dict(
-    "train" => Vector{Array{Float64,3}}(undef, length(time_idx)),
-    "test" => Vector{Array{Float64,3}}(undef, length(time_idx)),
-    "rom_train" => Vector{Array{Float64,3}}(undef, length(time_idx)),
-    "rom_test" => Vector{Array{Float64,3}}(undef, length(time_idx)),
-)
+## Initialize the grid values array
+grid_vals = zeros(nxyz, 4)
+idx = 1
+for k in 1:nz, j in 1:ny, i in 1:nx 
+    grid_vals[idx, 1] = ds.grid["x"][i]
+    grid_vals[idx, 2] = ds.grid["y"][j]
+    grid_vals[idx, 3] = ds.grid["z"][k]
+    idx += 1
+end
 
 ## Load some packages for parallel computing
 using Distributed 
-addprocs(50)
+addprocs(100)
 using NPCFs
 @everywhere using NPCFs
 
@@ -319,40 +319,45 @@ npcf3 = NPCFs.NPCF(
 )
 
 ## Compute the grid values assembled as [x, y, z, fluctuation]
-for (i,tidx) in enumerate(time_idx)
+time_idx = [35, 50, 60, 75, 85, 95, 100]
+for tidx in time_idx
     # Original data
-    grid_vals[:, 4] = vec(Xrho_fluct[:, tidx])
+    grid_vals[:, 4] .= vec(view(Xrho_fluct, :, tidx))
     t1 = time()
-    npcf3_results["train"][i] = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
+    npcf3_orig = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
     t2 = time()
     @info "3PCF for original data done. Took $(t2 - t1) seconds"
 
     # ROM training data
-    grid_vals[:, 4] = vec(Xrho_rom_train_fluct[:, tidx])
+    grid_vals[:, 4] .= vec(view(Xrho_rom_train_fluct, :, tidx))
     t1 = time()
-    npcf3_results["rom_train"][i] = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
+    npcf3_rom_train = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
     t2 = time()
     @info "3PCF for ROM training data done. Took $(t2 - t1) seconds"
 
     ## Oiriginal test data 
-    grid_vals[:, 4] = vec(Xrho_test_fluct[:, tidx])
+    grid_vals[:, 4] .= vec(view(Xrho_test_fluct, :, tidx))
     t1 = time()
-    npcf3_results["test"][1] = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
+    npcf3_orig_test = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
     t2 = time()
     @info "3PCF for original testing data done. Took $(t2 - t1) seconds"
 
     # ROM testing data
-    grid_vals[:, 4] = vec(Xrho_rom_test_fluct[:, tidx])
+    grid_vals[:, 4] .= vec(view(Xrho_rom_test_fluct, :, tidx))
     t1 = time()
-    npcf3_results["rom_test"][1] = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
+    npcf3_rom_test = NPCFs.compute_npcf_pairwise(grid_vals, npcf3)
     t2 = time()
     @info "3PCF for ROM testing data done. Took $(t2 - t1) seconds"
 
     # Free some memory 
     GC.gc()
 
-    @info "Finished 3PCF computation for time index $i"
-end
+    # Save
+    save(joinpath(FILEPATH, "data/results/3pcf_t$(tidx).jld2"), 
+         "npcf3_orig", npcf3_orig,
+         "npcf3_rom_train", npcf3_rom_train,
+         "npcf3_orig_test", npcf3_orig_test,
+         "npcf3_rom_test", npcf3_rom_test)
 
-## Save the 3PCF results
-save(joinpath(FILEPATH, "data/results/3pcf.jld2"), "npcf3_results", npcf3_results)
+    @info "Finished 3PCF computation for time $(tidx)"
+end

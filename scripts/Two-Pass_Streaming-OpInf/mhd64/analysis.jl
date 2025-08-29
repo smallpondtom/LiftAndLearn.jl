@@ -1,5 +1,8 @@
 using FFTW
 using Statistics
+using QuadGK
+using Interpolations
+
 
 # ---------- helpers ----------
 @inline function kvec_fftw(n::Int, dx::Real)
@@ -181,4 +184,161 @@ function mhd_energy_spectra(u::NTuple{3,AbstractArray{<:Real,3}},
     end
 
     return k, E_u, E_b
+end
+
+
+"""
+Compute Legendre polynomial P_l(x)
+"""
+function legendre_polynomial(l::Int, x::Float64)
+    if l == 0
+        return 1.0
+    elseif l == 1
+        return x
+    else
+        P_prev, P_curr = 1.0, x
+        for n in 2:l
+            P_next = ((2*n - 1) * x * P_curr - (n - 1) * P_prev) / n
+            P_prev, P_curr = P_curr, P_next
+        end
+        return P_curr
+    end
+end
+
+"""
+Create interpolated function from NPCFs.jl angular data
+"""
+function create_angular_interpolator(mu_grid, zeta_values)
+    # Handle edge cases and ensure proper interpolation
+    valid_indices = isfinite.(zeta_values) .&& (.!isnan.(zeta_values))
+    
+    if sum(valid_indices) < 2
+        # Not enough points for interpolation, return constant function
+        mean_val = mean(zeta_values[valid_indices])
+        return μ -> isnan(mean_val) ? 0.0 : mean_val
+    end
+    
+    # Create interpolation object
+    interp = linear_interpolation(
+        mu_grid[valid_indices], zeta_values[valid_indices], 
+        extrapolation_bc=Line())
+    
+    return μ -> interp(μ)
+end
+
+"""
+Convert NPCFs.jl angular basis to μ values for integration
+Assumes NPCFs.jl uses cosine of angle between r1 and r2
+"""
+function get_angular_grid(n_angular::Int)
+    # NPCFs.jl typically uses Gauss-Legendre quadrature points
+    # For simplicity, use uniform grid - adjust based on actual 
+    # NPCFs.jl implementation
+    return collect(range(-1.0, 1.0, length=n_angular))
+end
+
+"""
+Project NPCFs.jl 3PCF output onto Legendre polynomial basis using QuadGK
+"""
+function project_to_legendre(npcf_output, max_l=5; rtol=1e-6)
+    nbins = size(npcf_output, 1)
+    n_angular = size(npcf_output, 3)
+    
+    # Get angular grid points (μ = cos θ values)
+    mu_grid = get_angular_grid(n_angular)
+    
+    # Initialize Legendre coefficient matrices
+    zeta_l = Dict{Int, Matrix{Float64}}()
+    for l in 0:max_l
+        zeta_l[l] = zeros(nbins, nbins)
+    end
+    
+    # Project each (r1, r2) pair onto Legendre basis
+    for i in 1:nbins, j in i:nbins
+        # Extract 3PCF values for this (r1, r2) pair across angular bins
+        zeta_angular = npcf_output[i, j, :]
+        
+        # Create interpolated function for this (r1, r2) pair
+        zeta_func = create_angular_interpolator(mu_grid, zeta_angular)
+        
+        # Project onto each Legendre multipole using QuadGK
+        for l in 0:max_l
+            # Define integrand: ζ(r1, r2, μ) * P_l(μ)
+            integrand(mu) = zeta_func(mu) * legendre_polynomial(l, mu)
+            
+            try
+                # Numerical integration using QuadGK
+                result, error = quadgk(integrand, -1.0, 1.0, rtol=rtol)
+                
+                # Apply normalization factor (2l+1)/2
+                coefficient = (2*l + 1) / 2.0 * result
+                zeta_l[l][i, j] = coefficient
+                zeta_l[l][j, i] = coefficient  # Symmetry
+                
+            catch e
+                @warn "Integration failed for l=$l, bins ($i,$j): $e"
+                zeta_l[l][i, j] = 0.0
+                zeta_l[l][j, i] = 0.0
+            end
+        end
+    end
+    
+    return zeta_l
+end
+
+# Function to normalize and symmetrize the Legendre coefficient matrices
+function process_legendre_matrix(zeta_l_dict, ell)
+    # Extract the ell-th multipole coefficient matrix
+    matrix = zeta_l_dict[ell]
+    
+    # Normalize by standard deviation (excluding zeros)
+    non_zero_vals = matrix[matrix .!= 0]
+    if length(non_zero_vals) > 0
+        std_val = std(non_zero_vals)
+        if std_val > 0
+            matrix = matrix ./ std_val
+        end
+    end
+    
+    # Matrix should already be symmetric from projection, but ensure it
+    n = size(matrix, 1)
+    for i in 1:n
+        for j in 1:i-1
+            matrix[i, j] = matrix[j, i]
+        end
+    end
+    
+    # Rotate matrix so [0,0] is at bottom-left
+    matrix = reverse(matrix, dims=1)
+    
+    return matrix
+end
+
+## Function to normalize and symmetrize the 3PCF matrices
+function process_3pcf_matrix(matrix_3d, ell_idx)
+    # Extract the ell-th multipole (3rd dimension index)
+    matrix = matrix_3d[:, :, ell_idx]
+    
+    # Normalize by standard deviation (excluding zeros)
+    non_zero_vals = matrix[matrix .!= 0]
+    if length(non_zero_vals) > 0
+        std_val = std(non_zero_vals)
+        if std_val > 0
+            matrix = matrix ./ std_val
+        end
+    end
+    
+    # Make symmetric by copying upper triangle to lower triangle
+    n = size(matrix, 1)
+    for i in 1:n
+        for j in 1:i-1
+            matrix[i, j] = matrix[j, i]
+        end
+    end
+    
+    # Rotate matrix so [0,0] is at bottom-left
+    # This means we need to flip vertically
+    matrix = reverse(matrix, dims=1)
+    
+    return matrix
 end
