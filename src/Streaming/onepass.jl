@@ -460,7 +460,8 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
     U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
 
     # Diagonalize the singular values
-    Σ_diag = Diagonal(obj.Σ[1:rank])
+    Σ = obj.Σ[1:rank]
+    Σ_diag = Diagonal(Σ)
 
     # Extract the appropriate indices
     id1 = indices[1]
@@ -495,12 +496,12 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
         else
             if obj.options.optim.nonredundant_operators
                 ri = binomial(r+i-1, i)
-                D[:, tmp+1:tmp+ri] = ⧁(W, i) * Diagonal(⊘(obj.Σ, i))
+                D[:, tmp+1:tmp+ri] = ⧁(W, i) * Diagonal(⊘(Σ, i))
                 push!(dims, ri)
                 push!(operator_symbols, Symbol("A$(i)u"))
             else
                 ri = Int(r^i)
-                D[:, tmp+1:tmp+ri] = ⊖(W, i) * Diagonal(⊗(obj.Σ[:,:], i)[:])
+                D[:, tmp+1:tmp+ri] = ⊖(W, i) * Diagonal(⊗(Σ[:,:], i)[:])
                 push!(dims, ri)
                 push!(operator_symbols, Symbol("A$(i)"))
             end
@@ -527,7 +528,7 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
     end
 
     # Construct the reduced right-hand side matrix
-    R = E' * obj.W * Σ_diag
+    R = E' * W * Σ_diag
 
     # compute least squares (pseudo inverse)
     if obj.options.with_reg 
@@ -577,7 +578,8 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
     U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
 
     # Diagonalize the singular values
-    Σ_diag = Diagonal(obj.Σ[1:rank])
+    Σ = obj.Σ[1:rank]
+    Σ_diag = Diagonal(Σ)
 
     # Extract the appropriate indices
     W = view(obj.W, indices, 1:rank)
@@ -610,12 +612,12 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
         else
             if obj.options.optim.nonredundant_operators
                 ri = binomial(r+i-1, i)
-                D[:, tmp+1:tmp+ri] = ⧁(W, i) * Diagonal(⊘(obj.Σ, i))
+                D[:, tmp+1:tmp+ri] = ⧁(W, i) * Diagonal(⊘(Σ, i))
                 push!(dims, ri)
                 push!(operator_symbols, Symbol("A$(i)u"))
             else
                 ri = Int(r^i)
-                D[:, tmp+1:tmp+ri] = ⊖(W, i) * Diagonal(⊗(obj.Σ[:,:], i)[:])
+                D[:, tmp+1:tmp+ri] = ⊖(W, i) * Diagonal(⊗(Σ[:,:], i)[:])
                 push!(dims, ri)
                 push!(operator_symbols, Symbol("A$(i)"))
             end
@@ -642,7 +644,7 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
     end
 
     # Construct the reduced right-hand side matrix
-    R = E' * obj.W * Σ_diag
+    R = E' * W * Σ_diag
 
     # compute least squares (pseudo inverse)
     if obj.options.with_reg 

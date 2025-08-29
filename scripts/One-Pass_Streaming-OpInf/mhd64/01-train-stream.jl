@@ -82,7 +82,6 @@ op_stream = LnL.compute_stream_operators(stream, Array(E), (1, n))
 save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), 
      "stream", stream, "op_stream", op_stream)
 
-
 #================#
 ## Simulate ROM ##
 #================#
@@ -118,7 +117,7 @@ using CairoMakie
 with_theme(theme_latexfonts()) do 
     fig = Figure(size=(1200, 940))
     # Pick trajectory
-    traj_idx = 5
+    traj_idx = 1
     # Get midpoint index for z-direction
     x_slice = nx ÷ 2
     y_slice = 1:ny

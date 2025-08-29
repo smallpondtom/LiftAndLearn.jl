@@ -14,8 +14,8 @@ using LinearAlgebra
 #================================#
 DATAPATH = "../../../../../DATA/NREL/3D_CHANNEL"
 FILEPATH = occursin("scripts", pwd()) ? 
-           joinpath(pwd(),"Two-Pass_Streaming-OpInf/3d_channel") : 
-           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel")
+           joinpath(pwd(),"One-Pass_Streaming-OpInf/3d_channel") : 
+           joinpath(pwd(), "scripts/One-Pass_Streaming-OpInf/3d_channel")
 fn = "channel_5200_data_0_10000.h5"
 datafile = joinpath(DATAPATH, fn)
 
