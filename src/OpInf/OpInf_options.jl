@@ -165,7 +165,7 @@ Standard least-squares Operator Inference.
     chunk_size::Int = 1000                        # batch size for LS memory management
     tolerance::Real = 1e-12                       # numerical tolerance for LS solve
     algorithm::Union{Function,Nothing} = nothing  # custom solver method
-    use_backslash::Bool = false  # use backslash for least-squares solve
+    use_backslash::Bool = true  # use backslash for least-squares solve
     estimate_memory::Bool = false   # estimate memory usage for the LS
     max_iterations::Int = 1000  # maximum iterations for iterative methods
     preconditioning::Bool = false  # use preconditioning for the LS solve

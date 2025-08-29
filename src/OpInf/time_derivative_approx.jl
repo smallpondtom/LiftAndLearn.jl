@@ -70,7 +70,7 @@ function finite_diff_matrix(fd_method::String, n::Int, dt::Float64)
         if n < 2
             error("Need at least 2 time points for 1st order finite differences.")
         end
-        D = zeros(n, n-1)
+        D = spzeros(n, n-1)
         for i in 1:n-1
             D[i, i]   = -1 / dt
             D[i+1, i] =  1 / dt
@@ -80,7 +80,7 @@ function finite_diff_matrix(fd_method::String, n::Int, dt::Float64)
         if n < 2
             error("Need at least 2 time points for 1st order finite differences.")
         end
-        D = zeros(n, n-1)
+        D = spzeros(n, n-1)
         for i in 2:n
             D[i-1, i-1] = -1 / dt
             D[i, i-1]   =  1 / dt
@@ -90,7 +90,7 @@ function finite_diff_matrix(fd_method::String, n::Int, dt::Float64)
         if n < 2
             error("Need at least 2 time points for 1st order finite differences.")
         end
-        D = zeros(n, n-1)
+        D = spzeros(n, n-1)
         for i in 2:n
             D[i-1, i-1] = -1 / dt
             D[i, i-1]   =  1 / dt
@@ -100,78 +100,78 @@ function finite_diff_matrix(fd_method::String, n::Int, dt::Float64)
         if n < 5
             error("Need at least 5 time points for 4th order finite differences.")
         end
-        D = zeros(n, n-4)
+        D = spzeros(n, n-4)
         for i in 1:n-4
             D[i, i]   = -25 / (12*dt)
-            D[i, i+1] =  48 / (12*dt)
-            D[i, i+2] = -36 / (12*dt)
-            D[i, i+3] =  16 / (12*dt)
-            D[i, i+4] =  -3 / (12*dt)
+            D[i+1, i] =  48 / (12*dt)
+            D[i+2, i] = -36 / (12*dt)
+            D[i+3, i] =  16 / (12*dt)
+            D[i+4, i] =  -3 / (12*dt)
         end
         idx = 1:n-4
     elseif fd_method == "BE4"
         if n < 5
             error("Need at least 5 time points for 4th order finite differences.")
         end
-        D = zeros(n, n-4)
-        for i in 5:n
-            D[i, i-4] =  3 / (12*dt)
-            D[i, i-3] = -16 / (12*dt)
-            D[i, i-2] =  36 / (12*dt)
-            D[i, i-1] = -48 / (12*dt)
-            D[i, i]   = 25 / (12*dt)
+        D = spzeros(n, n-4)
+        for i in 1:n-4
+            D[i, i]   =   3 / (12*dt)
+            D[i+1, i] = -16 / (12*dt)
+            D[i+2, i] =  36 / (12*dt)
+            D[i+3, i] = -48 / (12*dt)
+            D[i+4, i] =  25 / (12*dt)
         end
         idx = 5:n
     elseif fd_method == "CTD4"
         if n < 5
             error("Need at least 5 time points for 4th order finite differences.")
         end
-        D = zeros(n, n-4)
+        D = spzeros(n, n-4)
         for i in 3:n-2
-            D[i, i-2] =  1 / (12*dt)
-            D[i, i-1] = -8 / (12*dt)
-            D[i, i+1] =  8 / (12*dt)
-            D[i, i+2] = -1 / (12*dt)
+            D[i-2, i-2] =  1 / (12*dt)
+            D[i-1, i-2] = -8 / (12*dt)
+            D[i+1, i-2] =  8 / (12*dt)
+            D[i+2, i-2] = -1 / (12*dt)
         end
         idx = 3:n-2
     elseif fd_method == "FBCT4"
         if n < 5
             error("Need at least 5 time points for 4th order finite differences.")
         end
-        D = zeros(n, n)
+        D = spzeros(n, n)
         # Forward difference for first two points
         D[1, 1] = -25 / (12*dt)
-        D[1, 2] =  48 / (12*dt)
-        D[1, 3] = -36 / (12*dt)
-        D[1, 4] =  16 / (12*dt)
-        D[1, 5] =  -3 / (12*dt)
+        D[2, 1] =  48 / (12*dt)
+        D[3, 1] = -36 / (12*dt)
+        D[4, 1] =  16 / (12*dt)
+        D[5, 1] =  -3 / (12*dt)
 
-        D[2, 1] =  -3 / (12*dt)
+        D[1, 2] =  -3 / (12*dt)
         D[2, 2] = -10 / (12*dt)
-        D[2, 3] =  18 / (12*dt)
-        D[2, 4] =  -6 / (12*dt)
-        D[2, 5] =   1 / (12*dt)
+        D[3, 2] =  18 / (12*dt)
+        D[4, 2] =  -6 / (12*dt)
+        D[5, 2] =   1 / (12*dt)
 
-        # Central difference for middle points
+        # central difference for middle points
         for i in 3:n-2
-            D[i, i-2] =  1 / (12*dt)
-            D[i, i-1] = -8 / (12*dt)
-            D[i, i+1] =  8 / (12*dt)
-            D[i, i+2] = -1 / (12*dt)
+            D[i-2, i] =  1 / (12*dt)
+            D[i-1, i] = -8 / (12*dt)
+            D[i+1, i] =  8 / (12*dt)
+            D[i+2, i] = -1 / (12*dt)
         end
 
         # Backward difference for last two points
-        D[n-1, n-4] = -1 / (12*dt)
-        D[n-1, n-3] =  6 / (12*dt)
-        D[n-1, n-2] = -18 / (12*dt)
-        D[n-1, n-1] = 10 / (12*dt)
-        D[n-1, n]   =  3 / (12*dt)
+        D[n-4, n-1] =  -1 / (12*dt)
+        D[n-3, n-1] =   6 / (12*dt)
+        D[n-2, n-1] = -18 / (12*dt)
+        D[n-1, n-1] =  10 / (12*dt)
+        D[n, n-1]   =   3 / (12*dt)
 
-        D[n, n-4] =  3 / (12*dt)
-        D[n, n-3] = -16 / (12*dt)
-        D[n, n-2] = 36 / (12*dt)
-        D[n, n-1] = -48 / (12*dt)
-        D[n, n]
+        D[n-4, n] =   3 / (12*dt)
+        D[n-3, n] = -16 / (12*dt)
+        D[n-2, n] =  36 / (12*dt)
+        D[n-1, n] = -48 / (12*dt)
+        D[n, n]   =  25 / (12*dt)
 
         idx = 1:n
     else

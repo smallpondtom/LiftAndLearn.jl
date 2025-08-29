@@ -182,7 +182,8 @@ end
 
 
 # INFO: SAVE OLD IMPLEMENTATION
-function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T}) where {T<:Real}
+function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T}; 
+                 tol::T=1e-12) where {T<:Real}
     # Reduced dimensions
     r1 = obj.r_s
     rmax = copy(obj.rmax)
@@ -226,7 +227,19 @@ function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T}) where {T<:Re
     obj.Cs[r1+1,r1+1] = p[1]
 
     # Use PROPACK svd solver for SparseMatrixCSC type
-    Vc, Σc, Wc, _, _, _ = tsvd(obj.Cs[1:r1+1, 1:r1+1], k=r1+1)
+    Vc, Σc, Wc = nothing, nothing, nothing
+    try
+        Vc, Σc, Wc, _, _, _ = tsvd(obj.Cs[1:r1+1, 1:r1+1], k=r1+1)
+    catch e 
+        @warn "PROPACK tsvd failed, increasing kmax"
+        try 
+            Vc, Σc, Wc, _, _, _ = tsvd(obj.Cs[1:r1+1, 1:r1+1], k=r1+1,
+                                        kmax=min(size(obj.Cs))+25)
+        catch e
+            @error "PROPACK tsvd failed again, using svd instead"
+            Vc, Σc, Wc = svd(Matrix(obj.Cs[1:r1+1, 1:r1+1]))
+        end
+    end
 
     # Update the iSVD components
     obj.V = hcat(obj.V, xperp) * Vc
@@ -243,6 +256,11 @@ function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T}) where {T<:Re
         obj.W = obj.W[:,1:rmax]
         obj.r_s = rmax
     end
+
+    ##
+    # --- (4) Reorthogonalize if necessary
+    ##
+    reorthogonalize!(obj.V, tol)
 
     obj.num_of_snapshots += 1  # increment the number of snapshots
 
@@ -319,7 +337,7 @@ end
 
 
 function stream!(obj::OnePassStreamingOpInf2, x::AbstractVector{T}, 
-    xdot::AbstractVector{T}) where {T<:Real}
+    xdot::AbstractVector{T}; tol::T=1e-12) where {T<:Real}
 
     # Reduced dimensions
     r1 = obj.r_s
@@ -427,23 +445,30 @@ function stream!(obj::OnePassStreamingOpInf2, x::AbstractVector{T},
         obj.r_d = rmax
     end
 
+    ##
+    # --- (4) Reorthogonalize if necessary
+    ##
+    reorthogonalize!(obj.V, tol)
+    reorthogonalize!(obj.P, tol)
+
     return nothing
 end
 
 
-function compute_onepass_operators(obj::OnePassStreamingOpInf1, 
-    U::AbstractArray{T}, E::AbstractArray{T}, indices::Tuple{<:Int,<:Int}) where {T<:Real}
+function compute_stream_operators(obj::OnePassStreamingOpInf1, 
+    E::AbstractArray{T}, indices::Tuple{<:Int,<:Int};
+    U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
 
     # Diagonalize the singular values
-    Σ_diag = Diagonal(obj.Σ)
+    Σ_diag = Diagonal(obj.Σ[1:rank])
 
     # Extract the appropriate indices
     id1 = indices[1]
     id2 = indices[2]
-    W = view(obj.W, id1:id2, :)
+    W = view(obj.W, id1:id2, 1:rank)
 
     # Construct the reduce data matrix
-    r = obj.rmax
+    r = rank
     m = obj.input_dim
     d = 0  # total dimension of the data matrix
     if obj.options.optim.nonredundant_operators
@@ -481,17 +506,19 @@ function compute_onepass_operators(obj::OnePassStreamingOpInf1,
             end
             tmp += ri
         end
-    end
 
-    # NOTE: Only works for linear inputs (for now)
-    U = fat2tall(U)
-    if !iszero(obj.options.system.control)
-        D[:, tmp+1:tmp+m] = view(U, id1:id2, :)
-        tmp += m
-        push!(dims, m)
-        push!(operator_symbols, :B)
+        if i == 1 && obj.input_dim != 0
+            # NOTE: Only works for linear inputs (for now)
+            U = fat2tall(U)
+            if !iszero(obj.options.system.control)
+                D[:, tmp+1:tmp+m] = view(U, id1:id2, :)
+                tmp += m
+                push!(dims, m)
+                push!(operator_symbols, :B)
+            end
+            # NOTE: Coupled inputs are not implemented yet
+        end
     end
-    # NOTE: Coupled inputs are not implemented yet
 
     if !iszero(obj.options.system.constant)
         D[:, tmp+1] = ones(K)  # constant term
@@ -545,18 +572,135 @@ function compute_onepass_operators(obj::OnePassStreamingOpInf1,
 end
 
 
-function compute_onepass_operators(obj::OnePassStreamingOpInf2, 
-    U::AbstractArray{T}) where {T<:Real}
+function compute_stream_operators(obj::OnePassStreamingOpInf1,
+    E::AbstractArray{T}, indices::Union{Array{<:Int},UnitRange};
+    U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
 
     # Diagonalize the singular values
-    Σ_diag = Diagonal(obj.Σ)
-    S_diag = Diagonal(obj.S)
+    Σ_diag = Diagonal(obj.Σ[1:rank])
 
-    # Assemble the low-rank approximation of the time derivative data
-    Xdot_t = obj.Q  * S_diag * obj.P'
+    # Extract the appropriate indices
+    W = view(obj.W, indices, 1:rank)
 
     # Construct the reduce data matrix
-    r = obj.rmax
+    r = rank
+    m = obj.input_dim
+    d = 0  # total dimension of the data matrix
+    if obj.options.optim.nonredundant_operators
+        d += sum(i != 0 ? binomial(r+i-1, i) : 0 for i in obj.options.system.state)
+    else
+        d += sum(i != 0 ? Int(r^i) : 0 for i in obj.options.system.state)
+    end
+    d += sum(i != 0 ? binomial(m+i-1, i) : 0 for i in obj.options.system.control)
+    # d += sum(i != 0 ? binomial(r+i-1, i) * m : 0 for i in obj.options.system.coupled_input)
+    d += iszero(obj.options.system.constant) ? 0 : 1
+    K = min(obj.num_of_snapshots, length(indices))  # number of snapshots
+    D = zeros(T, K, d)  # data matrix
+    tmp = 0
+
+    dims = []
+    operator_symbols = []
+
+    for i in obj.options.system.state
+        if i == 1
+            D[:, 1:r] = W * Σ_diag
+            push!(dims, r)
+            push!(operator_symbols, :A)
+            tmp += r
+        else
+            if obj.options.optim.nonredundant_operators
+                ri = binomial(r+i-1, i)
+                D[:, tmp+1:tmp+ri] = ⧁(W, i) * Diagonal(⊘(obj.Σ, i))
+                push!(dims, ri)
+                push!(operator_symbols, Symbol("A$(i)u"))
+            else
+                ri = Int(r^i)
+                D[:, tmp+1:tmp+ri] = ⊖(W, i) * Diagonal(⊗(obj.Σ[:,:], i)[:])
+                push!(dims, ri)
+                push!(operator_symbols, Symbol("A$(i)"))
+            end
+            tmp += ri
+        end
+
+        if i == 1 && obj.input_dim != 0
+            # NOTE: Only works for linear inputs (for now)
+            U = fat2tall(U)
+            if !iszero(obj.options.system.control)
+                D[:, tmp+1:tmp+m] = view(U, indices, :)
+                tmp += m
+                push!(dims, m)
+                push!(operator_symbols, :B)
+            end
+            # NOTE: Coupled inputs are not implemented yet
+        end
+    end
+
+    if !iszero(obj.options.system.constant)
+        D[:, tmp+1] = ones(K)  # constant term
+        push!(dims, 1)
+        push!(operator_symbols, :K)
+    end
+
+    # Construct the reduced right-hand side matrix
+    R = E' * obj.W * Σ_diag
+
+    # compute least squares (pseudo inverse)
+    if obj.options.with_reg 
+        # Preallocate the Tikhonov weight Matrix
+        Γ = spzeros(d)
+
+        # Construct the Tikhonov matrix
+        tikhonov_matrix!(Γ, dims, operator_symbols, obj.options.λ)
+        Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
+
+        Ot = tikhonov(R, D, Γ;
+                      tol=obj.options.tolerance,
+                      use_gpu=obj.options.use_gpu,
+                      use_normal_form=obj.options.use_normal_equations,
+                      use_svd_truncation=obj.options.use_svd_truncation,
+                      use_backslash=obj.options.use_backslash,
+                      chunk_size=obj.options.chunk_size,
+                      max_iterations=obj.options.max_iterations,
+                      estimate_memory=obj.options.estimate_memory,
+                      preconditioning=obj.options.preconditioning,)
+    else
+        Ot = standard_least_squares(D, R; 
+                                    use_gpu=obj.options.use_gpu, 
+                                    use_normal_equations=obj.options.use_normal_equations,
+                                    chunk_size=obj.options.chunk_size,
+                                    tolerance=obj.options.tolerance,
+                                    use_backslash=obj.options.use_backslash,
+                                    algorithm=obj.options.algorithm,
+                                    estimate_memory=obj.options.estimate_memory)
+    end
+
+    # Extract the operators from the operator matrix O
+    O = transpose(Ot)
+
+    # Extract the operators
+    operators = Operators(O=O)
+
+    # Unpack the operators
+    unpack_operators!(operators, O, dims, operator_symbols)
+
+    return operators
+end
+
+
+function compute_stream_operators(obj::OnePassStreamingOpInf2;
+    U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
+
+    # Diagonalize the singular values
+    Σ = obj.Σ[1:rank]
+    Σ_diag = Diagonal(Σ)
+    S_diag = Diagonal(obj.S[1:rank])
+
+    # Assemble the low-rank approximation of the time derivative data
+    Xdot_t = obj.Q[:,1:rank]  * S_diag * obj.P[:,1:rank]'
+    W = obj.W[:, 1:rank]
+
+    # Construct the reduce data matrix
+    r = rank
     m = obj.input_dim
     d = 0  # total dimension of the data matrix
     if obj.options.optim.nonredundant_operators
@@ -576,35 +720,37 @@ function compute_onepass_operators(obj::OnePassStreamingOpInf2,
 
     for i in obj.options.system.state
         if i == 1
-            D[:, 1:r] = obj.W * Σ_diag
+            D[:, 1:r] = W * Σ_diag
             push!(dims, r)
             push!(operator_symbols, :A)
             tmp += r
         else
             if obj.options.optim.nonredundant_operators
                 ri = binomial(r+i-1, i)
-                D[:, tmp+1:tmp+ri] = ⧁(obj.W, i) * Diagonal(⊘(obj.Σ, i))
+                D[:, tmp+1:tmp+ri] = ⧁(W, i) * Diagonal(⊘(Σ, i))
                 push!(dims, ri)
                 push!(operator_symbols, Symbol("A$(i)u"))
             else
                 ri = Int(r^i)
-                D[:, tmp+1:tmp+ri] = ⊖(obj.W, i) * Diagonal(⊗(obj.Σ[:,:], i)[:])
+                D[:, tmp+1:tmp+ri] = ⊖(W, i) * Diagonal(⊗(Σ, i)[:])
                 push!(dims, ri)
                 push!(operator_symbols, Symbol("A$(i)"))
             end
             tmp += ri
         end
-    end
 
-    # NOTE: Only works for linear inputs (for now)
-    U = fat2tall(U)
-    if !iszero(obj.options.system.control)
-        D[:, tmp+1:tmp+m] = U
-        tmp += m
-        push!(dims, m)
-        push!(operator_symbols, :B)
+        if i == 1 && obj.input_dim != 0
+            # NOTE: Only works for linear inputs (for now)
+            U = fat2tall(U)
+            if !iszero(obj.options.system.control)
+                D[:, tmp+1:tmp+m] = U
+                tmp += m
+                push!(dims, m)
+                push!(operator_symbols, :B)
+            end
+            # NOTE: Coupled inputs are not implemented yet
+        end
     end
-    # NOTE: Coupled inputs are not implemented yet
 
     if !iszero(obj.options.system.constant)
         D[:, tmp+1] = ones(K)  # constant term
