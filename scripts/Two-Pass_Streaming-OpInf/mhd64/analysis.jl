@@ -6,47 +6,21 @@ using Interpolations
 
 # ---------- helpers ----------
 @inline function kvec_fftw(n::Int, dx::Real)
-    # FFTW output order for complex fft along a dimension:
-    # 0, 1, 2, ..., floor((n-1)/2), -ceil((n-1)/2), ..., -1
+    # FFTW frequency ordering for fft: 0, 1, …, floor((n-1)/2), -ceil((n-1)/2), …, -1
     npos = fld(n-1, 2)
     nneg = cld(n-1, 2)
     idx  = vcat(0:npos, -nneg:-1)
     return (2π / (n*dx)) .* idx
 end
 
-@inline function kz_rfft(n::Int, dz::Real)
-    # nonnegative frequencies only, for rfft along the last dim
-    return (2π / (n*dz)) .* collect(0:fld(n,2))
-end
-
-@inline function rfft_weight_lastdim(n::Int)
-    # Weight to account for the omitted negative-kz half in rfft.
-    # modes with kz>0 (and kz≠Nyquist) represent conjugate pairs -> weight 2
-    nzr = fld(n,2) + 1
-    w = ones(Float64, nzr)
-    if iseven(n)
-        if nzr >= 3
-            w[2:end-1] .= 2.0   # exclude kz=0 and kz=Nyquist
-        end
-    else
-        if nzr >= 2
-            w[2:end]   .= 2.0   # exclude only kz=0
-        end
-    end
-    return w
-end
-
 # bin edges: :log (default) or :linear
 function make_bins(kvals::AbstractVector{<:Real}, n_bins::Int; mode::Symbol=:log)
-    kmin = minimum(kvals[kvals .> 0])
-    kmax = maximum(kvals)
-    if mode === :log
-        edges = exp.(range(log(kmin), log(kmax), length=n_bins+1))
-    elseif mode === :linear
-        edges = range(kmin, kmax; length=n_bins+1) |> collect
-    else
-        error("bins mode must be :log or :linear")
-    end
+    kpos = kvals[kvals .> 0]
+    kmin = minimum(kpos)
+    kmax = maximum(kpos)
+    edges = mode === :log  ?  exp.(range(log(kmin), log(kmax), length=n_bins+1)) :
+            mode === :linear ?  collect(range(kmin, kmax; length=n_bins+1)) :
+            error("bins mode must be :log or :linear")
     centers = 0.5 .* (edges[1:end-1] .+ edges[2:end])
     Δk = diff(edges)
     return centers, edges, Δk
@@ -54,25 +28,33 @@ end
 
 # ---------- core: isotropic spectrum for a 3-component real vector field ----------
 """
-    energy_spectrum_isotropic_rfft(u, dx, dy, dz; n_bins, bins=:log,
-                                   subtract_mean=true, weight_lastdim=true)
+    energy_spectrum_isotropic_fft(u, dx, dy, dz;
+                                  n_bins=min(60, size(u[1],1) ÷ 2),
+                                  bins=:log,
+                                  subtract_mean=true,
+                                  kmax_rule=:none,   # :none or :two_thirds
+                                  return_counts=false,
+                                  check_energy=false)
 
-Compute isotropic 1D energy spectrum for a real 3D **vector** field `u = (ux,uy,uz)`,
-each component size `(nx,ny,nz)` with spacings `(dx,dy,dz)`.
+Compute isotropic 1D energy spectrum for a **real 3D vector field**
+`u = (ux,uy,uz)` of size `(nx,ny,nz)` on spacings `(dx,dy,dz)` using **full fft**.
 
-**Normalization (turbulence standard):**
-Returns `(k, E(k))` such that `sum(E .* Δk) ≈ 0.5 * mean(|u|^2)`.
+Normalization (turbulence standard):
+`sum(E .* Δk) ≈ 0.5 * mean(|u|^2)`.
 
-Notes:
-- Uses `rfft` (half-spectrum along z) and correct conjugate-pair weighting.
-- Means of each component are removed if `subtract_mean=true`.
+Options:
+- `kmax_rule=:two_thirds` applies the 2/3 de-alias cutoff.
+- `return_counts=true` also returns per-bin mode counts.
+- `check_energy=true` asserts the normalization.
 """
-function energy_spectrum_isotropic_rfft(u::NTuple{3,AbstractArray{<:Real,3}},
-                                        dx::Real, dy::Real, dz::Real;
-                                        n_bins::Int = min(60, size(u[1],1) ÷ 2),
-                                        bins::Symbol = :log,
-                                        subtract_mean::Bool = true,
-                                        weight_lastdim::Bool = true)
+function energy_spectrum_isotropic_fft(u::NTuple{3,AbstractArray{<:Real,3}},
+                                       dx::Real, dy::Real, dz::Real;
+                                       n_bins::Int = min(60, size(u[1],1) ÷ 2),
+                                       bins::Symbol = :log,
+                                       subtract_mean::Bool = true,
+                                       kmax_rule::Symbol = :none,
+                                       return_counts::Bool = false,
+                                       check_energy::Bool = false)
 
     ux, uy, uz = u
     @assert size(ux) == size(uy) == size(uz) "All components must have same size"
@@ -84,100 +66,91 @@ function energy_spectrum_isotropic_rfft(u::NTuple{3,AbstractArray{<:Real,3}},
         ux = ux .- mean(ux);  uy = uy .- mean(uy);  uz = uz .- mean(uz)
     end
 
-    # rfft on the full 3D cube (FFTW reduces the last dim)
-    Ux = rfft(ux) ./ Ntot
-    Uy = rfft(uy) ./ Ntot
-    Uz = rfft(uz) ./ Ntot
+    # full complex FFT (FFTW forward is unnormalized; we divide by N to match Parseval on means)
+    Ux = fft(ux) ./ Ntot
+    Uy = fft(uy) ./ Ntot
+    Uz = fft(uz) ./ Ntot
 
     # modal energy density per mode (sum over components)
     P = abs2.(Ux) .+ abs2.(Uy) .+ abs2.(Uz)   # |ûx|^2 + |ûy|^2 + |ûz|^2
 
-    # account for omitted negative kz half
-    if weight_lastdim
-        wz = rfft_weight_lastdim(nz)
-        P .*= reshape(wz, length(wz), 1, 1)
-    end
-
-    # k-grid (kx, ky full; kz nonnegative only)
-    kx = kvec_fftw(nx, dx);  ky = kvec_fftw(ny, dy);  kz = kz_rfft(nz, dz)
+    # k-grid (full, all signs)
+    kx = kvec_fftw(nx, dx);  ky = kvec_fftw(ny, dy);  kz = kvec_fftw(nz, dz)
     kx2 = reshape(kx.^2, nx, 1, 1)
     ky2 = reshape(ky.^2, 1, ny, 1)
-    kz2 = reshape(kz.^2, 1, 1, length(kz))
+    kz2 = reshape(kz.^2, 1, 1, nz)
     kmag = sqrt.(kx2 .+ ky2 .+ kz2)
 
-    # flatten, exclude DC (k=0)
+    # flatten, exclude DC, optionally apply 2/3 rule
     kf = vec(kmag); Pf = vec(P)
     mask = kf .> 0
+    if kmax_rule === :two_thirds
+        kny = min(π/dx, π/dy, π/dz)
+        mask .&= kf .<= (2/3)*kny
+    elseif kmax_rule === :none
+        # nothing more
+    else
+        error("kmax_rule must be :none or :two_thirds")
+    end
     kf = kf[mask]; Pf = Pf[mask]
 
     # bins
     centers, edges, Δk = make_bins(kf, n_bins; mode=bins)
 
-    # shell-sum and convert to E(k) = (1/2) * (shell_sum / Δk)
-    sums = zeros(Float64, n_bins)
+    # shell sum → E(k) = 1/2 * (shell_sum / Δk)
+    sums   = zeros(Float64, n_bins)
+    counts = zeros(Int, n_bins)
     @inbounds for i in eachindex(kf)
         b = searchsortedfirst(edges, kf[i]) - 1
         if 1 ≤ b ≤ n_bins
-            sums[b] += Pf[i]
+            sums[b]   += Pf[i]
+            counts[b] += 1
         end
     end
-
     E = 0.5 .* (sums ./ Δk)
-    return centers, E
+
+    if check_energy
+        Eu_total = sum(E .* Δk)
+        target   = 0.5 * mean(ux.^2 .+ uy.^2 .+ uz.^2)
+        @assert isapprox(Eu_total, target; rtol=1e-6) "Energy check failed: ∫E dk = $Eu_total vs 0.5⟨|u|²⟩ = $target"
+    end
+
+    return return_counts ? (centers, E, counts, Δk) : (centers, E)
 end
 
 # ---------- MHD wrapper: kinetic & magnetic spectra ----------
 """
-    mhd_energy_spectra(u, B, dx, dy, dz; ρ0=1.0, μ0=1.0,
-                       magnetic_units=:alfven, n_bins, bins)
+    mhd_energy_spectra_fft(u, B, dx, dy, dz; ρ0=1.0, μ0=1.0,
+                           magnetic_units=:alfven, n_bins, bins, kmax_rule)
 
-Compute isotropic 1D **kinetic** and **magnetic** energy spectra for MHD.
-
-Inputs:
-- `u = (ux,uy,uz)` velocity components.
-- `B = (Bx,By,Bz)` magnetic field.
-- spacings `dx,dy,dz`.
-
-Keyword options:
-- `ρ0` (reference density) and `μ0` (permeability, SI).
-- `magnetic_units`:
-    - `:alfven` (default): convert `B` → `b = B/√(μ0 ρ0)` (energy per mass).
-      Returns `E_b` with ∫E_b dk = 0.5 ⟨|b|^2⟩.
-    - `:si_volume`: energy per **volume**; returns `E_b` with
-      ∫E_b dk = ⟨|B|^2/(2μ0)⟩.
-- `n_bins`, `bins = :log | :linear`.
-
-Return:
-`k, E_u, E_b`.
+Kinetic (per mass) and magnetic spectra. For `magnetic_units=:alfven`,
+we convert `B`→`b = B/√(μ0ρ0)` so that ∫E_b dk = 0.5⟨|b|²⟩.
+For `:si_volume`, we return per-volume with ∫E_b dk = ⟨|B|²/(2μ0)⟩.
 """
 function mhd_energy_spectra(u::NTuple{3,AbstractArray{<:Real,3}},
-                            B::NTuple{3,AbstractArray{<:Real,3}},
-                            dx::Real, dy::Real, dz::Real;
-                            ρ0::Real = 1.0, μ0::Real = 1.0,
-                            magnetic_units::Symbol = :alfven,
-                            n_bins::Int = min(60, size(u[1],1) ÷ 2),
-                            bins::Symbol = :log)
+                                B::NTuple{3,AbstractArray{<:Real,3}},
+                                dx::Real, dy::Real, dz::Real;
+                                ρ0::Real = 1.0, μ0::Real = 1.0,
+                                magnetic_units::Symbol = :alfven,
+                                n_bins::Int = min(60, size(u[1],1) ÷ 2),
+                                bins::Symbol = :log,
+                                kmax_rule::Symbol = :none)
 
-    # kinetic spectrum (per mass): ∫E_u dk = 0.5⟨|u|^2⟩
-    k, E_u = energy_spectrum_isotropic_rfft(u, dx, dy, dz;
-                                            n_bins=n_bins, bins=bins)
+    k, E_u = energy_spectrum_isotropic_fft(u, dx, dy, dz;
+                                           n_bins=n_bins, bins=bins,
+                                           kmax_rule=kmax_rule)
 
-    # magnetic spectrum
     if magnetic_units === :alfven
-        # convert B to Alfvén velocity b = B / sqrt(μ0 ρ0)
         s = 1 / sqrt(μ0 * ρ0)
         b = (B[1] .* s, B[2] .* s, B[3] .* s)
-        _, E_b = energy_spectrum_isotropic_rfft(b, dx, dy, dz;
-                                                n_bins=n_bins, bins=bins)
+        _, E_b = energy_spectrum_isotropic_fft(b, dx, dy, dz;
+                                               n_bins=n_bins, bins=bins,
+                                               kmax_rule=kmax_rule)
     elseif magnetic_units === :si_volume
-        # start with per-mass form using b, then scale by ρ0 to get per-volume,
-        # and multiply by (μ0 ρ0) to undo the b-conversion (net factor 1/μ0).
-        # Easier: compute directly from B and scale the final spectrum by 1/(2μ0):
-        # We want ∫E_b dk = ⟨|B|^2/(2μ0)⟩.
-        # energy_spectrum_isotropic_rfft returns shell_sum/Δk for the "field" squared/2.
-        # If we feed it B and then scale by 1/μ0, we get the right integral:
-        _, E_b_raw = energy_spectrum_isotropic_rfft(B, dx, dy, dz;
-                                                    n_bins=n_bins, bins=bins)
+        # Compute on B, then scale by 1/μ0 so that ∫E_b dk = ⟨|B|²/(2μ0)⟩
+        _, E_b_raw = energy_spectrum_isotropic_fft(B, dx, dy, dz;
+                                                   n_bins=n_bins, bins=bins,
+                                                   kmax_rule=kmax_rule)
         E_b = (1/μ0) .* E_b_raw
     else
         error("magnetic_units must be :alfven or :si_volume")
@@ -185,7 +158,6 @@ function mhd_energy_spectra(u::NTuple{3,AbstractArray{<:Real,3}},
 
     return k, E_u, E_b
 end
-
 
 """
 Compute Legendre polynomial P_l(x)

@@ -176,9 +176,9 @@ Xrho_test = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["rho"]
 Xmx = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["mx"]
 Xmy = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["my"]
 Xmz = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["mz"]
-Xvx = Xmx ./ Xrho
-Xvy = Xmy ./ Xrho
-Xvz = Xmz ./ Xrho
+Xvx = Xmx ./ Xrho_test
+Xvy = Xmy ./ Xrho_test
+Xvz = Xmz ./ Xrho_test
 
 # Load the test magnetic field data
 Xbx = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["Bx"]
@@ -308,7 +308,7 @@ end
 
 ## Load some packages for parallel computing
 using Distributed 
-addprocs(100)
+addprocs(120)
 using NPCFs
 @everywhere using NPCFs
 
@@ -319,7 +319,7 @@ npcf3 = NPCFs.NPCF(
 )
 
 ## Compute the grid values assembled as [x, y, z, fluctuation]
-time_idx = [35, 50, 60, 75, 85, 95, 100]
+time_idx = [5, 10, 25, 35, 50, 60, 75, 85, 95, 100]
 for tidx in time_idx
     # Original data
     grid_vals[:, 4] .= vec(view(Xrho_fluct, :, tidx))

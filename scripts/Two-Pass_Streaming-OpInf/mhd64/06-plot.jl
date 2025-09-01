@@ -709,35 +709,47 @@ end
 npcf_files = readdir(joinpath(FILEPATH, "data/results"), join=true)
 npcf_files = filter(f -> occursin("3pcf", f), npcf_files)
 
+# Filter files with time values smaller than t50
+# filtered_files = filter(npcf_files) do file
+#     # Extract the time number from the filename
+#     match_result = match(r"3pcf_t(\d+)\.jld2", basename(file))
+#     if match_result !== nothing
+#         time_value = parse(Int, match_result.captures[1])
+#         return time_value > 50
+#     end
+#     return false
+# end
+# npcf_files = filtered_files
+
 zeta_l_orig_train = nothing
-zeta_l_rom_train = nothing
-zeta_l_orig_test = nothing
-zeta_l_rom_test = nothing
+zeta_l_rom_train  = nothing
+zeta_l_orig_test  = nothing
+zeta_l_rom_test   = nothing
 for (i, npcf_file) in enumerate(npcf_files)
     npcf = load(npcf_file)
     if i == 1
         zeta_l_orig_train = project_to_legendre(npcf["npcf3_orig"])
-        zeta_l_rom_train = project_to_legendre(npcf["npcf3_rom_train"])
-        zeta_l_orig_test = project_to_legendre(npcf["npcf3_orig_test"])
-        zeta_l_rom_test = project_to_legendre(npcf["npcf3_rom_test"])
+        zeta_l_rom_train  = project_to_legendre(npcf["npcf3_rom_train"])
+        zeta_l_orig_test  = project_to_legendre(npcf["npcf3_orig_test"])
+        zeta_l_rom_test   = project_to_legendre(npcf["npcf3_rom_test"])
     else
         foo = project_to_legendre(npcf["npcf3_orig"])
         bar = project_to_legendre(npcf["npcf3_rom_train"])
         baz = project_to_legendre(npcf["npcf3_orig_test"])
-        qux = project_to_legendre(-npcf["npcf3_rom_test"])
+        qux = project_to_legendre(npcf["npcf3_rom_test"])
         for ell in keys(zeta_l_orig_train)
             zeta_l_orig_train[ell] .+= foo[ell]
-            zeta_l_rom_train[ell] .+= bar[ell]
-            zeta_l_orig_test[ell] .+= baz[ell]
-            zeta_l_rom_test[ell] .+= qux[ell]
+            zeta_l_rom_train[ell]  .+= bar[ell]
+            zeta_l_orig_test[ell]  .+= baz[ell]
+            zeta_l_rom_test[ell]   .+= qux[ell]
         end
-    end 
+    end
 end
 for ell in keys(zeta_l_orig_train)
     zeta_l_orig_train[ell] ./= length(npcf_files)
-    zeta_l_rom_train[ell] ./= length(npcf_files)
-    zeta_l_orig_test[ell] ./= length(npcf_files)
-    zeta_l_rom_test[ell] ./= length(npcf_files)
+    zeta_l_rom_train[ell]  ./= length(npcf_files)
+    zeta_l_orig_test[ell]  ./= length(npcf_files)
+    zeta_l_rom_test[ell]   ./= length(npcf_files)
 end
 
 ## Combined plot: Legendre coefficients and relative errors
