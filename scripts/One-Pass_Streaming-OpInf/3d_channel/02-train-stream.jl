@@ -40,7 +40,6 @@ include(joinpath(FILEPATH, "preprocess.jl"))
 ds = ChannelDataSource(datafile, ["z", "y", "x", "fields", "times"])
 Nz, Ny, Nx, n_fields, n = ds.dims
 nxyz = Nz * Ny * Nx
-dPdx = 0.001722
 n_test = 2000
 n_train = n - n_test
 
@@ -57,7 +56,7 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=[1,2],
-        control=1,
+        constant=1,
     ),
     vars=LnL.VariableStructure(
         N=1,
@@ -69,14 +68,14 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
+    use_backslash=false,
+    use_svd_truncation=true,
 )
 rmax = 400
 
 #====================================#
 ## Compute One-Pass Streaming-OpInf ##
 #====================================#
-options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e12, K=1e12, A2=1e12)
 stream = LnL.OnePassStreamingOpInf(
     preprocess!(ds[1], means, shifts, scales); 
     options=options, 
@@ -84,39 +83,55 @@ stream = LnL.OnePassStreamingOpInf(
     rank=rmax, 
     finite_diff=true
 )
+##
+tmp = load(joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel/data/bases/basis_0_8000_r400.jld2"))
+
+##
+stream.V = tmp["bases"]["baker"].iVr 
+stream.Σ = tmp["bases"]["baker"].iΣr
+stream.W = tmp["bases"]["baker"].iW
+
+##
+
+tmp = nothing
+GC.gc()
+
+##
+
 @showprogress for i in 2:n_train
     LnL.stream!(stream, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
 end
+## r = 400
 E, Δidx = LnL.finite_diff_matrix(
     options.data.deriv_type, n_train, options.data.Δt
 )
-
-# r = 400
+options.with_reg = true
+options.λ = LnL.TikhonovParameter(A=1e12, K=1e12, A2=1e12)
 op_stream_r400 = LnL.compute_stream_operators(
     stream, E, (Δidx[1], Δidx[end])
 )
 
-# r = 350
+## r = 350
 op_stream_r350 = LnL.compute_stream_operators(
     stream, E, (Δidx[1], Δidx[end]); rank=350
 )
 
-# r = 300
+## r = 300
 op_stream_r300 = LnL.compute_stream_operators(
     stream, E, (Δidx[1], Δidx[end]); rank=300
 )
 
-# r = 250
+## r = 250
 op_stream_r250 = LnL.compute_stream_operators(
     stream, E, (Δidx[1], Δidx[end]); rank=250
 )
 
-# r = 200
+## r = 200
 op_stream_r200 = LnL.compute_stream_operators(
     stream, E, (Δidx[1], Δidx[end]); rank=200
 )
 
-# Save the stream object and operators
+## Save the stream object and operators
 save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream)
 save(joinpath(FILEPATH, "data/results/op_stream_r400.jld2"), "op_stream_r400", op_stream_r400)
 save(joinpath(FILEPATH, "data/results/op_stream_r350.jld2"), "op_stream_r350", op_stream_r350)
