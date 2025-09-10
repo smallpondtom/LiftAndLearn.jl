@@ -528,7 +528,7 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
     end
 
     # Construct the reduced right-hand side matrix
-    R = E' * W * Σ_diag
+    R = E' * view(obj.W, :, 1:rank) * Σ_diag
 
     # compute least squares (pseudo inverse)
     if obj.options.with_reg 
@@ -644,7 +644,7 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
     end
 
     # Construct the reduced right-hand side matrix
-    R = E' * W * Σ_diag
+    R = Array(E' * view(obj.W, :, 1:rank) * Σ_diag)
 
     # compute least squares (pseudo inverse)
     if obj.options.with_reg 
@@ -654,7 +654,6 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
         # Construct the Tikhonov matrix
         tikhonov_matrix!(Γ, dims, operator_symbols, obj.options.λ)
         Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
-
         Ot = tikhonov(R, D, Γ;
                       tol=obj.options.tolerance,
                       use_gpu=obj.options.use_gpu,
