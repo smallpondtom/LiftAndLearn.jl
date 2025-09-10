@@ -1,5 +1,5 @@
 """
-Supernova 64^3 example: Computing the energy spectrum
+MHD 64^3 example: Computing the energy spectrum
 """
 
 #=================#

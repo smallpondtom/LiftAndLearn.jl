@@ -1,5 +1,5 @@
 """
-Supernova 64^3 example: Preprocessing the data
+MHD 64^3 example: Preprocessing the data
 """
 
 #=================#
