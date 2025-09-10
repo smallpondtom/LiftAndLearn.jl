@@ -15,6 +15,7 @@ using PolynomialModelReductionDataset: Heat1DModel
 #==========#
 ## Load LnL
 #==========#
+using Revise
 using LiftAndLearn
 const LnL = LiftAndLearn
 
@@ -36,7 +37,7 @@ heat1d = Heat1DModel(
     diffusion_coeffs=range(0.1, 10, 10),
 )
 
-# Some options for operator inference
+## Some options for operator inference
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=1,
@@ -85,8 +86,10 @@ for (idx, μ) in enumerate(heat1d.diffusion_coeffs)
     C_full[idx] = C
 
     # Compute the states with backward Euler
-    X = heat1d.integrate_model(heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
-                               system_input=true, integrator_type=:BackwardEuler)
+    X = heat1d.integrate_model(
+        heat1d.tspan, heat1d.IC, Ubc; linear_matrix=A, control_matrix=B,
+        system_input=true, integrator_type=:BackwardEuler
+    )
     Xfull[idx] = X
 
     # Compute the output of the system

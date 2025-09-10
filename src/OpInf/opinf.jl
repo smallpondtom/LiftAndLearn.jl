@@ -61,7 +61,8 @@ function leastsquares_solve(D::AbstractArray, Rt::AbstractArray,
                                     tolerance=options.tolerance,
                                     use_backslash=options.use_backslash,
                                     algorithm=options.algorithm,
-                                    estimate_memory=options.estimate_memory)
+                                    estimate_memory=options.estimate_memory,
+                                    max_iterations=options.max_iterations,)
     end
 
     # Extract the operators from the operator matrix O

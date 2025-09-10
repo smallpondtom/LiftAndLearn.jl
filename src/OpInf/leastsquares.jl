@@ -10,13 +10,18 @@ struct LeastSquaresSolver{T}
     chunk_size::Int
     tolerance::T
     algorithm::Union{Function,Nothing}
+    max_iterations::Int
     
     function LeastSquaresSolver{T}(; 
         use_gpu::Bool=false, use_normal_equations::Bool=false, 
         chunk_size::Int=1000, tolerance::T=1e-12, 
-        algorithm::Union{Function,Nothing}=nothing) where T
+        algorithm::Union{Function,Nothing}=nothing,
+        max_iterations::Int=1000) where T
 
-        new{T}(use_gpu, use_normal_equations, chunk_size, tolerance, algorithm)
+        new{T}(
+            use_gpu, use_normal_equations, chunk_size, 
+            tolerance, algorithm, max_iterations
+        )
     end
 end
 
@@ -108,26 +113,34 @@ function solve_normal_equations(D::AbstractArray{T}, Rt::AbstractArray{T},
     
     # Pre-allocate output
     O = similar(D, n, p)
-    
+
+    # Preallocate intermediate matrix 
+    tmp = zeros(T, m)
+
     # Create efficient operator for D'*D without storing the full matrix
-    op = let D = D
-        function matvec!(y, x, p, t)
-            mul!(y, D, x)      # y = D*x
-            mul!(y, D', y)     # y = D'*(D*x) = D'*D*x
-        end
-        FunctionOperator{T}(matvec!, n, n; ismutating=true, issymmetric=true)
+    function matvec!(y, x, p, t)
+        mul!(tmp, D, x)      # y = D*x
+        mul!(y, D', tmp)     # y = D'*(D*x) = D'*D*x
     end
+
+    # Create prototype arrays for input and output
+    input_prototype = zeros(T, n)
+    output_prototype = zeros(T, n)
+    
+    # Use the correct FunctionOperator constructor
+    op = FunctionOperator(matvec!, input_prototype, output_prototype; 
+                          isinplace=true, issymmetric=true)
     
     # Solve normal equations for each column
     ls = nothing
     for i in 1:p
         if i == 1
             prob = LinearProblem(op, view(DtRt, :, i))
-            ls = init(prob, KrylovJL_CG())  # Use CG for symmetric positive definite
+            ls = init(prob, solver.algorithm) 
         else
             ls.b .= view(DtRt, :, i)
         end
-        sol = solve(ls)
+        sol = solve!(ls; maxiters=solver.max_iterations, abstol=solver.tolerance)
         O[:, i] .= sol.u
     end
     
@@ -152,6 +165,10 @@ function solve_qr_batch(D::AbstractArray{T}, Rt::AbstractArray{T},
     
     # Solve R*O = Q'*Rt efficiently
     QtRt = Q' * Rt
+
+    # Extract the upper triangular part that matches R's dimensions
+    # R is n×n, so we need the first n rows of QtRt
+    QtRt_reduced = view(QtRt, 1:n, :)
     
     # Batch solve triangular systems
     chunk_size = min(solver.chunk_size, p)
@@ -161,7 +178,7 @@ function solve_qr_batch(D::AbstractArray{T}, Rt::AbstractArray{T},
         chunk_range = start_idx:end_idx
         
         # Solve triangular system for chunk
-        O[:, chunk_range] .= R \ view(QtRt, :, chunk_range)
+        O[:, chunk_range] .= R \ view(QtRt_reduced, :, chunk_range)
     end
     
     return O
@@ -191,7 +208,8 @@ function standard_least_squares(D::AbstractArray{T}, Rt::AbstractArray{T};
                                 tolerance::Real=1e-12,
                                 use_backslash::Bool=false,
                                 algorithm::Union{Function,Nothing}=nothing,
-                                estimate_memory::Bool=false) where T
+                                estimate_memory::Bool=false,
+                                max_iterations::Int=1000) where T
     
     # Input validation
     size(D, 1) == size(Rt, 1) || throw(DimensionMismatch(
@@ -199,7 +217,9 @@ function standard_least_squares(D::AbstractArray{T}, Rt::AbstractArray{T};
     
     # Create solver configuration
     solver = LeastSquaresSolver{T}(; 
-        use_gpu, use_normal_equations, chunk_size, tolerance, algorithm)
+        use_gpu, use_normal_equations, chunk_size, 
+        tolerance, algorithm, max_iterations
+    )
     
     # Setup GPU arrays if requested
     D_compute, Rt_compute, gpu_active = setup_gpu_arrays(D, Rt, use_gpu)
@@ -221,7 +241,7 @@ function standard_least_squares(D::AbstractArray{T}, Rt::AbstractArray{T};
             @info "Using backslash for least squares solve"
             O = D_compute \ Rt_compute
             return Array(O)
-        elseif use_normal_equations || (m > 3n)  # Overdetermined system
+        elseif use_normal_equations && (m > 3n)  # Overdetermined system
             # Use normal equations for very overdetermined systems
             @info "Using normal equations method for overdetermined system"
             O = solve_normal_equations(D_compute, Rt_compute, solver)

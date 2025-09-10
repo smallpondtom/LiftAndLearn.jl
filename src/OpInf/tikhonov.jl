@@ -198,7 +198,8 @@ function solve_normal_form(A::AbstractMatrix{T}, b::AbstractArray{T},
             return Array(O)
         else
             # Use iterative solver for CPU with large problems
-            return solve_iterative_normal_form(M, Atb, solver)
+            # return solve_iterative_normal_form(M, Atb, solver)
+            return solve_iterative_tikhonov(A, b, Γ, solver)
         end
     catch e
         if isa(e, OutOfMemoryError)
@@ -231,9 +232,9 @@ function solve_iterative_normal_form(M::AbstractMatrix{T}, Atb::AbstractArray{T}
         if i == 1
             prob = LinearProblem(M, view(Atb, :, i))
             if solver.preconditioning
-                ls = init(prob, KrylovJL_CG(), Pl=P)
+                ls = init(prob, Pl=P)
             else
-                ls = init(prob, KrylovJL_CG())
+                ls = init(prob)
             end
         else
             ls.b = view(Atb, :, i)
@@ -257,16 +258,32 @@ function solve_iterative_tikhonov(A::AbstractMatrix{T},
     m, n = size(A)
     _, p = size(b)
     
+    # # Create linear operator for (A'*A + Γ) without storing the full matrix
+    # op = let A = A, Γ = Γ
+    #     function matvec!(y, x, p, t)
+    #         # y = (A'*A + Γ) * x
+    #         temp = A * x
+    #         mul!(y, A', temp)
+    #         y .+= Γ * x
+    #     end
+    #     FunctionOperator{T}(matvec!, n, n; issymmetric=true)
+    # end
+
     # Create linear operator for (A'*A + Γ) without storing the full matrix
-    op = let A = A, Γ = Γ
-        function matvec!(y, x, p, t)
-            # y = (A'*A + Γ) * x
-            temp = A * x
-            mul!(y, A', temp)
-            y .+= Γ * x
-        end
-        FunctionOperator{T}(matvec!, n, n; ismutating=true, issymmetric=true)
+    function matvec!(y, x, p, t)
+        # y = (A'*A + Γ) * x
+        temp = A * x
+        mul!(y, A', temp)
+        y .+= Γ * x
     end
+    
+    # Create prototype arrays for input and output
+    input_prototype = zeros(T, n)
+    output_prototype = zeros(T, n)
+    
+    # Use the correct FunctionOperator constructor with prototype arrays
+    op = FunctionOperator(matvec!, input_prototype, output_prototype; 
+                         isinplace=true, issymmetric=true)
     
     # Compute A' * b
     Atb = A' * b
@@ -278,7 +295,7 @@ function solve_iterative_tikhonov(A::AbstractMatrix{T},
     for i in 1:p
         if i == 1
             prob = LinearProblem(op, view(Atb, :, i))
-            ls = init(prob, KrylovJL_CG())
+            ls = init(prob)
         else
             ls.b = view(Atb, :, i)
         end
