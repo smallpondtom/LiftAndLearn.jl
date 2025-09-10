@@ -42,7 +42,7 @@ n_train = n_time - n_test
 ## Setup the options
 #===================#
 batch_or_stream = "stream"
-rmax = 200
+rmax = 350
 
 
 #=================#
@@ -54,7 +54,7 @@ if batch_or_stream == "batch"
     qois_test = load(joinpath(FILEPATH, 
         "data/results/$(batch_or_stream)_rom_test_qois_0_8000_r$(rmax).jld2"))
 else
-    algo = "iqrrls"
+    algo = "rls"
     qois_train = load(joinpath(FILEPATH, 
         "data/results/$(batch_or_stream)_rom_train_qois_0_8000_r$(rmax)_$(algo).jld2"))
     qois_test = load(joinpath(FILEPATH, 
@@ -240,7 +240,7 @@ end
 ## Plot 3: Wall Shear Flow
 #===========================================#
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1400, 1200))
+    fig = Figure(size=(2000, 1200))
 
     # normalize utau values for better visualization
     utau_train_norm = utau_train ./ mean(utau_train)
@@ -397,6 +397,7 @@ with_theme(theme_latexfonts()) do
         titlesize=30, xlabelsize=30, ylabelsize=30, 
         xticklabelsize=28, yticklabelsize=28,
         width=600,
+        yticksvisible=false, yticklabelsvisible=false, ygridvisible=true,
         limits = (common_error_limits..., nothing, nothing)  # Set common error limits
     )
 
@@ -432,6 +433,7 @@ with_theme(theme_latexfonts()) do
         titlesize=30, xlabelsize=30, ylabelsize=30, 
         xticklabelsize=25, yticklabelsize=25,
         width=600,
+        yticksvisible=false, yticklabelsvisible=false, ygridvisible=true,
         limits = (common_error_limits..., nothing, nothing)  # Set common error limits
     )
 
