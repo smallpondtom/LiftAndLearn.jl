@@ -56,7 +56,7 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=[1,2],
-        control=1,
+        constant=1,
     ),
     vars=LnL.VariableStructure(
         N=1,
