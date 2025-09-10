@@ -43,7 +43,6 @@ n = n_time * n_traj
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=[1,2,3],
-        control=0,
         constant=1,
     ),
     optim=LnL.OptimizationSetting(
