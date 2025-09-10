@@ -1,5 +1,5 @@
 """
-3D Channel flow: Compute basis
+ABL: Compute basis
 """
 
 #=================#

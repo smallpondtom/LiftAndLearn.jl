@@ -1,5 +1,5 @@
 """
-3D Channel flow: Compute the energy spectrum
+ABL: Compute the energy spectrum
 """
 
 #================#
