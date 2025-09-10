@@ -11,14 +11,27 @@ using CairoMakie
 using ProgressMeter
 using Random
 using Revise
-using Kronecker
-using UniqueKronecker
+using SparseArrays: spzeros
 import PolynomialModelReductionDataset: BurgersModel
 import LiftAndLearn as LnL
+using Kronecker
+using UniqueKronecker
 
-#=======================================#
-## Some options for operator inference ##
-#=======================================#
+#==================#
+## Burgers' Setup ##
+#==================#
+Ω = (0.0, 1.0)
+Nx = 2^8; dt = 1e-4
+burgers = BurgersModel(
+    spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=(Ω[2] + 1/Nx)/Nx, Δt=dt,
+    diffusion_coeffs=0.5, BC=:dirichlet,
+)
+burgers.IC = 0.1*cos.(π*burgers.xspan)
+num_inputs = 10  # number of random inputs for training data
+
+#===============#
+## OpInf Setup ##
+#===============#
 options = LnL.LSOpInfOption(
     system=LnL.SystemStructure(
         state=[1,2],
@@ -28,7 +41,9 @@ options = LnL.LSOpInfOption(
         N=1,
     ),
     data=LnL.DataStructure(
-        deriv_type="SI"
+        Δt=dt,
+        deriv_type="SI",
+        DS=20,  # downsampling factor
     ),
     optim=LnL.OptimizationSetting(
         verbose=true,
@@ -38,85 +53,97 @@ options = LnL.LSOpInfOption(
 #=================#
 ## Generate data ##
 #=================#
-Ω = (0.0, 1.0); Nx = 2^7; dt = 1e-4
-burgers = BurgersModel(
-    spatial_domain=Ω, 
-    time_domain=(0.0, 1.0), 
-    Δx=(Ω[2] + 1/Nx)/Nx, 
-    Δt=dt,
-    diffusion_coeffs=0.1, 
-    BC=:dirichlet,
-)
+seed = 1234
+rgen = Random.MersenneTwister(seed)
 
-# Input from the boundary condition
-Ubc = 0.5 * burgers.tspan .+ 0.25
+# Random input/boundary condition for training data
+U = randn(rgen, burgers.time_dim, num_inputs) 
 
-# Generate the full-model operators
-A, F, B = burgers.finite_diff_model(burgers, burgers.diffusion_coeffs[1])
+μ = burgers.diffusion_coeffs[1]
+A, F, B = burgers.finite_diff_model(burgers, μ)
+op_burgers = LnL.Operators(A=A, B=B, A2u=F)
 
-# Generate the initial condition
-burgers.IC = 0.1*cos.(π*burgers.xspan)
-
-# Compute the states with semi-implicit scheme
-X = burgers.integrate_model(
-    burgers.tspan, burgers.IC, Ubc; linear_matrix=A,
+# Compute the reference data with the reference input
+# Reference input/boundary condition for OpInf testing 
+Uref = ones(burgers.time_dim, 1)
+Xref = burgers.integrate_model(
+    burgers.tspan, burgers.IC, Uref; linear_matrix=A,
     control_matrix=B, quadratic_matrix=F, system_input=true
 )
 
-# Save the reference data for later
-Xref = copy(X)
-Uref = copy(Ubc)
+# Compute the training with random input 
+X = Array{Float64,3}(undef, size(Xref,1), size(Xref,2)-1, num_inputs)
+Xdot = Array{Float64,3}(undef, size(Xref,1), size(Xref,2)-1, num_inputs)
+for j in 1:num_inputs
+    states = burgers.integrate_model(
+        burgers.tspan, burgers.IC, U[:, j], linear_matrix=A,
+        control_matrix=B, quadratic_matrix=F, system_input=true
+    ) 
+    X[:,:,j] = states[:,2:end]
+    Xdot[:,:,j] = (states[:,2:end] - states[:,1:end-1]) / dt
+end
 
-# Generate the finite difference matrix and corresponding indices
-E, Δidx = LnL.finite_diff_matrix(options.data.deriv_type, burgers.time_dim, dt)
+# Down sample the training data
+Xtrain = X[:, 1:options.data.DS:end, :]
+Utrain = U[2:end, :][1:options.data.DS:end, :]
+Xdot = Xdot[:, 1:options.data.DS:end, :]
 
-# Obtain the data used for training (for batch OpInf)
-Xtrain = X[:, Δidx]
-Utrain = Ubc[Δidx]
-Xdot_train = X * E
+# Flattened training data 
+Xtrain = reshape(Xtrain, burgers.spatial_dim, :)
+Utrain = reshape(Utrain, :, 1)
+Xdottrain = reshape(Xdot, burgers.spatial_dim, :)
 
-# Compute the SVD of the data 
-rmax = 15
-VΣWt = svd(Xtrain)
-Vrmax = VΣWt.U[:,1:rmax]
-Σrmax = VΣWt.S[1:rmax]
+# Compute the SVD
+rmax = 14
+tmp = svd(Xtrain)
+Vrmax = tmp.U[:, 1:rmax]
+Σrmax = tmp.S[1:rmax]
 
-#=================================#
-## Compute the Reduced Operators ##
-#=================================#
-# Compute the operators for Intrusive-POD
-op_pod = LnL.pod(LnL.Operators(A=A, B=B, A2u=F), Vrmax, options.system)
+#====================#
+## Generate operators
+#====================#
+# Compute the values for the intrusive model
+op_burgers = LnL.Operators(A=A, B=B, A2u=F)
+op_pod = LnL.pod(op_burgers, Vrmax, options.system)
 Apod = op_pod.A
-Bpod = op_pod.B
+Bpod = op_pod.B 
 Fpod = op_pod.A2u
 
 ## Compute OpInf
-op_inf = LnL.opinf(Xtrain, Vrmax, options; U=Utrain, Xdot=Xdot_train)
-Ainf = op_inf.A
-Binf = op_inf.B
-Finf = op_inf.A2u
+op_infer = LnL.opinf(
+    Vrmax' * Xtrain,
+    options; 
+    U=Utrain,
+    Xhatdot=Vrmax' * Xdottrain,
+)
+Ainf = op_infer.A
+Binf = op_infer.B 
+Finf = op_infer.A2u
 
 ## Compute One-Pass Streaming-OpInf
 options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e-8, B=1e-8, A2=1e-8)
+options.λ = LnL.TikhonovParameter(A = 1e-9, A2 = 1e-9, B = 1e-9,)
 stream = LnL.OnePassStreamingOpInf(
-    X[:,1]; options=options, n=size(X,1), m=1, rank=rmax, finite_diff=true
+    Xtrain[:,1], Xdottrain[:,1];
+    options=options, n=size(Xtrain,1), m=1,
+    rank=rmax, finite_diff=false
 )
-@showprogress for xi in eachcol(X[:,2:end])
-    LnL.stream!(stream, xi, tol=1e-10)
+@showprogress for (xi, xdi) in zip(eachcol(Xtrain[:,2:end]), eachcol(Xdottrain[:,2:end]))
+    LnL.stream!(stream, xi, xdi, tol=1e-8)
 end
-op_stream = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]), U=Ubc
-)
+
+##
+op_stream = LnL.compute_stream_operators(stream; U=Utrain)
+
 Astream = op_stream.A
-Bstream = op_stream.B
 Fstream = op_stream.A2u
+Bstream = op_stream.B
 Vstream = stream.V
 Σ = stream.Σ
 
-#===========#
-## Analyze ##
-#===========#
+#=========#
+## Analyze
+#=========#
 @info "Compute errors"
 
 # Error analysis 
@@ -131,7 +158,7 @@ proj_err_stream = zeros(rmax)
     Vr_stream = Vstream[:,1:i]
 
     # Integrate the intrusive model
-    Xpod = burgers.integrate_model(
+    Xint = burgers.integrate_model(
         burgers.tspan, Vr' * burgers.IC, Uref,
         linear_matrix=Apod[1:i, 1:i], control_matrix=Bpod[1:i,:], 
         quadratic_matrix=UniqueKronecker.extractF(Fpod, i), 
@@ -159,7 +186,7 @@ proj_err_stream = zeros(rmax)
     PE_stream = LnL.proj_error(Xref, Vr_stream)
 
     # Relative state errors
-    SE_int = LnL.rel_state_error(Xref, Xpod, Vr)
+    SE_int = LnL.rel_state_error(Xref, Xint, Vr)
     SE_inf = LnL.rel_state_error(Xref, Xinf, Vr)
     SE_stream = LnL.rel_state_error(Xref, Xstream, Vr_stream)
 
@@ -182,24 +209,21 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     scatterlines!(ax, 1:rmax, Σrmax, label="batch", linewidth=8, markersize=30)
-    scatterlines!(ax, 1:rmax, Σ, label="stream", linewidth=5, 
-                  linestyle=:dash, markersize=20)
-    axislegend(ax, position = :lb, labelsize=30, patchsize=(80,20))
+    scatterlines!(ax, 1:rmax, Σ, label="stream", linewidth=5, linestyle=:dash, markersize=20)
+    axislegend(ax, position = :lb, labelsize=30)
     display(fig)
 end
 
 with_theme(theme_latexfonts()) do
     fig = Figure(size = (800, 600))
     ax = Axis(
-        fig[1, 1], xlabel = "Reduced dimension", 
-        ylabel = "mean relative projection error",
+        fig[1, 1], xlabel = "Reduced dimension", ylabel = "mean relative projection error",
         yscale=log10, xticks=1:rmax, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     scatterlines!(ax, 1:rmax, proj_err, label="batch", linewidth=8, markersize=30)
-    scatterlines!(ax, 1:rmax, proj_err_stream, label="stream", linewidth=5, 
-                  linestyle=:dash, markersize=20)
-    axislegend(ax, position = :lb, labelsize=30, patchsize=(80,20))
+    scatterlines!(ax, 1:rmax, proj_err_stream, label="stream", linewidth=5, linestyle=:dash, markersize=20)
+    axislegend(ax, position = :lb, labelsize=30)
     display(fig)
 end
 
@@ -211,12 +235,12 @@ with_theme(theme_latexfonts()) do
         yscale=log10, xticks=1:rmax, titlesize=30,
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
-    scatterlines!(ax, 1:rmax, intru_state_err, label = "Intrusive-POD", 
+    scatterlines!(ax, 1:rmax, intru_state_err, label = "intrusive", 
                   linewidth=8, markersize=30)
-    scatterlines!(ax, 1:rmax, opinf_state_err, label = "OpInf", 
+    scatterlines!(ax, 1:rmax, opinf_state_err, label = "opinf", 
                   linewidth=5, markersize=20, linestyle=:dash)
-    scatterlines!(ax, 1:rmax, stream_state_err, label = "Streaming-OpInf", 
+    scatterlines!(ax, 1:rmax, stream_state_err, label = "stream", 
                   linewidth=3, markersize=15, linestyle=:dashdot)
-    axislegend(ax, position = :lb, labelsize=30, patchsize=(80,20))
+    axislegend(ax, position = :lb, labelsize=30, patchsize=(80,30))
     display(fig)
 end
