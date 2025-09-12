@@ -13,6 +13,7 @@ using ProgressMeter: Progress, next!
 using PROPACK: tsvd
 using SciMLOperators: FunctionOperator
 using SparseArrays
+using StatsBase: sample
 using JuMP
 using Ipopt, SCS
 using DocStringExtensions
