@@ -55,10 +55,10 @@ scales = load(joinpath(FILEPATH, "data/minmax.jld2"))["minmax"]["scales"]
 ## Generate the POD basis using specified algorithms
 #============================================================#
 # Specify which algorithms to run
-algorithms = ["baker"]  # Can be extended to ["baker", "brand", "sketchy", "batch"]
+algorithms = ["sketchy"]  # Can be extended to ["baker", "brand", "sketchy", "batch"]
 
 # Settings
-rmax = 500
+rmax = 200
 bases = Dict()
 execution_times = Dict()
 
@@ -131,17 +131,20 @@ for algo in algorithms
         # Initialize
         tmp = @elapsed sketchy = iSVD(
             algo=:sketchy; 
-            m=Nz*Ny*Nx*3,  # Excluding pressure field
-            n=n, 
+            m=Nz*Ny*Nx*n_fields, 
+            n=n_train, 
             r=rmax, 
             ReduxMap=:Sparse)
         push!(time_data, tmp)
         
         # Process in batches
-        X = spzeros(Nz*Ny*Nx*3, n_train)
-        @showprogress for i in 1:(n_train ÷ 10)
-            idx = 10*(i-1)+1:10*i
-            X[:,idx] .= [preprocess!(ds[j], means, shifts, scales) for j in idx]
+        X = spzeros(Nz*Ny*Nx*n_fields, n_train)
+        bs = 10  # Batch size
+        @showprogress for i in 1:(n_train ÷ bs)
+            idx = bs*(i-1)+1:bs*i
+            for (k, j) in enumerate(idx)
+                X[:, bs*(i-1)+k] = preprocess!(ds[j], means, shifts, scales)
+            end
             sketchy.X .+= sketchy.Ξ * X
             sketchy.Y .+= X * sketchy.Ω'
             sketchy.Z .+= (sketchy.Φ * X) * sketchy.Ψ'
