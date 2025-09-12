@@ -313,7 +313,7 @@ end
 
 ## Load some packages for parallel computing
 using Distributed 
-addprocs(150)
+addprocs(10)
 using NPCFs
 @everywhere using NPCFs
 
@@ -325,45 +325,49 @@ npcf3 = NPCFs.NPCF(
 )
 
 ## Compute the grid values assembled as [x, y, z, fluctuation]
-time_idx = [5]
+time_idx = [5] # 10, 25, 35, 50, 60, 75, 85, 95, 100]
+npcf3_orig = nothing
+npcf3_orig_error = nothing
 for tidx in time_idx
     # Original data
     grid_vals[:, 4] .= vec(Xrho_fluct[:, tidx])
     t1 = time()
-    npcf3_orig = NPCFs.compute_npcf_pairwise_complete(grid_vals, npcf3)
+    # npcf3_orig = NPCFs.compute_npcf_pairwise_complete(grid_vals[1:5000,:], npcf3)
+    npcf3_orig = NPCFs.compute_npcf_pairwise(grid_vals[1:5000,:], npcf3)
+    npcf3_orig_error = NPCFs.compute_npcf_simple_error(grid_vals[1:5000,:], npcf3)
     t2 = time()
     @info "3PCF for original data done. Took $(t2 - t1) seconds"
 
-    # ROM training data
-    grid_vals[:, 4] .= vec(Xrho_rom_train_fluct[ :, tidx])
-    t1 = time()
-    npcf3_rom_train = NPCFs.compute_npcf_pairwise_complete(grid_vals, npcf3)
-    t2 = time()
-    @info "3PCF for ROM training data done. Took $(t2 - t1) seconds"
+    # # ROM training data
+    # grid_vals[:, 4] .= vec(Xrho_rom_train_fluct[ :, tidx])
+    # t1 = time()
+    # npcf3_rom_train = NPCFs.compute_npcf_pairwise_complete(grid_vals, npcf3)
+    # t2 = time()
+    # @info "3PCF for ROM training data done. Took $(t2 - t1) seconds"
 
-    ## Oiriginal test data 
-    grid_vals[:, 4] .= vec(Xrho_test_fluct[:, tidx])
-    t1 = time()
-    npcf3_orig_test = NPCFs.compute_npcf_pairwise_complete(grid_vals, npcf3)
-    t2 = time()
-    @info "3PCF for original testing data done. Took $(t2 - t1) seconds"
+    # ## Oiriginal test data 
+    # grid_vals[:, 4] .= vec(Xrho_test_fluct[:, tidx])
+    # t1 = time()
+    # npcf3_orig_test = NPCFs.compute_npcf_pairwise_complete(grid_vals, npcf3)
+    # t2 = time()
+    # @info "3PCF for original testing data done. Took $(t2 - t1) seconds"
 
-    # ROM testing data
-    grid_vals[:, 4] .= vec(Xrho_rom_test_fluct[:, tidx])
-    t1 = time()
-    npcf3_rom_test = NPCFs.compute_npcf_pairwise_complete(grid_vals, npcf3)
-    t2 = time()
-    @info "3PCF for ROM testing data done. Took $(t2 - t1) seconds"
+    # # ROM testing data
+    # grid_vals[:, 4] .= vec(Xrho_rom_test_fluct[:, tidx])
+    # t1 = time()
+    # npcf3_rom_test = NPCFs.compute_npcf_pairwise_complete(grid_vals, npcf3)
+    # t2 = time()
+    # @info "3PCF for ROM testing data done. Took $(t2 - t1) seconds"
 
-    # Free some memory 
-    GC.gc()
+    # # Free some memory 
+    # GC.gc()
 
-    # Save
-    save(joinpath(FILEPATH, "data/results/3pcf_t$(tidx).jld2"), 
-         "npcf3_orig", npcf3_orig,
-         "npcf3_rom_train", npcf3_rom_train,
-         "npcf3_orig_test", npcf3_orig_test,
-         "npcf3_rom_test", npcf3_rom_test)
+    # # Save
+    # save(joinpath(FILEPATH, "data/results/3pcf_t$(tidx).jld2"), 
+    #      "npcf3_orig", npcf3_orig,
+    #      "npcf3_rom_train", npcf3_rom_train,
+    #      "npcf3_orig_test", npcf3_orig_test,
+    #      "npcf3_rom_test", npcf3_rom_test)
 
     @info "Finished 3PCF computation for time $(tidx)"
 end

@@ -484,7 +484,7 @@ include(joinpath(FILEPATH, "analysis.jl"))
 npcf_files = readdir(joinpath(FILEPATH, "data/results"), join=true)
 npcf_files = filter(f -> occursin("3pcf", f), npcf_files)
 npcf3 = Dict()
-for (i, npcf_file) in enumerate(npcf_files)
+for (i, npcf_file) in enumerate(npcf_files[5:5])
     npcf = load(npcf_file)
     if i == 1
         for (key, value) in npcf
@@ -700,7 +700,7 @@ with_theme(theme_latexfonts()) do
     rowgap!(fig.layout, 15)
     
     display(fig)
-    save(joinpath(FILEPATH, "plots/3pcf_combined.pdf"), fig)
+    # save(joinpath(FILEPATH, "plots/3pcf_combined.pdf"), fig)
 end
 
 #=====================#
@@ -725,7 +725,7 @@ zeta_l_orig_train = nothing
 zeta_l_rom_train  = nothing
 zeta_l_orig_test  = nothing
 zeta_l_rom_test   = nothing
-for (i, npcf_file) in enumerate(npcf_files)
+for (i, npcf_file) in enumerate(npcf_files[5:5])
     npcf = load(npcf_file)
     if i == 1
         zeta_l_orig_train = project_to_legendre(npcf["npcf3_orig"])
@@ -951,5 +951,5 @@ with_theme(theme_latexfonts()) do
     rowgap!(fig.layout, 15)
     
     display(fig)
-    save(joinpath(FILEPATH, "plots/3pcf_legendre_combined.pdf"), fig)
+    # save(joinpath(FILEPATH, "plots/3pcf_legendre_combined.pdf"), fig)
 end

@@ -275,8 +275,8 @@ function process_legendre_matrix(zeta_l_dict, ell)
     # Matrix should already be symmetric from projection, but ensure it
     n = size(matrix, 1)
     for i in 1:n
-        for j in 1:i-1
-            matrix[i, j] = matrix[j, i]
+        for j in i+1:n
+            matrix[j, i] = matrix[i, j]
         end
     end
     
@@ -303,8 +303,8 @@ function process_3pcf_matrix(matrix_3d, ell_idx)
     # Make symmetric by copying upper triangle to lower triangle
     n = size(matrix, 1)
     for i in 1:n
-        for j in 1:i-1
-            matrix[i, j] = matrix[j, i]
+        for j in i+1:n
+            matrix[j, i] = matrix[i, j]
         end
     end
     
