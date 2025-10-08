@@ -2,6 +2,16 @@
 __old__/
 __archive__/
 
+## Images 
+*.png 
+*.jpg 
+*.jpeg
+*.gif
+*.tiff
+*.bmp
+*.svg
+*.pdf
+
 ## JULIA
 debug.log
 *.jld2
