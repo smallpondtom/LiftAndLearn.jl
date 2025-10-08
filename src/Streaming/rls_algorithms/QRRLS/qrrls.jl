@@ -56,7 +56,7 @@ function QRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T),
         J        = zero(T)
         tau      = CUDA.CuArray{T,1}(undef, N+n+1)
 
-        @assert method == :qr "Givens rotations not implemented for GPU."
+        # @assert method == :qr "Givens rotations not implemented for GPU."
 
         return QRRLSCache{T}(N, n, λ, O, P_wrapped, K, Φsq_up, q, ξpre, ξpost, C, J,
                              A, temp_dO, temp_Kd, method, true, tau)
@@ -177,14 +177,32 @@ function qrrls_step_gpu!(obj::QRRLSCache{T}, d::CUDA.CuArray{T,2},
     @views A[N+1, N+1:N+n]     .= r[1, :]
     A[N+1:N+1, N+n+1:N+n+1] = one(T)
 
-    # QR factorization (in-place, geqrf!)
-    CUSOLVER.geqrf!(A, obj.tau)
+    # Perform QR or Givens based on method selection
+    if obj.mthd == :qr
+        # QR factorization (in-place, geqrf!)
+        CUSOLVER.geqrf!(A, obj.tau)
+    else  # :givens
+        # Use optimized GPU Givens
+        qrrls_givens_gpu!(A)
+    end
 
     # Extract Φsq, q, and C
-    obj.Φsq .= @views A[1:N, 1:N]
+    # obj.Φsq .= @views A[1:N, 1:N]
+
+    # Extract Φsq (manually copy upper triangular part only)
+    A_upper = @views A[1:N, 1:N]
+    for i in 1:N
+        for j in i:N  # Only copy upper triangular part
+            obj.Φsq.data[i:i, j:j] = A_upper[i:i, j:j]
+        end
+    end
+
     obj.q   .= @views A[1:N, N+1:N+n]
-    Csq      = A[N+1, N+n+1]
-    obj.C    = Csq^2
+
+    # Csq      = A[N+1:N+1, N+n+1:N+n+1]
+    # obj.C    = Csq^2
+    Csq_scalar = Array(A[N+1:N+1, N+n+1:N+n+1])[1]  # Convert to CPU scalar
+    obj.C = Csq_scalar^2
 
     # Solve Φsq * O = q (triangular solve on GPU)
     obj.O .= obj.Φsq \ obj.q
@@ -259,6 +277,111 @@ function qrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
     
     return A
 end
+
+# GPU kernel for applying Givens rotation to eliminate A[np1, j] using A[j, j]
+function qrrls_givens_kernel!(A::CuDeviceMatrix{T}, c::T, s::T, 
+                             row1::Int32, row2::Int32, 
+                             start_col::Int32, ncols::Int32) where T
+    tid = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+    col = start_col + tid - 1
+    
+    if tid <= ncols && col <= size(A, 2)
+        a1 = A[row1, col]
+        a2 = A[row2, col]
+        A[row1, col] = c * a1 - s * a2
+        A[row2, col] = s * a1 + c * a2
+    end
+    
+    return nothing
+end
+
+
+# GPU-compatible Givens rotation for QRRLS
+function qrrls_givens_gpu!(A::CuArray{T,2}) where {T<:AbstractFloat}
+    """
+    GPU implementation of Givens rotations for QRRLS.
+    Applies rotations to eliminate elements in the last row.
+    """
+    np1, nprp1 = size(A)
+    n = np1 - 1
+    
+    # Apply Givens rotations to eliminate A[np1, j] for j=1:n
+    for j in 1:n
+        # Get the elements for Givens rotation computation
+        ajj = Array(A[j:j, j:j])[1]
+        anj = Array(A[np1:np1, j:j])[1]
+        
+        # Compute Givens rotation parameters
+        c, s, r = givens_rotation(ajj, anj)
+        
+        # Apply rotation using GPU kernel from column j to end
+        num_cols = nprp1 - j + 1
+        threads = min(256, num_cols)
+        blocks = cld(num_cols, threads)
+        
+        @cuda threads=threads blocks=blocks qrrls_givens_kernel!(
+            A, T(c), T(s), Int32(j), Int32(np1), Int32(j), Int32(num_cols)
+        )
+        
+        # Synchronize to ensure operation completes
+        CUDA.synchronize()
+    end
+    
+    return A
+end
+
+
+# Optimized GPU Givens using broadcasting (more efficient for larger matrices)
+function qrrls_givens_gpu_optimized!(A::CuArray{T,2}) where {T<:AbstractFloat}
+    """
+    Optimized GPU implementation using vectorized operations.
+    More efficient for larger matrices by minimizing kernel launches.
+    """
+    np1, nprp1 = size(A)
+    n = np1 - 1
+    
+    # Apply Givens rotations to eliminate A[np1, j] for j=1:n
+    for j in 1:n
+        # Get diagonal and last row elements
+        ajj = Array(A[j:j, j:j])[1]
+        anj = Array(A[np1:np1, j:j])[1]
+        
+        # Compute Givens rotation parameters directly on GPU scalars
+        if abs(anj) < eps(T)
+            c = sign(ajj)
+            c = c == zero(T) ? one(T) : c
+            s = zero(T)
+        elseif abs(ajj) < eps(T)
+            c = zero(T)
+            s = -sign(anj)
+        elseif abs(ajj) > abs(anj)
+            t = anj / ajj
+            u = sign(ajj) * sqrt(one(T) + t * t)
+            c = one(T) / u
+            s = -c * t
+        else
+            t = ajj / anj
+            u = sign(anj) * sqrt(one(T) + t * t)
+            s = -one(T) / u
+            c = t / u
+        end
+        
+        # Apply rotation to rows j and np1 from column j to end
+        # Using views and broadcasting for efficiency
+        row_j   = view(A, j, j:nprp1)
+        row_np1 = view(A, np1, j:nprp1)
+        
+        # Temporary storage for the transformation
+        temp_j   = c .* row_j .- s .* row_np1
+        temp_np1 = s .* row_j .+ c .* row_np1
+        
+        row_j   .= temp_j
+        row_np1 .= temp_np1
+    end
+    
+    return A
+end
+
 
 
 # function backsub!(U::Matrix{T}, x::Vector{T}) where T<:Real

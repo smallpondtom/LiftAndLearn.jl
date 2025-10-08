@@ -142,10 +142,18 @@ proj_error = Dict(
     "batch" => zeros(rmax),
 )
 for i in 1:rmax
-    proj_error["baker"][i] = norm(X - bases["baker"].iVr[:,1:i] * bases["baker"].iVr[:,1:i]' * X, 2) / norm(X, 2)
-    proj_error["brand"][i] = norm(X - bases["brand"].iVr[:,1:i] * bases["brand"].iVr[:,1:i]' * X, 2) / norm(X, 2)
-    proj_error["sketchy"][i] = norm(X - bases["sketchy"].iVr[:,1:i] * bases["sketchy"].iVr[:,1:i]' * X, 2) / norm(X, 2)
-    proj_error["batch"][i] = norm(X - bases["batch"].Vr[:,1:i] * bases["batch"].Vr[:,1:i]' * X, 2) / norm(X, 2)
+    proj_error["baker"][i] = norm(
+        X - bases["baker"].iVr[:,1:i] * bases["baker"].iVr[:,1:i]' * X, 2
+    ) / norm(X, 2)
+    proj_error["brand"][i] = norm(
+        X - bases["brand"].iVr[:,1:i] * bases["brand"].iVr[:,1:i]' * X, 2
+    ) / norm(X, 2)
+    proj_error["sketchy"][i] = norm(
+        X - bases["sketchy"].iVr[:,1:i] * bases["sketchy"].iVr[:,1:i]' * X, 2
+    ) / norm(X, 2)
+    proj_error["batch"][i] = norm(
+        X - bases["batch"].Vr[:,1:i] * bases["batch"].Vr[:,1:i]' * X, 2
+    ) / norm(X, 2)
 end
 
 save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)            

@@ -41,8 +41,10 @@ burgers = setup["burgers"]
 #=================#
 basis_data = load(basis_file)
 Vrmax = basis_data["batch"].Vr
-iVrmax = basis_data["brand"].iVr  # choose Baker's iSVD basis
+iVrmax = basis_data["sketchy"].iVr  # choose Baker's iSVD basis
 rmax = size(Vrmax, 2)
+# One pass
+stream = load(joinpath(FILEPATH, "data/streaming/stream1p.jld2"))["stream"]
 
 #=================#
 ## Load the models
@@ -53,7 +55,8 @@ ops = Dict(
     "tropinf" => Dict(:A => [], :B => [], :F => []),
     "stream_rls" => Dict(:A => [], :B => [], :F => []),
     "stream_iqrrls" => Dict(:A => [], :B => [], :F => []),
-    "stream_qrrls" => Dict(:A => [], :B => [], :F => [])
+    "stream_qrrls" => Dict(:A => [], :B => [], :F => []),
+    "stream" => Dict(:A => [], :B => [], :F => []),
 )
 for model_file in model_files
     model = load(model_file)
@@ -79,7 +82,8 @@ test_errors = Dict(
     "tropinf" => zeros(rmax,1),
     "stream_rls" => zeros(rmax,1),
     "stream_iqrrls" => zeros(rmax,1),
-    "stream_qrrls" => zeros(rmax,1)
+    "stream_qrrls" => zeros(rmax,1),
+    "stream" => zeros(rmax,1),
 )
 
 param_region = collect(burgers.diffusion_coeffs)
@@ -117,6 +121,10 @@ param_region = collect(burgers.diffusion_coeffs)
         Astream_qrrls = LnL.interpolate_matrix_elements(param_region, ops["stream_qrrls"][:A], μ; order=3)
         Bstream_qrrls = LnL.interpolate_matrix_elements(param_region, ops["stream_qrrls"][:B], μ; order=3)
         Fstream_qrrls = LnL.interpolate_matrix_elements(param_region, ops["stream_qrrls"][:F], μ; order=3)
+        # One-Pass Streaming model
+        A_stream = LnL.interpolate_matrix_elements(param_region, ops["stream"][:A], μ; order=3)
+        B_stream = LnL.interpolate_matrix_elements(param_region, ops["stream"][:B], μ; order=3)
+        Fstream = LnL.interpolate_matrix_elements(param_region, ops["stream"][:F], μ; order=3)
 
         op_tmp = Dict(
             "pod" => (A=Aint, B=Bint, A2u=Fint),
@@ -125,13 +133,22 @@ param_region = collect(burgers.diffusion_coeffs)
             "stream_rls" => (A=Astream_rls, B=Bstream_rls, A2u=Fstream_rls),
             "stream_iqrrls" => (A=Astream_iqrrls, B=Bstream_iqrrls, A2u=Fstream_iqrrls),
             "stream_qrrls" => (A=Astream_qrrls, B=Bstream_qrrls, A2u=Fstream_qrrls),
+            "stream" => (A=A_stream, B=B_stream, A2u=Fstream)
         )
 
+        # Load the trained models
         op_keys = [key for key in keys(op_tmp)]
         Threads.@threads for i in eachindex(op_keys)
             key = op_keys[i]
+
+            if key == "stream"
+                Vrmax = stream.V
+            else
+                Vrmax = iVrmax
+            end
+
             for (i,r) = enumerate(1:rmax)
-                Vr = iVrmax[:, 1:r]
+                Vr = Vrmax[:, 1:r]
 
                 # Integrate the model
                 Fextract = UniqueKronecker.extractF(op_tmp[key].A2u, r)

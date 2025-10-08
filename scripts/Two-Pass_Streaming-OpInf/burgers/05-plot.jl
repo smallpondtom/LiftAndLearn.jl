@@ -124,18 +124,23 @@ end
 ## Plot the subspace angle errors between the bases ##
 #====================================================#
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(800, 600))      
+    fig = Figure(size=(800, 400))      
     ax = Axis(
         fig[1, 1], xlabel=L"reduced dimension, $r$", 
-        ylabel="subspace angle error",
+        ylabel=L"subspace angle error$$",
         yscale=log10, xticks=1:rmax, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     lines = []
     labels = []
-    marker_styles = [:diamond, :cross, :circle, :rect]
-    line_styles = [:solid, :solid, :solid, :dash]
-    Algorithms = ["Baker", "Brand", "Sketchy" ]
+    # marker_styles = [:diamond, :cross, :circle, :rect]
+    # line_styles = [:solid, :solid, :solid, :dash]
+    # Algorithms = ["Baker", "Brand", "Sketchy" ]
+    marker_styles = [:cross, :rect, :rect]
+    line_styles = [:solid, :solid, :dashdot]
+    Algorithms = ["Baker", "Sketchy" ]
+    colors = Makie.wong_colors()[1:4]
+
     i = 1
     for Algo in Algorithms
         algo = lowercase(Algo)
@@ -151,6 +156,8 @@ with_theme(theme_latexfonts()) do
             ax, 1:rmax, angle_errs, 
             marker=marker_styles[i], markersize=(35-(i-1)*2),
             linestyle=line_styles[i], linewidth=7,
+            markercolor=:transparent, strokewidth=2.5,
+            strokecolor=colors[i],
         )
         i += 1
         push!(lines, l)
@@ -160,180 +167,51 @@ with_theme(theme_latexfonts()) do
         lines, labels,
         position=:lt,
         labelsize=30,
-        patchsize=(80,20)
+        patchsize=(100,20)
     )
     display(fig)
     save(joinpath(FILEPATH, "plots/subspace_angle_error.pdf"), fig)
 end
-
-# #====================================================#
-# ## Plot the subspace angle errors between the bases ##
-# #====================================================#
-# with_theme(theme_latexfonts()) do 
-#     fig = Figure(size=(800, 600))      
-#     ax = Axis(
-#         fig[1, 1], xlabel=L"singular value index, $i$", ylabel=L"subspace angle error, $|\cos(\theta_i)-1|$",
-#         yscale=log10, xticks=1:rmax, titlesize=30, 
-#         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-#         # title="2D Heat", 
-#         limits=(nothing, nothing, 1e-18, 1e-1)
-#     )
-#     lines = []
-#     labels = []
-#     marker_styles = [:diamond, :cross, :circle, :rect]
-#     line_styles = [:solid, :solid, :solid, :dash]
-#     Algorithms = ["Baker", "Brand", "Sketchy" ]
-#     i = 1
-#     for Algo in Algorithms
-#         algo = lowercase(Algo)
-#         if algo == "mergingsketchy"
-#             for blk in blksizes
-#                 basis = bases[algo][blk]
-#                 angle_errs = abs.(svdvals(basis.Q[:,1:r]' * bases["batch"].U[:,1:r]) .- 1)
-#                 l = scatterlines!(
-#                     ax, 1:rmax, angle_errs, 
-#                     marker=marker_styles[i], markersize=(35-(i-1)*2),
-#                     linestyle=line_styles[i], linewidth=7,
-#                 )
-#                 push!(lines, l)
-#                 B = n ÷ blk
-#                 push!(labels, L"MergingSketchy ($B=%$B$)")
-#             end
-#         else
-#             basis = bases[algo]
-#             angle_errs = abs.(svdvals(basis.iVr[:,1:rmax]' * bases["batch"].Vr[:,1:rmax]) .- 1)
-#             l = scatterlines!(
-#                 ax, 1:rmax, angle_errs, 
-#                 marker=marker_styles[i], markersize=(35-(i-1)*2),
-#                 linestyle=line_styles[i], linewidth=7,
-#             )
-#             i += 1
-#             push!(lines, l)
-#             push!(labels, Algo)
-#         end
-#     end
-#     # Legend(
-#     #     fig[2,1], lines, labels,
-#     #     position=:rb, orientation=:horizontal, labelsize=30,
-#     #     patchsize=(60,20), nbanks=1, framevisible=false
-#     # )
-#     axislegend(ax, 
-#         lines, labels,
-#         position=:lt,
-#         # orientation=:horizontal, 
-#         # halign=:center, 
-#         # tellwidth=false, 
-#         # tellheight=true,
-#         labelsize=30
-#     )
-#     display(fig)
-#     save(joinpath(FILEPATH, "plots/subspace_angle_error.pdf"), fig)
-# end
-
-# #=======================================================#
-# ## Plot the runtime of the iSVD algorithms over streams
-# #=======================================================#
-# basis_runtime = load(joinpath(FILEPATH, "data/streaming/basis_runtime.jld2"))
-# with_theme(theme_latexfonts()) do 
-#     fig = Figure(size=(800, 1000))
-#     algorithms = ["Baker", "Brand", "Sketchy", "MergingSketchy"]
-#     yticks = -5.0:1.0:0.0
-# 	yticklabels = [L"10^{%$(Int(y))}" for y in yticks]
-#     ax = Axis(
-#         fig[1, 1], xlabel="Algorithm", ylabel="runtime per stream (s)",
-#         xticks=(1:length(algorithms), algorithms),
-#         yticks=(yticks, yticklabels),
-#         titlesize=30, xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-#         # title="Runtime of iSVD algorithms over streams",
-#     )
-#     for (i, algo) in enumerate(algorithms)
-#         algo = lowercase(algo)
-#         foo = fill(i, length(basis_runtime[algo]))
-#         boxplot!(ax, foo, log10.(basis_runtime[algo]); whiskerwidth=1.0, width=0.8, mediancolor=:black)
-#     end
-#     display(fig)
-#     save(joinpath(FILEPATH, "plots/basis_runtime.pdf"), fig)
-# end
-
-# #=================================================#
-# ## Plot the total runtime of the iSVD algorithms
-# #=================================================#
-# with_theme(theme_latexfonts()) do 
-#     fig = Figure(size=(1050, 800))
-#     algorithms = ["Batch", "Baker", "Brand", "Sketchy", "MergingSketchy"]
-#     ax = Axis(
-#         fig[1, 1], xlabel="Algorithm", ylabel="total runtime (s)",
-#         xticks = (1:5, algorithms), yscale=log10,
-#         titlesize=30, xlabelsize=35, ylabelsize=30, xticklabelsize=30, yticklabelsize=25,
-#         xgridvisible=false, # ygridvisible=false,
-#         # title="Runtime of iSVD algorithms over streams",
-#     )
-#     tbl = (
-#         cat = collect(1:5),
-#         height = [
-#             sum(basis_runtime[lowercase(algo)]) for algo in algorithms
-#         ],
-#         grp = collect(1:5),
-#     )
-#     barplot!(ax, tbl.cat, tbl.height, bar_labels=:y, label_size=30, label_offset=2, 
-#              color=vcat(:black, Makie.wong_colors()[tbl.grp][1:end-1]))
-
-#     # # inset for excluding sketchy
-#     # inset_ax = Axis(fig[1, 1],
-#     #     width=Relative(0.5),
-#     #     height=Relative(0.5),
-#     #     halign=0.3,
-#     #     valign=0.8,
-#     #     xticks = (1:3, ["Batch", "Baker", "Brand"]),
-#     #     xgridvisible=false, ygridvisible=false,
-#     #     xlabelsize=22, ylabelsize=22, xticklabelsize=18, yticklabelsize=18)
-#     # tbl = (
-#     #     cat = collect(1:3),
-#     #     height = [
-#     #         sum(basis_runtime["batch"]), sum(basis_runtime["baker"]),
-#     #         sum(basis_runtime["brand"]),
-#     #     ],
-#     #     grp = collect(1:3),
-#     # )
-#     # barplot!(inset_ax, tbl.cat, tbl.height, color=Makie.wong_colors()[tbl.grp])
-#     # bracket!(ax, 0.8, 300, 3.2, 300, offset=5, text="Zoom-in", fontsize=20)
-#     display(fig)
-#     save(joinpath(FILEPATH, "plots/basis_total_runtime.pdf"), fig)
-# end
 
 #=============================#
 ## Plot the projection errors
 #=============================#
 proj_error = load(joinpath(FILEPATH, "data/projection_errors.jld2"))
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(800, 600))
+    fig = Figure(size=(800, 400))
     ax = Axis(
         fig[1, 1], xlabel=L"reduced dimension, $r$", 
-        ylabel="mean projection error",
+        ylabel=L"relative projection error$$",
         xticks=1:rmax, yscale=log10,
         titlesize=30, xlabelsize=30, ylabelsize=30, 
         xticklabelsize=25, yticklabelsize=25,
     )
     lines = []
-    algos = ["batch", "baker", "brand", "sketchy"]
-    marker_styles = [:rect, :diamond, :cross, :circle, :rect]
-    line_styles = [:solid, :dot, :dash, :dashdot, :dashdotdot]
+    # algos = ["batch", "baker", "brand", "sketchy"]
+    # marker_styles = [:rect, :diamond, :cross, :circle, :rect]
+    # line_styles = [:solid, :dot, :dash, :dashdot, :dashdotdot]
+    Algorithms = ["Batch", "Baker", "Sketchy"]
+    marker_styles = [:circle, :cross, :rect, :rect]
+    line_styles = [:solid, :dash, :dashdot, :dashdotdot]
     colors = vcat(:black, Makie.wong_colors()[1:4])
     i = 1
-    for algo in algos
+    for Algo in Algorithms
+        algo = lowercase(Algo)
         l = scatterlines!(
             ax, 1:rmax, proj_error[algo],
             marker=marker_styles[i], markersize=(35-(i-1)*2),
             linestyle=line_styles[i], linewidth=7, color=colors[i],
+            markercolor=:transparent, strokewidth=2.5,
+            strokecolor=colors[i],
         )
         push!(lines, l)
         i += 1
     end
     axislegend(
-        ax, lines, algos,
+        ax, lines, Algorithms,
         position=:rt,
         labelsize=30,
-        patchsize=(80,20),
+        patchsize=(100,20),
     )
     display(fig)
     save(joinpath(FILEPATH, "plots/projection_errors.pdf"), fig)
@@ -342,9 +220,9 @@ end
 #==========================================#
 ## Plot the training relative state errors
 #==========================================#
-training_errors = load(joinpath(FILEPATH, "data/training_errors.jld2"))
+training_errors = load(joinpath(FILEPATH, "data/training_errors.jld2"), "train_errors")
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(800, 600))
+    fig = Figure(size=(800, 550))
     ax = Axis(
         fig[1, 1], xlabel=L"reduced dimension, $r$", 
         ylabel="relative state error",
@@ -355,11 +233,40 @@ with_theme(theme_latexfonts()) do
         title="Training"
     )
     lines = []
+    # labels = [
+    #     "pod", "opinf", "tropinf", 
+    #     "stream_rls", "stream_iqrrls", "stream_qrrls",
+    #     "stream"
+    # ]
+    # marker_styles = [:diamond, :cross, :circle, :rect, :star5, :hexagon, :utriangle]
+    # line_styles = [:dot, :dash, :solid, :dashdot, :dashdotdot, :dash, :dot]
+
+    # labels = [
+    #     "pod", "opinf", "tropinf", 
+    #     "stream_rls", "stream_iqrrls",
+    #     "stream"
+    # ]
+    # legend_labels = [
+    #     "POD", "OpInf", "TR-OpInf", 
+    #     "Stream-RLS", "Stream-iQRRLS",
+    #     "Stream"
+    # ]
+    # marker_styles = [:diamond, :cross, :circle, :rect, :star5, :hexagon]
+    # line_styles = [:dot, :dash, :solid, :dashdot, :dashdotdot, :dash]
+
     labels = [
-        "pod", "opinf", "tropinf", "stream_rls", "stream_iqrrls", "stream_qrrls"
+        "pod", "opinf", "tropinf", 
+        "stream_rls", "stream_iqrrls",
+        "stream"
+    ]
+    legend_labels = [
+        "POD", "OpInf", "TR-OpInf", 
+        "Stream-RLS", "Stream-iQRRLS",
+        "Stream"
     ]
     marker_styles = [:diamond, :cross, :circle, :rect, :star5, :hexagon]
     line_styles = [:dot, :dash, :solid, :dashdot, :dashdotdot, :dash]
+
     i = 1
     for method in labels
         l = scatterlines!(
@@ -371,13 +278,114 @@ with_theme(theme_latexfonts()) do
         i += 1
     end
     axislegend(
-        ax, lines, labels,
+        ax, lines, legend_labels,
         position=:lb,
         labelsize=30,
         patchsize=(80,20),
     )
     display(fig)
     save(joinpath(FILEPATH, "plots/training_rse_errors.pdf"), fig)
+end
+
+#=======================================================#
+## Plot the training relative state errors (version 2) ##
+#=======================================================#
+training_errors = load(joinpath(FILEPATH, "data/training_errors.jld2"), "train_errors")
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(800, 1000))
+    
+    # Common settings
+    common_xlabelsize = 29
+    common_ylabelsize = 29
+    common_titlesize = 30
+    common_ticklabelsize = 24
+    
+    # Define the three comparisons
+    comparisons = [
+        (methods=["pod", "opinf", "stream_rls"], 
+         legends=["POD", "OpInf", "iSVD-RLS"], 
+         title="iSVD-RLS"),
+        (methods=["pod", "opinf", "stream_iqrrls"], 
+         legends=["POD", "OpInf", "iSVD-iQRRLS"], 
+         title="iSVD-iQRRLS"),
+        (methods=["pod", "opinf", "stream"], 
+         legends=["POD", "OpInf", "iSVD-Compact LS"], 
+         title="iSVD-Compact LS")
+    ]
+
+    colors = Makie.wong_colors()[1:5]
+    
+    # Marker and line styles for each method type
+    pod_style = (
+        marker=:circle, linestyle=:solid, color=:transparent,
+        strokecolor=colors[1], strokewidth=2.5
+    )
+    opinf_style = (
+        marker=:cross, linestyle=:dash, color=:transparent,
+        strokecolor=colors[2], strokewidth=2.5
+    )
+    stream_styles = [
+        (
+            marker=:rect, linestyle=:dashdot, color=:transparent,
+            strokecolor=colors[3], strokewidth=2.5
+        ),   # Stream-RLS
+        (
+            marker=:star5, linestyle=:dashdot, color=:transparent,
+            strokecolor=colors[4], strokewidth=2.5
+        ),  # Stream-iQRRLS
+        (
+            marker=:hexagon, linestyle=:dashdot, color=:transparent,
+            strokecolor=colors[5], strokewidth=2.5
+        ) # Stream
+    ]
+    
+    for (i, comp) in enumerate(comparisons)
+        ax = Axis(
+            fig[i, 1], 
+            xlabel=i == 3 ? L"reduced dimension, $r$" : "",
+            ylabel=L"MR-SSE($K, r$)",
+            xticks=1:rmax, yscale=log10,
+            titlesize=common_titlesize, xlabelsize=common_xlabelsize, 
+            ylabelsize=common_ylabelsize, 
+            xticklabelsize=common_ticklabelsize, 
+            yticklabelsize=common_ticklabelsize,
+            xticksvisible=i == 3 ? true : false,
+            xticklabelsvisible=i == 3 ? true : false,
+            limits=(nothing, nothing, 2e-5, 2e0),
+            title=comp.title
+        )
+        
+        lines = []
+        
+        for (j, method) in enumerate(comp.methods)
+            if method == "pod"
+                style = pod_style
+            elseif method == "opinf"
+                style = opinf_style
+            else # streaming method
+                style = stream_styles[i]
+            end
+            
+            l = scatterlines!(
+                ax, 1:rmax, vec(training_errors[method]),
+                linestyle=style.linestyle, linewidth=8,
+                color=style.strokecolor, markercolor=style.color,
+                marker=style.marker, markersize=28,
+                strokecolor=style.strokecolor, strokewidth=style.strokewidth
+            )
+            push!(lines, l)
+        end
+        
+        # axislegend(
+        #     ax, lines, comp.legends,
+        #     position=:rt,
+        #     labelsize=26,
+        #     patchsize=(120,15),
+        # )
+    end
+    
+    display(fig)
+    save(joinpath(FILEPATH, "plots/training_rse_errors_comparison.pdf"), fig)
 end
 
 #============================================#
@@ -387,7 +395,7 @@ stream_res = load(joinpath(FILEPATH, "data/streaming/stream_results.jld2"))["str
 with_theme(theme_latexfonts()) do
     num_of_streams = size(stream_res[:rls].rse, 2)
     line_colors = Makie.resample_cmap(:viridis, rmax)
-    fig = Figure(size=(1800,700))
+    fig = Figure(size=(1800,520))
     xtick_vals = 0:(num_of_streams ÷ 4):num_of_streams
     # Standard RLS
     ax1 = Axis(fig[1, 1], 
@@ -412,30 +420,34 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
         limits=(nothing, nothing, 1e-3, 3),
     )
-    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(
-            ax2, 1:num_of_streams, stream_res[:iqrrls].rse[ri,:], 
-            color=line_colors[j])
-    end
-    # QRRLS
-    ax3 = Axis(fig[1, 3], 
-        xlabel=L"$k$-th stream", 
-        # ylabel="Relative state error", 
-        title="QRRLS", 
-        yscale=log10, xticks=xtick_vals, titlesize=30, 
-        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-        limits=(nothing, nothing, 1e-3, 3),
-    )
     lines = []
     labels = []
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
         l = scatterlines!(
-            ax3, 1:num_of_streams, stream_res[:qrrls].rse[ri,:], 
+            ax2, 1:num_of_streams, stream_res[:iqrrls].rse[ri,:], 
             color=line_colors[j])
         push!(lines, l)
         push!(labels, "r = $ri")
     end
-    Legend(fig[1,4], lines, labels, labelsize=30, patchsize=(30,10))
+    # # QRRLS
+    # ax3 = Axis(fig[1, 3], 
+    #     xlabel=L"$k$-th stream", 
+    #     # ylabel="Relative state error", 
+    #     title="QRRLS", 
+    #     yscale=log10, xticks=xtick_vals, titlesize=30, 
+    #     xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    #     limits=(nothing, nothing, 1e-3, 3),
+    # )
+    # lines = []
+    # labels = []
+    # for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
+    #     l = scatterlines!(
+    #         ax3, 1:num_of_streams, stream_res[:qrrls].rse[ri,:], 
+    #         color=line_colors[j])
+    #     push!(lines, l)
+    #     push!(labels, "r = $ri")
+    # end
+    Legend(fig[1,3], lines, labels, labelsize=30, patchsize=(30,10))
     display(fig)
     save(joinpath(FILEPATH, "plots/rel_state_err_per_stream.pdf"), fig)
 end
@@ -446,7 +458,7 @@ end
 with_theme(theme_latexfonts()) do
     num_of_streams = size(stream_res[:rls].stream_err, 2)
     line_colors = Makie.resample_cmap(:viridis, rmax)
-    fig = Figure(size=(1800,700))
+    fig = Figure(size=(1800,520))
     xtick_vals = 0:(num_of_streams ÷ 4):num_of_streams
     ytick_vals = 10.0 .^ (-14:2:0)
     # Standard RLS
@@ -461,8 +473,10 @@ with_theme(theme_latexfonts()) do
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
+        dr = (ri + ri*(ri+1)/2 + 1) * ri
         scatterlines!(
-            ax1, 1:num_of_streams, stream_res[:rls].true_stream_err[ri,:], 
+            ax1, 1:num_of_streams, 
+            stream_res[:rls].true_stream_err[ri,:] / dr, 
             color=line_colors[j])
     end
     # iQRRLS
@@ -475,33 +489,135 @@ with_theme(theme_latexfonts()) do
         xticks=xtick_vals, titlesize=30, 
         xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
     )
-    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
-        scatterlines!(
-            ax2, 1:num_of_streams, stream_res[:iqrrls].true_stream_err[ri,:], 
-            color=line_colors[j])
-    end
-    # QRRLS
-    ax3 = Axis(fig[1, 3], 
-        xlabel=L"$k$-th stream", 
-        title="QRRLS", 
-        yscale=log10, 
-        limits=(nothing, nothing, 1e-15, 50),
-        yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
-        xticks=xtick_vals, titlesize=30, 
-        xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
-    )
     lines = []
     labels = []
     for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
+        dr = (ri + ri*(ri+1)/2 + 1) * ri
         l = scatterlines!(
-            ax3, 1:num_of_streams, stream_res[:qrrls].true_stream_err[ri,:], 
+            ax2, 1:num_of_streams, 
+            stream_res[:iqrrls].true_stream_err[ri,:] / dr, 
             color=line_colors[j])
         push!(lines, l)
         push!(labels, "r = $ri")
     end
-    Legend(fig[1,4], lines, labels, labelsize=30, patchsize=(30,10))
+    # # QRRLS
+    # ax3 = Axis(fig[1, 3], 
+    #     xlabel=L"$k$-th stream", 
+    #     title="QRRLS", 
+    #     yscale=log10, 
+    #     limits=(nothing, nothing, 1e-15, 50),
+    #     yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
+    #     xticks=xtick_vals, titlesize=30, 
+    #     xlabelsize=30, ylabelsize=30, xticklabelsize=25, yticklabelsize=25,
+    # )
+    # lines = []
+    # labels = []
+    # for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
+    #     l = scatterlines!(
+    #         ax3, 1:num_of_streams, stream_res[:qrrls].true_stream_err[ri,:], 
+    #         color=line_colors[j])
+    #     push!(lines, l)
+    #     push!(labels, "r = $ri")
+    # end
+    Legend(fig[1,3], lines, labels, labelsize=30, patchsize=(30,10))
     display(fig)
-    save(joinpath(FILEPATH, "plots/rel_stream_err_per_stream.pdf"), fig)
+    # save(joinpath(FILEPATH, "plots/rel_stream_err_per_stream.pdf"), fig)
+end
+
+
+#============================================#
+## Plot the relative state errors per stream
+#============================================#
+stream_res = load(joinpath(FILEPATH, "data/streaming/stream_results.jld2"))["stream_res"]
+with_theme(theme_latexfonts()) do
+    # RSEs
+    num_of_streams = size(stream_res[:rls].rse, 2)
+    line_colors = Makie.resample_cmap(:viridis, rmax)
+    fig = Figure(size=(1880,900))
+    xtick_vals = 0:(num_of_streams ÷ 4):num_of_streams
+    # Standard RLS
+    ax1 = Axis(fig[1, 1], 
+        xlabel=L"$k$-th stream", 
+        ylabel=L"MR-SSE($k,r$)", 
+        title="RLS", 
+        yscale=log10, xticks=xtick_vals, titlesize=32, 
+        xlabelsize=32, ylabelsize=32, xticklabelsize=28, yticklabelsize=28,
+        limits=(nothing, nothing, 1e-3, 3),
+    )
+    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
+        lines!(
+            ax1, 1:num_of_streams, stream_res[:rls].rse[ri,:], 
+            color=line_colors[j], linewidth=8)
+    end
+    # iQRRLS
+    ax2 = Axis(fig[1, 2], 
+        xlabel=L"$k$-th stream", 
+        # ylabel="Relative state error", 
+        title="iQRRLS", 
+        yscale=log10, xticks=xtick_vals, titlesize=32, 
+        xlabelsize=32, ylabelsize=32, xticklabelsize=28, yticklabelsize=28,
+        yticksvisible=false, yticklabelsvisible=false,
+        limits=(nothing, nothing, 1e-3, 3),
+    )
+    lines = []
+    labels = []
+    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
+        l = lines!(
+            ax2, 1:num_of_streams, stream_res[:iqrrls].rse[ri,:], 
+            color=line_colors[j], linewidth=8)
+        push!(lines, l)
+        push!(labels, "r = $ri")
+    end
+
+    # Streaming errors
+    num_of_streams = size(stream_res[:rls].stream_err, 2)
+    line_colors = Makie.resample_cmap(:viridis, rmax)
+    xtick_vals = 0:(num_of_streams ÷ 4):num_of_streams
+    ytick_vals = 10.0 .^ (-14:2:0)
+    # Standard RLS
+    ax3 = Axis(fig[2, 1], 
+        xlabel=L"$k$-th stream", 
+        ylabel=L"MR-SOE($k,r$)", 
+        title="RLS", 
+        yscale=log10,
+        limits=(nothing, nothing, 1e-15, 50),
+        yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
+        xticks=xtick_vals, titlesize=32, 
+        xlabelsize=32, ylabelsize=32, xticklabelsize=28, yticklabelsize=28,
+    )
+    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
+        dr = (ri + ri*(ri+1)/2 + 1) * ri
+        lines!(
+            ax3, 1:num_of_streams, 
+            stream_res[:rls].true_stream_err[ri,:] / dr, 
+            color=line_colors[j], linewidth=8)
+    end
+    # iQRRLS
+    ax4 = Axis(fig[2, 2], 
+        xlabel=L"$k$-th stream", 
+        title="iQRRLS", 
+        yscale=log10, 
+        limits=(nothing, nothing, 1e-15, 50),
+        yticks=(ytick_vals, [L"10^{%$(Int(log10(y)))}" for y in ytick_vals]),
+        xticks=xtick_vals, titlesize=32, 
+        xlabelsize=32, ylabelsize=32, xticklabelsize=28, yticklabelsize=28,
+        yticksvisible=false, yticklabelsvisible=false,
+    )
+    lines = []
+    labels = []
+    for (j,ri) in enumerate(1:rmax)  # over all reduced dimensions
+        dr = (ri + ri*(ri+1)/2 + 1) * ri
+        l = lines!(
+            ax4, 1:num_of_streams, 
+            stream_res[:iqrrls].true_stream_err[ri,:] / dr, 
+            color=line_colors[j], linewidth=8)
+        push!(lines, l)
+        push!(labels, "r = $ri")
+    end
+    Legend(fig[:,3], lines, labels, labelsize=30, patchsize=(30,10))
+    display(fig)
+    save(joinpath(FILEPATH, "plots/rel_stream_and_rse_err_per_stream.png"), fig,
+         px_per_unit=4)
 end
 
 #=====================================================#
@@ -557,7 +673,7 @@ end
 #=============================================#
 testing_errors = load(joinpath(FILEPATH, "data/testing_errors.jld2"))
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(800, 600))
+    fig = Figure(size=(800, 550))
     ax = Axis(
         fig[1, 1], xlabel=L"reduced dimension, $r$", 
         ylabel="relative state error",
@@ -568,7 +684,24 @@ with_theme(theme_latexfonts()) do
         title="Testing"
     )
     lines = []
-    labels = ["pod", "opinf", "tropinf", "stream_rls", "stream_iqrrls", "stream_qrrls"]
+    # labels = [
+    #     "pod", "opinf", "tropinf", 
+    #     "stream_rls", "stream_iqrrls", "stream_qrrls",
+    #     "stream"
+    # ]
+    # marker_styles = [:diamond, :cross, :circle, :rect, :star5, :hexagon, :utriangle]
+    # line_styles = [:dot, :dash, :solid, :dashdot, :dashdotdot, :dash, :dot]
+
+    labels = [
+        "pod", "opinf", "tropinf", 
+        "stream_rls", "stream_iqrrls",
+        "stream"
+    ]
+    legend_labels = [
+        "POD", "OpInf", "Tr-OpInf", 
+        "Stream-RLS", "Stream-iQRRLS",
+        "Stream"
+    ]
     marker_styles = [:diamond, :cross, :circle, :rect, :star5, :hexagon]
     line_styles = [:dot, :dash, :solid, :dashdot, :dashdotdot, :dash]
     i = 1
@@ -581,12 +714,113 @@ with_theme(theme_latexfonts()) do
         push!(lines, l)
         i += 1
     end
-    axislegend(
-        ax, lines, labels,
-        position=:lb,
-        labelsize=30,
-        patchsize=(80,20),
-    )
+    # axislegend(
+    #     ax, lines, legend_labels,
+    #     position=:lb,
+    #     labelsize=30,
+    #     patchsize=(80,20),
+    # )
     display(fig)
     save(joinpath(FILEPATH, "plots/testing_rse_errors.pdf"), fig)
+end
+
+#=============================================#
+## Plot the relative state errors for testing
+#=============================================#
+testing_errors = load(joinpath(FILEPATH, "data/testing_errors.jld2"))
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(800, 1000))
+    
+    # Common settings
+    common_xlabelsize = 29
+    common_ylabelsize = 29
+    common_titlesize = 30
+    common_ticklabelsize = 24
+    
+    # Define the three comparisons
+    comparisons = [
+        (methods=["pod", "opinf", "stream_rls"], 
+         legends=["POD", "OpInf", "iSVD-RLS"], 
+         title="iSVD-RLS"),
+        (methods=["pod", "opinf", "stream_iqrrls"], 
+         legends=["POD", "OpInf", "iSVD-iQRRLS"], 
+         title="iSVD-iQRRLS"),
+        (methods=["pod", "opinf", "stream"], 
+         legends=["POD", "OpInf", "iSVD-Compact LS"], 
+         title="iSVD-Compact LS")
+    ]
+
+    colors = Makie.wong_colors()[1:5]
+    
+    # Marker and line styles for each method type
+    pod_style = (
+        marker=:circle, linestyle=:solid, color=:transparent,
+        strokecolor=colors[1], strokewidth=2.5
+    )
+    opinf_style = (
+        marker=:cross, linestyle=:dash, color=:transparent,
+        strokecolor=colors[2], strokewidth=2.5
+    )
+    stream_styles = [
+        (
+            marker=:rect, linestyle=:dashdot, color=:transparent,
+            strokecolor=colors[3], strokewidth=2.5
+        ),   # Stream-RLS
+        (
+            marker=:star5, linestyle=:dashdot, color=:transparent,
+            strokecolor=colors[4], strokewidth=2.5
+        ),  # Stream-iQRRLS
+        (
+            marker=:hexagon, linestyle=:dashdot, color=:transparent,
+            strokecolor=colors[5], strokewidth=2.5
+        ) # Stream
+    ]
+    
+    for (i, comp) in enumerate(comparisons)
+        ax = Axis(
+            fig[i, 1], 
+            xlabel=i == 3 ? L"reduced dimension, $r$" : "",
+            # ylabel=L"MR-SSE($K, r$)",
+            xticks=1:rmax, yscale=log10,
+            titlesize=common_titlesize, xlabelsize=common_xlabelsize, 
+            ylabelsize=common_ylabelsize, 
+            xticklabelsize=common_ticklabelsize, 
+            yticklabelsize=common_ticklabelsize,
+            xticksvisible=i == 3 ? true : false,
+            xticklabelsvisible=i == 3 ? true : false,
+            limits=(nothing, nothing, 2e-5, 2e0),
+            title=comp.title
+        )
+        
+        lines = []
+        
+        for (j, method) in enumerate(comp.methods)
+            if method == "pod"
+                style = pod_style
+            elseif method == "opinf"
+                style = opinf_style
+            else # streaming method
+                style = stream_styles[i]
+            end
+            
+            l = scatterlines!(
+                ax, 1:rmax, vec(testing_errors[method]),
+                linestyle=style.linestyle, linewidth=8,
+                color=style.strokecolor, markercolor=style.color,
+                marker=style.marker, markersize=28,
+                strokecolor=style.strokecolor, strokewidth=style.strokewidth
+            )
+            push!(lines, l)
+        end
+        
+        axislegend(
+            ax, lines, comp.legends,
+            position=:rt,
+            labelsize=26,
+            patchsize=(120,15),
+        )
+    end
+    
+    display(fig)
+    save(joinpath(FILEPATH, "plots/testing_rse_errors_comparison.pdf"), fig)
 end

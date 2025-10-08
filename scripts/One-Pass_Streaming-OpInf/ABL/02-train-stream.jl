@@ -68,57 +68,52 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
+    use_backslash=false,
+    use_svd_truncation=true,
 )
-rmax = 400
+rmax = 200
 
 #====================================#
 ## Compute One-Pass Streaming-OpInf ##
 #====================================#
-options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e12, K=1e12, A2=1e12)
-stream = LnL.OnePassStreamingOpInf(
-    preprocess!(ds[1], means, shifts, scales); 
-    options=options, 
-    n=Int(nxyz * n_fields), 
-    rank=rmax, 
-    finite_diff=true
-)
-@showprogress for i in 2:n_train
-    LnL.stream!(stream, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
+LOAD_STREAM = true
+
+if LOAD_STREAM
+    stream = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
+else
+    stream = LnL.OnePassStreamingOpInf(
+        preprocess!(ds[1], means, shifts, scales); 
+        options=options, 
+        n=Int(nxyz * n_fields), 
+        rank=rmax, 
+        finite_diff=true
+    )
+    @showprogress for i in 2:n_train
+        LnL.stream!(stream, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
+    end
+    save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream)
 end
+
+## Construct the reduced data matrices
 E, Δidx = LnL.finite_diff_matrix(
     options.data.deriv_type, n_train, options.data.Δt
 )
+r = rmax
+Xhat = Diagonal(stream.Σ[1:r]) * stream.W[:, 1:r]'
+Xhatdot = Xhat * E
+Xhat = Xhat[:, Δidx]
 
-# r = 400
-op_stream_r400 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end])
-)
+## Solve the OpInf problem 
+options.with_reg = true
+options.λ = LnL.TikhonovParameter(A=1e13, K=1e13, A2=1e13)
+op_stream = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
-# r = 350
-op_stream_r350 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]); rank=350
-)
+## Save operators
+save(joinpath(FILEPATH, "data/results/op_stream_r$(r).jld2"), "op_stream", op_stream)
 
-# r = 300
-op_stream_r300 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]); rank=300
-)
-
-# r = 250
-op_stream_r250 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]); rank=250
-)
-
-# r = 200
-op_stream_r200 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]); rank=200
-)
-
-# Save the stream object and operators
-save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream)
-save(joinpath(FILEPATH, "data/results/op_stream_r400.jld2"), "op_stream_r400", op_stream_r400)
-save(joinpath(FILEPATH, "data/results/op_stream_r350.jld2"), "op_stream_r350", op_stream_r350)
-save(joinpath(FILEPATH, "data/results/op_stream_r300.jld2"), "op_stream_r300", op_stream_r300)
-save(joinpath(FILEPATH, "data/results/op_stream_r250.jld2"), "op_stream_r250", op_stream_r250)
-save(joinpath(FILEPATH, "data/results/op_stream_r200.jld2"), "op_stream_r200", op_stream_r200)
+##
+include(joinpath(FILEPATH, "integrate.jl"))
+include(joinpath(FILEPATH, "preprocess.jl"))
+tspan = ds["times"][1:n_train] .- ds["times"][1]
+x0 = stream.V[:,1:r]' * preprocess!(ds[1], means, shifts, scales)
+states, _ = rk4_integrate(x0, tspan, op_stream.A, op_stream.A2u, op_stream.K)

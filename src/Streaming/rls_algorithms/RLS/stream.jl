@@ -24,7 +24,7 @@ function stream!(
     foo, bar = checksize(U) 
     if foo == obj.dims[:m] && bar == tdim
         if foo == bar && foo != 1
-            @warn "Transposing while assuming the row dim is the input dim " *
+            @debug "Transposing while assuming the row dim is the input dim " *
               "and the column dim is the number of data points."
         end
         D = get_data_matrix(X, U', obj.options; verbose=false)
@@ -36,7 +36,7 @@ function stream!(
     foo, bar = checksize(R)
     if foo == obj.dims[:n] && bar == tdim
         if foo == bar
-            @warn "Transposing while assuming the row dim is the state dim " * 
+            @debug "Transposing while assuming the row dim is the state dim " * 
                 "and the column dim is the number of data points."
         end
         R = R'

@@ -39,7 +39,7 @@ n_train = n_time - n_test
 #===================#
 ## Setup the options
 #===================#
-rmax = 400
+rmax = 300
 
 #=================#
 ## Load the basis 
@@ -66,23 +66,31 @@ states = load(joinpath(FILEPATH, "data/results",
 #====================================================#
 ## Compute the QoIs of the reduced model (training)
 #====================================================#
+COMPUTE_ORIGINAL = false
 include(joinpath(FILEPATH, "preprocess.jl"))
 include(joinpath(FILEPATH, "qoi.jl"))
 zprof_train = zeros(nz, n_train)
 utau_train = zeros(n_train)
 zprof_train_rom = zeros(nz, n_train)
 utau_train_rom = zeros(n_train)
-@showprogress Threads.@threads for i in 1:n_train
-    qois = get_qois(ds, i)
-    qois_rom = get_qois_rom(states, iVrmax, ds["z"][:], 
+zcoord = ds["z"][:]
+@showprogress for i in 1:n_train
+    if COMPUTE_ORIGINAL
+        qois = get_qois(ds, i)
+        zprof_train[:, i] = qois.zprof
+        utau_train[i] = qois.utau
+    end
+    qois_rom = get_qois_rom(states, iVrmax, zcoord, 
                             means, shifts, scales, ds.dims, i)
-    zprof_train[:, i] = qois.zprof
-    utau_train[i] = qois.utau
     zprof_train_rom[:, i] = qois_rom.zprof
     utau_train_rom[i] = qois_rom.utau
 end
 
 ## Save the QoIs for training 
+if COMPUTE_ORIGINAL
+    save(joinpath(FILEPATH, "data/results/original_qois_train.jld2"), 
+         "zprof", zprof_train, "utau", utau_train)
+end
 save(joinpath(FILEPATH, 
      "data/results/stream_rom_train_qois_0_8000_r$(rmax).jld2"), 
      "zprof", zprof_train, "utau", utau_train,
@@ -102,17 +110,23 @@ zprof_test = zeros(nz, n_test)
 utau_test = zeros(n_test)
 zprof_test_rom = zeros(nz, n_test)
 utau_test_rom = zeros(n_test)
-@showprogress Threads.@threads for i in 1:n_test
-    qois = get_qois(ds, n_train + i)
-    qois_rom = get_qois_rom(test_states, iVrmax, ds["z"][:], 
+@showprogress for i in 1:n_test
+    if COMPUTE_ORIGINAL
+        qois = get_qois(ds, n_train + i)
+        zprof_test[:, i] = qois.zprof
+        utau_test[i] = qois.utau
+    end
+    qois_rom = get_qois_rom(test_states, iVrmax, zcoord, 
                             means, shifts, scales, ds.dims, i)
-    zprof_test[:, i] = qois.zprof
-    utau_test[i] = qois.utau
     zprof_test_rom[:, i] = qois_rom.zprof
     utau_test_rom[i] = qois_rom.utau
 end
 
 ## Save the QoIs for testing
+if COMPUTE_ORIGINAL
+    save(joinpath(FILEPATH, "data/results/original_qois_test.jld2"), 
+         "zprof", zprof_test, "utau", utau_test)
+end
 save(joinpath(FILEPATH, 
      "data/results/stream_rom_test_qois_0_8000_r$(rmax).jld2"), 
      "zprof", zprof_test, "utau", utau_test,

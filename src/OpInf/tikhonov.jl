@@ -493,9 +493,12 @@ function select_optimal_method(A::AbstractMatrix{T},
     elseif solver.use_normal_form && (m > 2n && p < 100)
         @info "Using normal form method for large overdetermined system"
         return NormalForm(), :normal
-    else
+    elseif solver.use_backslash
         @info "Using augmented system method for general case"
         return AugmentedSystem(), :augmented
+    else
+        @info "Using iterative Tikhonov solver for memory efficiency"
+        return nothing, :auto
     end
 end
 
@@ -555,8 +558,10 @@ function tikhonov(b::AbstractArray{T}, A::AbstractArray{T}, Γ::AbstractMatrix{T
             return solve_svd_truncation(A, b, Γ, solver)
         elseif method isa NormalForm
             return solve_normal_form(A, b, Γ, solver)
-        else  # AugmentedSystem
+        elseif method isa AugmentedSystem
             return solve_augmented_system(A, b, Γ, solver)
+        else 
+            return solve_iterative_tikhonov(A, b, Γ, solver)
         end
     catch e
         if isa(e, OutOfMemoryError)

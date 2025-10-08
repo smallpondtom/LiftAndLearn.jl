@@ -23,6 +23,10 @@ FILEPATH = occursin("scripts", pwd()) ?
            joinpath(pwd(), "scripts/One-Pass_Streaming-OpInf/3d_channel")
 fn = "channel_5200_data_0_10000.h5"
 datafile = joinpath(DATAPATH, fn)
+FILEPATH2 = occursin("scripts", pwd()) ? 
+           joinpath(pwd(),"Two-Pass_Streaming-OpInf/3d_channel") : 
+           joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel")
+
 
 #===========================================#
 ## Load struct to read data in HDF5 format ##
@@ -68,73 +72,96 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
-    use_backslash=false,
-    use_svd_truncation=true,
+    use_backslash=true,
 )
-rmax = 400
+rmax = 300
 
 #====================================#
 ## Compute One-Pass Streaming-OpInf ##
 #====================================#
-stream = LnL.OnePassStreamingOpInf(
-    preprocess!(ds[1], means, shifts, scales); 
-    options=options, 
-    n=Int(nxyz * n_fields), 
-    rank=rmax, 
-    finite_diff=true
-)
-##
-tmp = load(joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel/data/bases/basis_0_8000_r400.jld2"))
+LOAD_STREAM = false
+GRID_SEARCH = true
 
-##
-stream.V = tmp["bases"]["baker"].iVr 
-stream.Σ = tmp["bases"]["baker"].iΣr
-stream.W = tmp["bases"]["baker"].iW
+if LOAD_STREAM
+    stream_res = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
+else
+    # # Baker
+    # stream_res = LnL.OnePassStreamingOpInf(
+    #     preprocess!(ds[1], means, shifts, scales); 
+    #     options=options, 
+    #     n_state=Int(nxyz * n_fields), 
+    #     rank=rmax, 
+    #     finite_diff=true
+    # )
+    # @showprogress for i in 2:n_train
+    #     LnL.stream!(stream_res, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
+    # end
 
-##
+    # Sketchy
+    stream_res = LnL.OnePassStreamingOpInf(
+        Float64[0.0];
+        options=options, 
+        isvd_method=:sketchy,
+        n_state=Int(nxyz * n_fields), 
+        n_snapshots=n_train,
+        rank=rmax, 
+    )
+    @showprogress for i in 1:n_train  # make sure to include first snapshot
+        LnL.stream!(stream_res, preprocess!(ds[i], means, shifts, scales))
+    end
+    LnL.compute_svd_sketchy!(stream_res)
 
-tmp = nothing
-GC.gc()
-
-##
-
-@showprogress for i in 2:n_train
-    LnL.stream!(stream, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
+    save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream_res)
 end
-## r = 400
-E, Δidx = LnL.finite_diff_matrix(
-    options.data.deriv_type, n_train, options.data.Δt
-)
-options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e12, K=1e12, A2=1e12)
-op_stream_r400 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end])
-)
 
-## r = 350
-op_stream_r350 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]); rank=350
-)
+# ## Construct the reduced data matrices
+# E, Δidx = LnL.finite_diff_matrix(
+#     options.data.deriv_type, n_train, options.data.Δt
+# )
+# r = 300
+# Xhat = Diagonal(stream_res.Σ[1:r]) * stream_res.W[:, 1:r]'
+# Xhatdot = Xhat * E
+# Xhat = Xhat[:, Δidx]
 
-## r = 300
-op_stream_r300 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]); rank=300
-)
+# ## Run grid Search
+# if GRID_SEARCH
+#     @info "Running grid search for regularization parameters"
+#     include(joinpath(FILEPATH, "grid_search.jl"))
+#     B1 = 10.0 .^ range(10, 12, length=12)  # best_beta1 = 1.0e12
+#     B2 = 10.0 .^ range(12, 13, length=8)  # best_beta2 = 5.179474679231202e12
+#     reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
+#     n_reg_global = length(reg_pairs_global)
+#     max_growth = 5.0
+#     options.with_reg = true
+#     op, best_beta1, best_beta2, best_train_err, states, eval_time, fidx = 
+#         find_best_opinf_model(reg_pairs_global, Xhat, Xhat, Xhatdot,
+#                             n_train, n_train, max_growth, options,
+#                             ds["times"][1:n_train])
 
-## r = 250
-op_stream_r250 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]); rank=250
-)
+#     ## Save results
+#     save(joinpath(FILEPATH, "data/results", 
+#         "reg_grid_search_r$(r).jld2"), 
+#         "beta1", best_beta1, "beta2", best_beta2, 
+#         "train_err", best_train_err, "states", states, 
+#         "eval_time", eval_time, "final_idx", fidx)
 
-## r = 200
-op_stream_r200 = LnL.compute_stream_operators(
-    stream, E, (Δidx[1], Δidx[end]); rank=200
-)
+#     ## Save the best model
+#     save(joinpath(FILEPATH, "data/models", 
+#         "op_stream_r$(r)_lamGS.jld2"), 
+#         "op", op)
+# else
+#     @info "No grid search, using fixed regularization parameters"
+#     ## Solve the OpInf problem 
+#     options.with_reg = true
+#     # beta1 = 4.641588833612782e6
+#     # beta1 = 2.1544346900318866e11
+#     # beta1 = 5.179474679231202e12
+#     # beta2 = 5.179474679231202e12
+#     beta1 = 1.0e14
+#     beta2 = 1.0e14
+#     options.λ = LnL.TikhonovParameter(A=beta1, K=beta1, A2=beta2)
+#     op_stream = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
-## Save the stream object and operators
-save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream)
-save(joinpath(FILEPATH, "data/results/op_stream_r400.jld2"), "op_stream_r400", op_stream_r400)
-save(joinpath(FILEPATH, "data/results/op_stream_r350.jld2"), "op_stream_r350", op_stream_r350)
-save(joinpath(FILEPATH, "data/results/op_stream_r300.jld2"), "op_stream_r300", op_stream_r300)
-save(joinpath(FILEPATH, "data/results/op_stream_r250.jld2"), "op_stream_r250", op_stream_r250)
-save(joinpath(FILEPATH, "data/results/op_stream_r200.jld2"), "op_stream_r200", op_stream_r200)
+#     ## Save operators
+#     save(joinpath(FILEPATH, "data/models/op_stream_r$(r).jld2"), "op_stream", op_stream)
+# end

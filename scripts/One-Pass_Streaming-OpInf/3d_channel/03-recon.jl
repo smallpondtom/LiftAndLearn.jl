@@ -25,6 +25,9 @@ FILEPATH = occursin("scripts", pwd()) ?
            joinpath(pwd(), "scripts/One-Pass_Streaming-OpInf/3d_channel")
 fn = "channel_5200_data_0_10000.h5"
 datafile = joinpath(DATAPATH, fn)
+# FILEPATH2 = occursin("scripts", pwd()) ? 
+#            joinpath(pwd(),"Two-Pass_Streaming-OpInf/3d_channel") : 
+#            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel")
 
 #==========================================#
 ## Load struct to read data in HDF5 format 
@@ -39,19 +42,36 @@ nz, ny, nx, n_fields, n = ds.dims
 nxyz = nz * ny * nx
 n_test = 2000
 n_train = n - n_test
-rmax = 400
+rmax = 300
 
 #=======================#
 ## Load the Stream model 
 #=======================#
-op_stream = load(joinpath(FILEPATH, 
-        "data/results/op_stream_r$(rmax).jld2"))["op_stream_r$(rmax)"]
+GRID_SEARCH = false
+op_filename = GRID_SEARCH ? 
+    joinpath(FILEPATH, "data/models/op_stream_r$(rmax)_lamGS.jld2") : 
+    joinpath(FILEPATH, "data/models/op_stream_r$(rmax).jld2")
+op_stream = load(op_filename)["op_stream"]
 
 #=================#
 ## Load the bases 
 #=================#
 basis_file = joinpath(FILEPATH, "data/results/onepass_stream.jld2")
-iVrmax = load(basis_file)["stream"].V[:, 1:rmax]
+iSVD = load(basis_file)["stream"]
+iVrmax = iSVD.V[:, 1:rmax]
+iΣrmax = Diagonal(iSVD.Σ[1:rmax])
+iWrmax = iSVD.W[:, 1:rmax]
+iSVD = nothing
+
+# iSVD = load(joinpath(
+#     FILEPATH2, "data/bases/basis_0_8000_r400.jld2") 
+# )["bases"]["baker"]
+# iVrmax = iSVD.iVr[:, 1:rmax]
+# iΣrmax = Diagonal(iSVD.iΣr[1:rmax])
+# iWrmax = iSVD.iW[:, 1:rmax]
+# iSVD = nothing
+
+GC.gc()
 
 #============================#
 ## Load the mean and scaling
@@ -74,6 +94,10 @@ save(joinpath(FILEPATH, "data/results",
      "stream_rom_train_sim_states_0_8000_r$(rmax).jld2"), 
      "states", states)
 
+## Load the training states (if needed)
+states = load(joinpath(FILEPATH, "data/results", 
+     "stream_rom_train_sim_states_0_8000_r$(rmax).jld2"))["states"]
+
 #==========================#
 ## Simulate ROM (testing) ##
 #==========================#
@@ -87,14 +111,18 @@ save(joinpath(FILEPATH, "data/results",
      "stream_rom_test_sim_states_0_8000_r$(rmax).jld2"), 
      "states", test_states)
 
-#======================#
-## Plot the u-velocity 
-#======================#
+## Load the test states (if needed)
+test_states = load(joinpath(FILEPATH, "data/results", 
+     "stream_rom_test_sim_states_0_8000_r$(rmax).jld2"))["states"]
+
+#========================================#
+## Plot the field with projection error ##
+#========================================#
 using CairoMakie
 
 with_theme(theme_latexfonts()) do 
-    train_or_test = "test"
-    fig = Figure(size=(1200, 940))
+    train_or_test = "train"
+    fig = Figure(size=(1200, 1200)) # Increased height for 5 rows
 
     fld = "u"
     if fld == "u"
@@ -129,6 +157,8 @@ with_theme(theme_latexfonts()) do
     all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
     all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
     all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
+    all_pod_data = Vector{Matrix{Float64}}(undef, length(time_indices))
+    all_pod_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
 
     # Collect all data first
     for (i, t_idx) in enumerate(time_indices)
@@ -147,23 +177,39 @@ with_theme(theme_latexfonts()) do
         u_rom_field = reshape(x_rom_t[i_s:i_f], nx, ny, nz)
         all_rom_data[i] = u_rom_field[:, :, z_mid]
 
-        # Compute error
+        # Get POD reconstruction (iVrmax * iVrmax' * ds[i])
+        x_full_preprocessed = preprocess!(copy(ds[t_idx+n_shift]), means, shifts, scales)
+        x_pod_t = iVrmax * (iVrmax' * x_full_preprocessed)
+        x_pod_t = unprocess!(x_pod_t, means, shifts, scales)
+        u_pod_field = reshape(x_pod_t[i_s:i_f], nx, ny, nz)
+        all_pod_data[i] = u_pod_field[:, :, z_mid]
+
+        # Compute errors
         all_error_data[i] = abs.(all_full_data[i] - all_rom_data[i]) 
+        all_pod_error_data[i] = abs.(all_full_data[i] - all_pod_data[i])
     end
 
     # Calculate global min/max for each row type
     full_min, full_max = extrema(vcat(all_full_data...))
     rom_min, rom_max = extrema(vcat(all_rom_data...))
+    pod_min, pod_max = extrema(vcat(all_pod_data...))
     error_min, error_max = extrema(vcat(all_error_data...))
+    pod_error_min, pod_error_max = extrema(vcat(all_pod_error_data...))
 
-    # Align the color ranges for first and second rows (full and ROM)
-    common_min = min(full_min, rom_min)
-    common_max = max(full_max, rom_max)
+    # Align the color ranges for first three rows (full, ROM, and POD)
+    common_min = min(full_min, rom_min, pod_min)
+    common_max = max(full_max, rom_max, pod_max)
+    
+    # Align error color ranges
+    error_common_min = min(error_min, pod_error_min)
+    error_common_max = max(error_max, pod_error_max)
 
     # Create axes and heatmaps
     hm_full = nothing
     hm_rom = nothing
     hm_error = nothing
+    hm_pod = nothing
+    hm_pod_error = nothing
 
     for (i, t_idx) in enumerate(time_indices)
         ds_t = ds["times"][t_idx+n_shift] .- ds["times"][1+n_shift]
@@ -175,7 +221,6 @@ with_theme(theme_latexfonts()) do
                     L"$t$=%$(round(ds_t, digits=2)) \n %$(t_idx)/%$(n_label)",
             ylabel = i == 1 ? L"$y$" : "", 
             xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
             titlesize=30,
@@ -183,15 +228,25 @@ with_theme(theme_latexfonts()) do
         ax_rom = Axis(fig[2, i], 
             ylabel = i == 1 ? L"$y$" : "", 
             xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
         )
-        ax_error = Axis(fig[3, i], 
+        ax_pod = Axis(fig[3, i], 
+            ylabel = i == 1 ? L"$y$" : "", 
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+        )
+        ax_error = Axis(fig[4, i], 
+            ylabel = i == 1 ? L"$y$" : "", 
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+        )
+        ax_pod_error = Axis(fig[5, i], 
             ylabel = i == 1 ? L"$y$" : "", 
             xlabel = L"$x$",
             xlabelsize=30, ylabelsize=30, 
-            # xticklabelsize=25, yticklabelsize=25,
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
         )
@@ -202,25 +257,161 @@ with_theme(theme_latexfonts()) do
         hm_rom = heatmap!(ax_rom, ds["x"][:], ds["y"][:], all_rom_data[i], 
             colormap = :viridis, colorrange = (common_min, common_max))
         hm_error = heatmap!(ax_error, ds["x"][:], ds["y"][:], all_error_data[i], 
-            colormap = :matter, colorrange = (error_min, error_max))
+            colormap = :matter, colorrange = (error_common_min, error_common_max))
+        hm_pod = heatmap!(ax_pod, ds["x"][:], ds["y"][:], all_pod_data[i], 
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_pod_error = heatmap!(ax_pod_error, ds["x"][:], ds["y"][:], all_pod_error_data[i], 
+            colormap = :matter, colorrange = (error_common_min, error_common_max))
     end
     
     # Add colorbars at the end of each row
     Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", labelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", labelsize=20)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="Streaming-OpInf", labelsize=20)
+    Colorbar(fig[3, length(time_indices) + 1], hm_pod, label="Projection", labelsize=20)
+    Colorbar(fig[4, length(time_indices) + 1], hm_error, label="Streaming-OpInf Error", labelsize=20)
+    Colorbar(fig[5, length(time_indices) + 1], hm_pod_error, label="Projection Error", labelsize=20)
     
+    # save(joinpath(FILEPATH, "plots", 
+    #      "$(fld)_slice_comparison_$(train_or_test)_$(rmax).png"), fig)
+    display(fig)
+end
+
+
+#=============================================================================#
+## Plot one reconstructed state over time for each field w/ projection error ##
+#=============================================================================#
+with_theme(theme_latexfonts()) do 
+    train_or_test = "test"
+
+    fig = Figure(size=(1200, 800))
+    
+    # Pick the first spatial point for each field
+    nrow = 1
+    idx_u = nrow            # First point in u field
+    idx_v = nxyz + nrow     # First point in v field  
+    idx_w = 2*nxyz + nrow   # First point in w field
+    idx_p = 3*nxyz + nrow   # First point in p field
+    
+    field_indices = [idx_u, idx_v, idx_w, idx_p]
+    field_names = ["u", "v", "w", "p"]
+    field_colors = [Makie.wong_colors()[2] for _ in 1:4]
+    pod_colors = [Makie.wong_colors()[5] for _ in 1:4]
+    
+    # Pre-extract basis rows for each field (much more efficient)
+    basis_rows = [iVrmax[idx, :] for idx in field_indices]
+
+    # Reconstruct full states for 
+    if train_or_test == "train"
+        tspan = ds["times"][1:n_train] .- ds["times"][1]
+    else
+        tspan = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
+    end
+    
+    # Create legend at the top spanning all columns
+    Legend(fig[0, 1], 
+        [LineElement(color=:black, linewidth=2),
+        LineElement(color=field_colors[1], linewidth=2),
+        LineElement(color=pod_colors[1], linewidth=2, linestyle=:dash)],
+        ["True", "Streaming-OpInf", "POD"],
+        orientation=:horizontal,
+        labelsize=25,
+        patchsize=(60, 30),
+        tellwidth=false,
+        tellheight=true,
+        framevisible=false,
+    )
+    
+    for (i, (idx, name, color)) in enumerate(zip(field_indices, field_names, field_colors))
+        ax = Axis(fig[i, 1], 
+            ylabel = L"%$(name)", 
+            xlabel = i == 4 ? "Time" : "",
+            xlabelsize = 28, 
+            ylabelsize = 28,
+            xticklabelsize = 22, 
+            yticklabelsize = 18,
+            xticksvisible = i == 4 ? true : false,
+            xticklabelsvisible = i == 4 ? true : false,
+            # title = i == 1 ? "Reconstructed vs True States" : "",
+            titlesize = 20
+        )
+        
+        # Extract basis row once for this field
+        basis_row = basis_rows[i]
+        
+        # Get factors to unprocess data
+        if train_or_test == "train"
+            mean_val = means[idx]
+            shift_val = shifts[idx]
+            scale_val = scales[idx]
+        else
+            mean_val = means[idx]
+            shift_val = shifts[idx]
+            scale_val = scales[idx]
+        end
+
+        if train_or_test == "train"
+            true_field = ds[name][nrow, 1:n_train]
+            rom_field = zeros(n_train)
+            pod_field = zeros(n_train)
+        else
+            true_field = ds[name][nrow, n_train+1:n_train+n_test]
+            rom_field = zeros(n_test)
+            pod_field = zeros(n_test)
+        end
+        
+        if train_or_test == "train"
+            reduced_coeffs = iΣrmax * iWrmax' 
+            for t in 1:n_train
+                # ROM reconstruction
+                Vrow = view(iVrmax, idx, :)
+                states_col = view(states, :, t)
+                rom_field[t] = dot(Vrow, states_col)
+                
+                # POD reconstruction (iVrmax * iVrmax' * ds[t])
+                pod_coeff = dot(Vrow, reduced_coeffs[:,t])  # Get coefficient for this specific field component
+                pod_field[t] = pod_coeff
+            end
+        else
+            for t in 1:n_test
+                # ROM reconstruction
+                Vrow = view(iVrmax, idx, :)
+                states_col = view(test_states, :, t)
+                rom_field[t] = dot(Vrow, states_col)
+                
+                x_full_preprocessed = preprocess!(copy(ds[t+n_train]), means, shifts, scales)
+                # Project to reduced space then back to full space
+                reduced_coeffs = iVrmax' * x_full_preprocessed  # Project to reduced space (rmax coefficients)
+                pod_coeff = dot(Vrow, reduced_coeffs)  # Get coefficient for this specific field component
+                pod_field[t] = pod_coeff
+            end
+        end
+        
+        # Unprocess ROM field
+        rom_field .*= scale_val
+        rom_field .+= shift_val
+        rom_field .+= mean_val
+        
+        # Unprocess POD field
+        pod_field .*= scale_val
+        pod_field .+= shift_val
+        pod_field .+= mean_val
+        
+        # Plot true vs reconstructed (no labels since legend is at top)
+        lines!(ax, tspan, true_field, color=:black, linewidth=4)
+        lines!(ax, tspan, rom_field, color=color, linewidth=3)
+        lines!(ax, tspan, pod_field, color=pod_colors[i], linewidth=3, linestyle=:dash)
+    end
     save(joinpath(FILEPATH, "plots", 
-         "$(fld)_slice_comparison_$(train_or_test)_$(rmax).png"), fig)
+         "state_evolution_$(train_or_test)_$(rmax).png"), fig)
     display(fig)
 end
 
 
 #=========================================================#
-## Plot one reconstructed state over time for each field 
+## Plot one reconstructed state over time for each field ##
 #=========================================================#
 with_theme(theme_latexfonts()) do 
-    train_or_test = "test"
+    train_or_test = "train"
 
     fig = Figure(size=(1200, 800))
     

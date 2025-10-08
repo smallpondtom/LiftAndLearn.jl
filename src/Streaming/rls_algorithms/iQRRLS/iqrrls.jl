@@ -65,7 +65,7 @@ function iQRRLSCache{T}(;
     J = zero(T)
     method = method in (:qr, :givens) ? method : :qr
 
-    @assert !(method == :givens && use_gpu) "Givens rotations not implemented for GPU."
+    # @assert !(method == :givens && use_gpu) "Givens rotations not implemented for GPU."
 
     return iQRRLSCache{T}(N, n, λ,
         O, Psq, u, K, ξpre, ξpost, A, temp_dO, temp_Ke,
@@ -174,7 +174,11 @@ function iqrrls_step_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2},
     mul!(view(A,2:N+1,2:N+1), obj.Psq', LinearAlgebra.I, invλ, zero(T))
 
     # 2) GPU QR factorization (in-place)
-    CUSOLVER.geqrf!(A, obj.tau) # A ↦ R in upper, Q info in lower+tau
+    if obj.mthd == :qr
+        CUSOLVER.geqrf!(A, obj.tau) # A ↦ R in upper, Q info in lower+tau
+    else # :givens
+        iqrrls_givens_gpu!(A)  # Use the optimized version
+    end
 
     # 3) Extract scalars and update Psq
     Csq_inv = A[1:1,1:1]
@@ -244,3 +248,107 @@ function iqrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
 
     return A
 end
+
+
+# GPU kernel for applying a single Givens rotation to two rows
+function givens_rotation_kernel!(A::CuDeviceMatrix{T}, c::T, s::T, 
+                                 row1::Int32, row2::Int32, ncols::Int32) where T
+    tid = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+    
+    if tid <= ncols
+        a1 = A[row1, tid]
+        a2 = A[row2, tid]
+        A[row1, tid] = c * a1 - s * a2
+        A[row2, tid] = s * a1 + c * a2
+    end
+    
+    return nothing
+end
+
+
+# GPU-compatible Givens rotation implementation
+function iqrrls_givens_gpu!(A::CuArray{T,2}) where {T<:AbstractFloat}
+    """
+    GPU implementation of Givens rotations applied to the first column.
+    Modifies A directly using GPU kernels.
+    """
+    np1, n = size(A)
+    
+    # Apply Givens rotations from bottom to top
+    for j in np1:-1:2
+        # Compute Givens rotation parameters on CPU
+        # (This is a single scalar operation, so CPU is fine)
+        a11 = Array(A[1:1, 1:1])[1]
+        aj1 = Array(A[j:j, 1:1])[1]
+        c, s, r = givens_rotation(a11, aj1)
+        
+        # Apply rotation using GPU kernel
+        threads = 256
+        blocks = cld(n, threads)
+        
+        @cuda threads=threads blocks=blocks givens_rotation_kernel!(
+            A, T(c), T(s), Int32(1), Int32(j), Int32(n)
+        )
+        
+        # Synchronize to ensure operation completes before next iteration
+        CUDA.synchronize()
+    end
+    
+    return A
+end
+
+
+# Alternative: Batched Givens rotation using CuBLAS (more efficient)
+function iqrrls_givens_gpu_optimized!(A::CuArray{T,2}) where {T<:AbstractFloat}
+    """
+    Optimized GPU implementation using vectorized operations where possible.
+    """
+    np1, n = size(A)
+    
+    # Pre-allocate temporary arrays for rotation parameters
+    c_vals = CuArray{T}(undef, np1-1)
+    s_vals = CuArray{T}(undef, np1-1)
+    
+    # Apply Givens rotations from bottom to top
+    for j in np1:-1:2
+        # Get the elements we need to eliminate
+        a11 = Array(A[1:1, 1:1])[1]
+        aj1 = Array(A[j:j, 1:1])[1]
+        
+        # Compute Givens rotation parameters
+        # For better performance, we can compute this on GPU directly
+        if abs(aj1) < eps(T)
+            c = sign(a11)
+            c = c == zero(T) ? one(T) : c
+            s = zero(T)
+        elseif abs(a11) < eps(T)
+            c = zero(T)
+            s = -sign(aj1)
+        elseif abs(a11) > abs(aj1)
+            t = aj1 / a11
+            u = sign(a11) * sqrt(one(T) + t * t)
+            c = one(T) / u
+            s = -c * t
+        else
+            t = a11 / aj1
+            u = sign(aj1) * sqrt(one(T) + t * t)
+            s = -one(T) / u
+            c = t / u
+        end
+        
+        # Apply rotation to all columns using broadcasting
+        row1 = view(A, 1, :)
+        rowj = view(A, j, :)
+        
+        # Temporary storage for the transformation
+        temp1 = c .* row1 .- s .* rowj
+        temp2 = s .* row1 .+ c .* rowj
+        
+        row1 .= temp1
+        rowj .= temp2
+    end
+    
+    return A
+end
+
+

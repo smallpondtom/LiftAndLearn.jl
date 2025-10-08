@@ -73,9 +73,11 @@ mutable struct OnePassStreamingOpInfSketchy{T<:Number}
     # Dimensions
     k::Int                       # range sketch size
     s::Int                       # core sketch size
+    input_dim::Int               # input dimension
+    rmax::Int                    # maximum rank for the iSVDs
 
     # Counting number of streams 
-    n_streams::Int
+    num_of_snapshots::Int
     
     # Options
     options::LSOpInfOption
@@ -83,10 +85,11 @@ end
 
 
 function OnePassStreamingOpInf(
-    x_init::AbstractVector{T},               # Initial state data 
-    xdot_init::AbstractVector{T}=T[1];       # Initial derivative data
+    x_init::AbstractVector{T}=T[0];          # Initial state data 
+    xdot_init::AbstractVector{T}=T[1],       # Initial derivative data
     options::LSOpInfOption,                  # Standard (Least-Squares) Operator Inference options
-    n::Int, m::Int=0,                        # state (n) and input (m) dimensions
+    n_state::Int, n_input::Int=0,            # state and input dimensions
+    n_snapshots::Int=1,                      # total number of snapshots 
     rank::Int=1,                             # maximum rank for the iSVDs
     finite_diff::Bool=true,                  # finite difference approx. for time derivative
     isvd_method::Symbol=:baker,              # iSVD method (:baker or :sketchy)
@@ -95,7 +98,16 @@ function OnePassStreamingOpInf(
 
     @assert isvd_method in [:baker, :sketchy] "isvd_method must be :baker or :sketchy"
 
+    n = n_state
+    m = n_input
+    d = n_snapshots
+
     if isvd_method == :baker
+
+        @assert(
+            length(x_init) == n && !iszero(x_init), 
+            "x_init must be initialized if using baker iSVD."
+        )
 
         V = reshape(x_init / norm(x_init), :, 1)
         Σ = [norm(x_init)]
@@ -129,26 +141,27 @@ function OnePassStreamingOpInf(
     elseif isvd_method == :sketchy
         k, s, ζ = sketch_size
         @assert k <= s "For sketchy iSVD, k must be less than or equal to s."
-        k = iszero(k) ? 4*r + 1 : k
+        k = iszero(k) ? 4*rank + 1 : k
         s = iszero(s) ? 2*k + 1 : s
+        ζ = iszero(ζ) ? min(k, 8) : ζ
 
         # Initialize the random reduction maps 
-        Ξ = Sparse(k, m, iszero(ζ) ? min(k, 8) : ζ)
-        Ω = Sparse(k, n, iszero(ζ) ? min(k, 8) : ζ)
-        Φ = Sparse(s, m, iszero(ζ) ? min(k, 8) : ζ)
-        Ψ = Sparse(s, n, iszero(ζ) ? min(k, 8) : ζ)
+        Ξ = sparse_sign_matrix(k, n, ζ)
+        Ω = sparse_sign_matrix(k, d, ζ)
+        Φ = sparse_sign_matrix(s, n, ζ)
+        Ψ = sparse_sign_matrix(s, d, ζ)
 
         # Initialize the sketches
-        Xcorange = zeros(k, n)
-        Xrange   = spzeros(m, k)
+        Xcorange = zeros(k, d)
+        Xrange   = zeros(n, k)
         Xcore    = zeros(s, s)
 
         return OnePassStreamingOpInfSketchy(
             T[0.0], T[0.0], T[0.0],
             Ξ, Ω, Φ, Ψ,
             Xcorange, Xrange, Xcore,
-            spzeros(T, m, n),
-            k, s, 0,
+            spzeros(T, n, d),
+            k, s, m, rank, 0,
             options
         )
     else
@@ -393,10 +406,10 @@ function stream!(obj::OnePassStreamingOpInf2, x::AbstractVector{T},
 end
 
 function stream!(obj::OnePassStreamingOpInfSketchy, 
-                 x::AbstractArray{T}) where {T<:Real}
+                 x::AbstractMatrix{T}) where {T<:Real}
 
     # Form the innovation
-    i = obj.n_streams + 1  # current stream index
+    i = obj.num_of_snapshots + 1  # current stream index
     d = size(x,2)
     obj.H[:, i:i+d-1] = x
 
@@ -410,8 +423,69 @@ function stream!(obj::OnePassStreamingOpInfSketchy,
     dropzeros!(obj.H)
 
     # Increment the number of streams
-    obj.n_streams += d
+    obj.num_of_snapshots += d
 
+    return nothing
+end
+
+function stream!(obj::OnePassStreamingOpInfSketchy,
+                 x::AbstractVector{T}) where {T<:Real}
+
+    i = obj.num_of_snapshots + 1  # current stream index
+
+    # X update - simplified since ν=1, η=1
+    mul!(view(obj.Xcorange, :, i), obj.Ξ, x)
+    
+    # Get the transpose row more efficiently
+    Ω_T = obj.Ω'
+    
+    # Use sparse matrix operations directly instead of iterating
+    if isa(Ω_T, SparseMatrixCSC)
+        # Direct sparse vector operations
+        row_vals = view(Ω_T.nzval, Ω_T.colptr[i]:Ω_T.colptr[i+1]-1)
+        row_indices = view(Ω_T.rowval, Ω_T.colptr[i]:Ω_T.colptr[i+1]-1)
+        
+        # Simplified update since ν=1
+        @inbounds for (idx_pos, col_idx) in enumerate(row_indices)
+            val = row_vals[idx_pos]
+            # Use axpy! for better performance: y = a*x + y
+            BLAS.axpy!(val, x, view(obj.Xrange, :, col_idx))
+        end
+    else
+        # Fallback for other sparse types
+        row_Ω = Ω_T[i, :]
+        @inbounds for (idx, val) in pairs(row_Ω)
+            BLAS.axpy!(val, x, view(obj.Xrange, :, idx))
+        end
+    end
+    
+    # Pre-compute Φ * x once
+    z = obj.Φ * x
+    
+    # Same optimization for Ψ
+    Ψ_T = obj.Ψ'
+    
+    if isa(Ψ_T, SparseMatrixCSC)
+        # Direct sparse vector operations
+        row_vals = view(Ψ_T.nzval, Ψ_T.colptr[i]:Ψ_T.colptr[i+1]-1)
+        row_indices = view(Ψ_T.rowval, Ψ_T.colptr[i]:Ψ_T.colptr[i+1]-1)
+        
+        # Simplified update since ν=1
+        @inbounds for (idx_pos, col_idx) in enumerate(row_indices)
+            val = row_vals[idx_pos]
+            BLAS.axpy!(val, z, view(obj.Xcore, :, col_idx))
+        end
+    else
+        # Fallback for other sparse types
+        row_Ψ = Ψ_T[i, :]
+        @inbounds for (idx, val) in pairs(row_Ψ)
+            BLAS.axpy!(val, z, view(obj.Xcore, :, idx))
+        end
+    end
+    
+    # Increment the number of streams
+    obj.num_of_snapshots += 1
+    
     return nothing
 end
 
@@ -488,7 +562,8 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
     end
 
     # Construct the reduced right-hand side matrix
-    R = E' * view(obj.W, :, 1:rank) * Σ_diag
+    n_tmp = size(E, 1)
+    R = E' * view(obj.W, 1:n_tmp, 1:rank) * Σ_diag
 
     # compute least squares (pseudo inverse)
     if obj.options.with_reg 
@@ -604,7 +679,8 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
     end
 
     # Construct the reduced right-hand side matrix
-    R = Array(E' * view(obj.W, :, 1:rank) * Σ_diag)
+    n_tmp = size(E, 1)
+    R = Array(E' * view(obj.W, 1:n_tmp, 1:rank) * Σ_diag)
 
     # compute least squares (pseudo inverse)
     if obj.options.with_reg 
@@ -764,22 +840,26 @@ function compute_stream_operators(obj::OnePassStreamingOpInf2;
     return operators
 end
 
-
-function compute_stream_operators(obj::OnePassStreamingOpInfSketchy, 
-    E::AbstractArray{T}, indices::Tuple{<:Int,<:Int};
-    U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
-
+function compute_svd_sketchy!(obj::OnePassStreamingOpInfSketchy; 
+                             rank::Int=obj.rmax)
     # initial approximation with QR decompositions
-    Qs = Matrix(qr(sketchy.Xrange).Q)
-    Ps = Matrix(qr(sketchy.Xcorange').Q)
-    tmp = (sketchy.Φ * Qs) \ sketchy.Xcore  # Solve (Φ * Q) * X = Z
-    C = tmp / (sketchy.Ψ * Ps)'      # Solve X = X / (Ψ * P)'
+    Qs = Matrix(qr(obj.Xrange).Q)
+    Ps = Matrix(qr(obj.Xcorange').Q)
+    tmp = (obj.Φ * Qs) \ obj.Xcore  # Solve (Φ * Q) * X = Z
+    C = tmp / (obj.Ψ * Ps)'         # Solve X = X / (Ψ * P)'
 
     # Truncate the approximation and compute the singular vectors
     Q, Σ, W = svd(C)
     obj.V = Qs * Q[:,1:rank]
     obj.Σ = Σ[1:rank]
     obj.W = Ps * W[:,1:rank]
+
+    return nothing
+end
+
+function compute_stream_operators(obj::OnePassStreamingOpInfSketchy, 
+    E::AbstractArray{T}, indices::Tuple{<:Int,<:Int};
+    U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
 
     # Diagonalize the singular values
     Σ = copy(obj.Σ)
@@ -850,7 +930,8 @@ function compute_stream_operators(obj::OnePassStreamingOpInfSketchy,
     end
 
     # Construct the reduced right-hand side matrix
-    R = E' * obj.W * Σ_diag
+    n_tmp = size(E, 1)
+    R = E' * view(obj.W, 1:n_tmp, :) * Σ_diag
 
     # compute least squares (pseudo inverse)
     if obj.options.with_reg 
@@ -861,6 +942,122 @@ function compute_stream_operators(obj::OnePassStreamingOpInfSketchy,
         tikhonov_matrix!(Γ, dims, operator_symbols, obj.options.λ)
         Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
 
+        Ot = tikhonov(R, D, Γ;
+                      tol=obj.options.tolerance,
+                      use_gpu=obj.options.use_gpu,
+                      use_normal_form=obj.options.use_normal_equations,
+                      use_svd_truncation=obj.options.use_svd_truncation,
+                      use_backslash=obj.options.use_backslash,
+                      chunk_size=obj.options.chunk_size,
+                      max_iterations=obj.options.max_iterations,
+                      estimate_memory=obj.options.estimate_memory,
+                      preconditioning=obj.options.preconditioning,)
+    else
+        Ot = standard_least_squares(D, R; 
+                                    use_gpu=obj.options.use_gpu, 
+                                    use_normal_equations=obj.options.use_normal_equations,
+                                    chunk_size=obj.options.chunk_size,
+                                    tolerance=obj.options.tolerance,
+                                    use_backslash=obj.options.use_backslash,
+                                    algorithm=obj.options.algorithm,
+                                    estimate_memory=obj.options.estimate_memory)
+    end
+
+    # Extract the operators from the operator matrix O
+    O = transpose(Ot)
+
+    # Extract the operators
+    operators = Operators(O=O)
+
+    # Unpack the operators
+    unpack_operators!(operators, O, dims, operator_symbols)
+
+    return operators
+end
+
+
+function compute_stream_operators(obj::OnePassStreamingOpInfSketchy,
+    E::AbstractArray{T}, indices::Union{Array{<:Int},UnitRange};
+    U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
+
+    # Diagonalize the singular values
+    Σ = copy(obj.Σ)
+    Σ_diag = Diagonal(Σ)
+
+    # Extract the appropriate indices
+    W = view(obj.W, indices, 1:rank)
+
+    # Construct the reduce data matrix
+    r = rank
+    m = obj.input_dim
+    d = 0  # total dimension of the data matrix
+    if obj.options.optim.nonredundant_operators
+        d += sum(i != 0 ? binomial(r+i-1, i) : 0 for i in obj.options.system.state)
+    else
+        d += sum(i != 0 ? Int(r^i) : 0 for i in obj.options.system.state)
+    end
+    d += sum(i != 0 ? binomial(m+i-1, i) : 0 for i in obj.options.system.control)
+    # d += sum(i != 0 ? binomial(r+i-1, i) * m : 0 for i in obj.options.system.coupled_input)
+    d += iszero(obj.options.system.constant) ? 0 : 1
+    K = min(obj.num_of_snapshots, length(indices))  # number of snapshots
+    D = zeros(T, K, d)  # data matrix
+    tmp = 0
+
+    dims = []
+    operator_symbols = []
+
+    for i in obj.options.system.state
+        if i == 1
+            D[:, 1:r] = W * Σ_diag
+            push!(dims, r)
+            push!(operator_symbols, :A)
+            tmp += r
+        else
+            if obj.options.optim.nonredundant_operators
+                ri = binomial(r+i-1, i)
+                D[:, tmp+1:tmp+ri] = ⧁(W, i) * Diagonal(⊘(Σ, i))
+                push!(dims, ri)
+                push!(operator_symbols, Symbol("A$(i)u"))
+            else
+                ri = Int(r^i)
+                D[:, tmp+1:tmp+ri] = ⊖(W, i) * Diagonal(⊗(Σ[:,:], i)[:])
+                push!(dims, ri)
+                push!(operator_symbols, Symbol("A$(i)"))
+            end
+            tmp += ri
+        end
+
+        if i == 1 && obj.input_dim != 0
+            # NOTE: Only works for linear inputs (for now)
+            U = fat2tall(U)
+            if !iszero(obj.options.system.control)
+                D[:, tmp+1:tmp+m] = view(U, indices, :)
+                tmp += m
+                push!(dims, m)
+                push!(operator_symbols, :B)
+            end
+            # NOTE: Coupled inputs are not implemented yet
+        end
+    end
+
+    if !iszero(obj.options.system.constant)
+        D[:, tmp+1] = ones(K)  # constant term
+        push!(dims, 1)
+        push!(operator_symbols, :K)
+    end
+
+    # Construct the reduced right-hand side matrix
+    n_tmp = size(E,1)
+    R = Array(E' * view(obj.W, 1:n_tmp, :) * Σ_diag)
+
+    # compute least squares (pseudo inverse)
+    if obj.options.with_reg 
+        # Preallocate the Tikhonov weight Matrix
+        Γ = spzeros(d)
+
+        # Construct the Tikhonov matrix
+        tikhonov_matrix!(Γ, dims, operator_symbols, obj.options.λ)
+        Γ = spdiagm(0 => Γ)  # convert to sparse diagonal matrix
         Ot = tikhonov(R, D, Γ;
                       tol=obj.options.tolerance,
                       use_gpu=obj.options.use_gpu,

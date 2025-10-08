@@ -52,11 +52,11 @@ options = LnL.LSOpInfOption(
     optim=LnL.OptimizationSetting(
         verbose=true,
     ),
-    # use_backslash=true,
-    use_svd_truncation=true,
+    use_backslash=true,
+    # use_svd_truncation=false,
     # tolerance=1e-22
 )
-rmax = 350
+rmax = 300
 
 #=========================#
 ## Load reduced data
@@ -79,6 +79,7 @@ size(Xhat,1) != rmax && @warn "Xhat has a different number of \
 #========================================#
 ## Grid Search Regularization Parameters
 #========================================#
+include(joinpath(FILEPATH, "integrate.jl"))
 function simulate_opinf(x0, n_time, op, tspan=nothing, continuous=true)
     contains_nan = false
     final_idx = 0
@@ -197,8 +198,8 @@ function find_best_opinf_model(
 end
 
 ## Run grid Search
-B1 = 10.0 .^ range(11.0, 13.0, length=10)
-B2 = 10.0 .^ range(11.0, 13.0, length=10)
+B1 = 10.0 .^ range(9.0, 11.0, length=10)
+B2 = 10.0 .^ range(10.0, 12.0, length=10)
 reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
 n_reg_global = length(reg_pairs_global)
 max_growth = 1.2
@@ -210,7 +211,7 @@ op, best_beta1, best_beta2, best_train_err, states, eval_time, fidx =
 
 ## Save results
 save(joinpath(FILEPATH, "data/results", 
-     "reg_grid_search.jld2"), 
+     "reg_grid_search_r$(rmax).jld2"), 
      "beta1", best_beta1, "beta2", best_beta2, 
      "train_err", best_train_err, "states", states, 
      "eval_time", eval_time, "final_idx", fidx)

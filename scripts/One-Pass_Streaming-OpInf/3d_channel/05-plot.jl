@@ -42,7 +42,7 @@ n_train = n_time - n_test
 ## Setup the options
 #===================#
 batch_or_stream = "stream"
-rmax = 400
+rmax = 300
 
 
 #=================#
@@ -59,18 +59,24 @@ else
     qois_test = load(joinpath(FILEPATH, 
         "data/results/$(batch_or_stream)_rom_test_qois_0_8000_r$(rmax).jld2"))
 end
+original_qois_train = load(joinpath(FILEPATH, 
+    "data/results/original_qois_train.jld2"))
+
+original_qois_test = load(joinpath(FILEPATH, 
+    "data/results/original_qois_test.jld2"))
 
 
 #===========================================#
 ## Extract data from loaded QoI files
 #===========================================#
-zprof_train = qois_train["zprof"]
-utau_train = qois_train["utau"]
+# train
+zprof_train = original_qois_train["zprof"]
+utau_train = original_qois_train["utau"]
 zprof_train_rom = qois_train["zprof_rom"]
 utau_train_rom = qois_train["utau_rom"]
-
-zprof_test = qois_test["zprof"]
-utau_test = qois_test["utau"]
+# test
+zprof_test = original_qois_test["zprof"]
+utau_test = original_qois_test["utau"]
 zprof_test_rom = qois_test["zprof_rom"]
 utau_test_rom = qois_test["utau_rom"]
 
@@ -134,8 +140,8 @@ with_theme(theme_latexfonts()) do
         fontsize = 32)
 
     display(fig)
-    save(joinpath(FILEPATH, 
-        "plots/$(batch_or_stream)_zprofile_error_r$(rmax).png"), fig)
+    # save(joinpath(FILEPATH, 
+    #     "plots/$(batch_or_stream)_zprofile_error_r$(rmax).png"), fig)
 end
 
 #===========================================#
@@ -337,8 +343,8 @@ with_theme(theme_latexfonts()) do
         fontsize = 32)
 
     display(fig)
-    save(joinpath(FILEPATH, 
-        "plots/$(batch_or_stream)_utau_r$(rmax).png"), fig)
+    # save(joinpath(FILEPATH, 
+    #     "plots/$(batch_or_stream)_utau_r$(rmax).png"), fig)
 end
 
 
@@ -346,7 +352,7 @@ end
 ## Plot 4: Z Profile 
 #===========================================#
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1440, 1200))
+    fig = Figure(size=(1440, 800))
 
     # Calculate error ranges first to ensure consistent scaling
     zprof_error_train = abs.(mean(zprof_train_rom, dims=2)[:] - mean(zprof_train, dims=2)[:]) ./ 
@@ -372,10 +378,10 @@ with_theme(theme_latexfonts()) do
     # Left subplot: Original vs ROM z profiles
     ax1_left = Axis(fig[2, 1], 
         ylabel = "Z Coordinate",
-        yticks=round.(vcat(0, ds["z"][4:4:nz]), digits=3), 
-        titlesize=30, xlabelsize=30, ylabelsize=30, 
-        xticklabelsize=28, yticklabelsize=28,
-        width=600,
+        yticks=round.(vcat(0, ds["z"][6:6:nz]), digits=3), 
+        titlesize=30, xlabelsize=38, ylabelsize=38, 
+        xticklabelsize=35, yticklabelsize=35,
+        width=620,
         limits = (common_vel_limits..., nothing, nothing)  # Set common x-axis limits
     )
 
@@ -391,11 +397,11 @@ with_theme(theme_latexfonts()) do
 
     # Right subplot: Error in z profile
     ax1_right = Axis(fig[2, 2],
-        yticks=round.(vcat(0, ds["z"][4:4:nz]), digits=3), 
+        yticks=round.(vcat(0, ds["z"][6:6:nz]), digits=3), 
         xscale=log10,
-        titlesize=30, xlabelsize=30, ylabelsize=30, 
-        xticklabelsize=28, yticklabelsize=28,
-        width=600,
+        titlesize=30, xlabelsize=38, ylabelsize=38, 
+        xticklabelsize=35, yticklabelsize=35,
+        width=620,
         yticksvisible=false, yticklabelsvisible=false, ygridvisible=true,
         limits = (common_error_limits..., nothing, nothing)  # Set common error limits
     )
@@ -409,10 +415,10 @@ with_theme(theme_latexfonts()) do
     ax2_left = Axis(fig[4, 1], 
         xlabel = "Time-Averaged Wall Normal Profile",
         ylabel = "Z Coordinate",
-        yticks=round.(vcat(0, ds["z"][4:4:nz]), digits=3), 
-        titlesize=30, xlabelsize=30, ylabelsize=30, 
-        xticklabelsize=25, yticklabelsize=25,
-        width=600,
+        yticks=round.(vcat(0, ds["z"][6:6:nz]), digits=3), 
+        titlesize=30, xlabelsize=38, ylabelsize=38, 
+        xticklabelsize=35, yticklabelsize=35,
+        width=620,
         limits = (common_vel_limits..., nothing, nothing)  # Set common x-axis limits
     )
 
@@ -427,11 +433,11 @@ with_theme(theme_latexfonts()) do
     # Right subplot: Error in z profile
     ax2_right = Axis(fig[4, 2],
         xlabel = "Relative Error",
-        yticks=round.(vcat(0, ds["z"][4:4:nz]), digits=3), 
+        yticks=round.(vcat(0, ds["z"][6:6:nz]), digits=3), 
         xscale=log10,
-        titlesize=30, xlabelsize=30, ylabelsize=30, 
-        xticklabelsize=25, yticklabelsize=25,
-        width=600,
+        titlesize=30, xlabelsize=38, ylabelsize=38, 
+        xticklabelsize=35, yticklabelsize=35,
+        width=620,
         yticksvisible=false, yticklabelsvisible=false, ygridvisible=true,
         limits = (common_error_limits..., nothing, nothing)  # Set common error limits
     )
@@ -440,5 +446,187 @@ with_theme(theme_latexfonts()) do
     
     display(fig)
     save(joinpath(FILEPATH, 
-        "plots/$(batch_or_stream)_zprofile_r$(rmax).png"), fig)
+        "plots/$(batch_or_stream)_zprofile_r$(rmax).pdf"), fig)
+end
+
+#==============================================================#
+## Plot 5: Wall Shear Flow combined (train + test) horizontal ##
+#==============================================================#
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(2400, 650))
+
+    # normalize utau values for better visualization
+    utau_train_norm = utau_train ./ mean(utau_train)
+    utau_train_rom_norm = utau_train_rom ./ mean(utau_train_rom)
+    utau_test_norm = utau_test ./ mean(utau_test)
+    utau_test_rom_norm = utau_test_rom ./ mean(utau_test_rom)
+
+    # Calculate errors
+    utau_error_train = abs.(utau_train_rom_norm - utau_train_norm) ./ abs.(utau_train_norm)
+    utau_error_test = abs.(utau_test_rom_norm - utau_test_norm) ./ abs.(utau_test_norm)
+    
+    # Combine training and testing data for continuous plotting
+    utau_combined_orig = vcat(utau_train_norm, utau_test_norm)
+    utau_combined_rom = vcat(utau_train_rom_norm, utau_test_rom_norm)
+    utau_error_combined = vcat(utau_error_train, utau_error_test)
+    
+    # Common y-axis limits for utau values
+    utau_min = minimum(utau_combined_orig)
+    utau_max = maximum(utau_combined_orig)
+    utau_limits = (utau_min * 0.999, utau_max * 1.001)
+    
+    # Common y-axis limits for error values
+    error_min = minimum(utau_error_combined)
+    error_max = maximum(utau_error_combined)
+    error_limits = (error_min * 0.5, error_max * 5.0)
+
+    c1, c2 = Makie.wong_colors()[1:2]
+
+    # Left subplot: Combined utau values
+    ax1 = Axis(fig[1, 1], 
+        xlabel = "Time Step",
+        ylabel = L"$v_{x,\tau} \,/\, \langle v_{x,\tau} \rangle$",
+        title = "Friction Velocity over Time (Training + Testing)",
+        limits = (nothing, nothing, utau_limits...),
+        titlesize=40, xlabelsize=38, ylabelsize=38, 
+        xticklabelsize=35, yticklabelsize=35
+    )
+
+    # Right subplot: Combined error
+    ax2 = Axis(fig[1, 2],
+        xlabel = "Time Step",
+        ylabel = "Relative Error",
+        title = "Relative Error",
+        yscale=log10,
+        limits = (nothing, nothing, error_limits...),
+        titlesize=40, xlabelsize=38, ylabelsize=38, 
+        xticklabelsize=35, yticklabelsize=35
+    )
+
+    # Combined time steps
+    time_steps_combined = 1:(n_train + n_test)
+    
+    # Plot combined data
+    lines!(ax1, time_steps_combined, utau_combined_orig, 
+           label="Original", linewidth=3, color=:black)
+    lines!(ax1, time_steps_combined, utau_combined_rom, 
+           label="Streaming-OpInf", linewidth=3, color=c2, linestyle=:solid)
+    
+    # Add vertical line to separate training and testing
+    vlines!(ax1, n_train + 0.5, color=:red, linewidth=4, linestyle=:solid)
+    
+    lines!(ax2, time_steps_combined, utau_error_combined, 
+           linewidth=3, color=c1)
+    
+    # Add vertical line to separate training and testing
+    vlines!(ax2, n_train + 0.5, color=:red, linewidth=4, linestyle=:solid)
+    
+    # Add legends and annotations
+    axislegend(ax1, position=:lb, labelsize=35, patchsize=(80, 20))
+    
+    # Add text annotations to indicate training and testing regions
+    text!(ax1, n_train/2, utau_limits[2]*(1-5e-4), text="Training", 
+          fontsize=32, color=:black, align=(:center, :top))
+    text!(ax1, n_train + n_test/2, utau_limits[2]*(1-5e-4), text="Testing", 
+          fontsize=32, color=:black, align=(:center, :top))
+    
+    text!(ax2, n_train/2, error_limits[2]*0.5, text="Training", 
+          fontsize=32, color=:black, align=(:center, :center))
+    text!(ax2, n_train + n_test/2, error_limits[2]*0.5, text="Testing", 
+          fontsize=32, color=:black, align=(:center, :center))
+
+    display(fig)
+    # save(joinpath(FILEPATH, 
+    #     "plots/$(batch_or_stream)_utau_combined_r$(rmax).pdf"), fig)
+end
+
+#============================================================#
+## Plot 5: Wall Shear Flow combined (train + test) vertical ##
+#============================================================#
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1500, 1000))
+
+    # normalize utau values for better visualization
+    utau_train_norm = utau_train ./ mean(utau_train)
+    utau_train_rom_norm = utau_train_rom ./ mean(utau_train_rom)
+    utau_test_norm = utau_test ./ mean(utau_test)
+    utau_test_rom_norm = utau_test_rom ./ mean(utau_test_rom)
+
+    # Calculate errors
+    utau_error_train = abs.(utau_train_rom_norm - utau_train_norm) ./ abs.(utau_train_norm)
+    utau_error_test = abs.(utau_test_rom_norm - utau_test_norm) ./ abs.(utau_test_norm)
+    
+    # Combine training and testing data for continuous plotting
+    utau_combined_orig = vcat(utau_train_norm, utau_test_norm)
+    utau_combined_rom = vcat(utau_train_rom_norm, utau_test_rom_norm)
+    utau_error_combined = vcat(utau_error_train, utau_error_test)
+    
+    # Common y-axis limits for utau values
+    utau_min = minimum(utau_combined_orig)
+    utau_max = maximum(utau_combined_orig)
+    utau_limits = (utau_min * 0.999, utau_max * 1.001)
+    
+    # Common y-axis limits for error values
+    error_min = minimum(utau_error_combined)
+    error_max = maximum(utau_error_combined)
+    error_limits = (error_min * 0.5, error_max * 5.0)
+
+    c1, c2 = Makie.wong_colors()[1:2]
+
+    # Top subplot: Combined utau values
+    ax1 = Axis(fig[1, 1], 
+        ylabel = L"$v_{x,\tau} \,/\, \langle v_{x,\tau} \rangle$",
+        title = "Friction Velocity over Time (Training + Testing)",
+        limits = (nothing, nothing, utau_limits...),
+        titlesize=40, xlabelsize=38, ylabelsize=38, 
+        xticklabelsize=35, yticklabelsize=35,
+        xticksvisible=false, xticklabelsvisible=false
+    )
+
+    # Bottom subplot: Combined error
+    ax2 = Axis(fig[2, 1],
+        xlabel = "Time Step",
+        ylabel = "Relative Error",
+        title = "Relative Error",
+        yscale=log10,
+        limits = (nothing, nothing, error_limits...),
+        titlesize=40, xlabelsize=38, ylabelsize=38, 
+        xticklabelsize=35, yticklabelsize=35
+    )
+
+    # Combined time steps
+    time_steps_combined = 1:(n_train + n_test)
+    
+    # Plot combined data
+    lines!(ax1, time_steps_combined, utau_combined_orig, 
+           label="Original", linewidth=3, color=:black)
+    lines!(ax1, time_steps_combined, utau_combined_rom, 
+           label="Streaming-OpInf", linewidth=3, color=c2, linestyle=:solid)
+    
+    # Add vertical line to separate training and testing
+    vlines!(ax1, n_train + 0.5, color=:red, linewidth=4, linestyle=:dash)
+    
+    lines!(ax2, time_steps_combined, utau_error_combined, 
+           linewidth=3, color=c1)
+    
+    # Add vertical line to separate training and testing
+    vlines!(ax2, n_train + 0.5, color=:red, linewidth=4, linestyle=:dash)
+    
+    # Add legends and annotations
+    axislegend(ax1, position=:lb, labelsize=35, patchsize=(80, 20))
+    
+    # Add text annotations to indicate training and testing regions
+    text!(ax1, n_train/2, utau_limits[2]*(1-5e-4), text="Training", 
+          fontsize=32, color=:black, align=(:center, :top))
+    text!(ax1, n_train + n_test/2, utau_limits[2]*(1-5e-4), text="Testing", 
+          fontsize=32, color=:black, align=(:center, :top))
+    
+    text!(ax2, n_train/2, error_limits[2]*0.5, text="Training", 
+          fontsize=32, color=:black, align=(:center, :center))
+    text!(ax2, n_train + n_test/2, error_limits[2]*0.5, text="Testing", 
+          fontsize=32, color=:black, align=(:center, :center))
+
+    display(fig)
+    # save(joinpath(FILEPATH, 
+    #     "plots/$(batch_or_stream)_utau_combined_r$(rmax).pdf"), fig)
 end

@@ -1,10 +1,10 @@
 """
-1D Viscous Burgers' equation: generate data
+1D Viscous Burgers' equation: Compute the POD basis using iSVD
 """
 
-#================#
-## Load Packages
-#================#
+#=================#
+## Load Packages ##
+#=================#
 using CairoMakie
 using FileIO
 using JLD2
@@ -14,121 +14,141 @@ using ProgressMeter
 import LiftAndLearn as LnL
 using PolynomialModelReductionDataset: BurgersModel
 
-#================================#
-## Configure filepath for saving
-#================================#
+#=================================#
+## Configure filepath for saving ##
+#=================================#
 FILEPATH = occursin("scripts", pwd()) ? 
            joinpath(pwd(),"Two-Pass_Streaming-OpInf/burgers") : 
            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/burgers")
 
-#======================================#
-## Obtain all the saved training files
-#======================================#
+#=======================================#
+## Obtain all the saved training files ##
+#=======================================#
 training_data_files = readdir(joinpath(FILEPATH, "data/training"), join=true)
+n_files = length(training_data_files)
 
-#=================#
-## Load the setup
-#=================#
+#==================#
+## Load the setup ##
+#==================#
 setup_file = joinpath(FILEPATH, "data/setup.jld2")
 setup = load(setup_file)
 burgers = setup["burgers"]
 options = setup["options"]
+n_t = burgers.time_dim
 
-#=========================================================#
-## Generate the POD basis using iSVD using all algorithms
-#=========================================================#
+#==========================================================#
+## Generate the POD basis using iSVD using all algorithms ##
+#==========================================================#
 rmax = 14
 Xall = Array[]
 
-# Execution times 
-time_baker = []
-time_brand = []
-time_sketchy = []
-time_mergingsketchy = []
-
 # Initialize the iSVD object with the first dataset
 data = load(training_data_files[1])
+n_inputs = data["num_inputs"]
 
-## (Dry) Run it once due to Julia's JIT compilation
-baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
-full_increment!(baker, data["X"][:,2:3], verbose=true, runtime=true)
-brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
-full_increment!(brand, data["X"][:,2:3], verbose=true, tol=1e-12, runtime=true)
-sketchy = iSVD(algo=:sketchy; m=burgers.spatial_dim, n=1000, r=rmax, ReduxMap=:Sparse)
-full_increment!(sketchy, data["X"][:,2:3], verbose=true, runtime=true)
-# mergingsketchy = iSVD(algo=:mergingsketchy; m=burgers.spatial_dim, b=200, r=rmax, ReduxMap=:Sparse)
-# full_increment!(mergingsketchy, data["X"][:,2:201], verbose=true, runtime=true)
-svd(data["X"][:,1:10])
-
-## baker
-tmp = @elapsed baker = iSVD(x1=data["X"][:,1], algo=:baker, max_rank=rmax)
-push!(time_baker, tmp)
-tmp = full_increment!(baker, data["X"][:,2:end], verbose=true, runtime=true)
-push!(time_baker, tmp)
-# brand
-tmp = @elapsed brand = iSVD(x1=data["X"][:,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
-push!(time_brand, tmp)
-tmp = full_increment!(brand, data["X"][:,2:end], verbose=true, tol=1e-12, runtime=true)
-push!(time_brand, tmp)
-# sketchy
-tmp = @elapsed  sketchy = iSVD(
+## Run all algorithms for the first data file (first parameter value)
+baker = iSVD(x1=data["X"][:,1,1], algo=:baker, max_rank=rmax)
+brand = iSVD(x1=data["X"][:,1,1], algo=:brand1, reorth_method=:qr, max_rank=rmax)
+sketchy = iSVD(
     algo=:sketchy; m=burgers.spatial_dim, 
-    n=(burgers.time_dim-1)*data["num_inputs"]*burgers.param_dim÷options.data.DS, 
-    r=rmax, ReduxMap=:Sparse)
-push!(time_sketchy, tmp)
-tmp = full_increment!(sketchy, data["X"], verbose=true, runtime=true, dump_all=true)
-push!(time_sketchy, tmp.runtime)
+    n=n_t * n_inputs * n_files,
+    r=rmax, ReduxMap=:Sparse
+)
+for j in 1:n_inputs
+    # Baker 
+    full_increment!(baker, 
+        j == 1 ? data["X"][:,2:end,j] : data["X"][:, :, j],
+        verbose=true
+    )
 
-push!(Xall, data["X"])
+    # Brand
+    full_increment!(brand, 
+        j == 1 ? data["X"][:,2:end,j] : data["X"][:, :, j],
+        verbose=true
+    )
 
-# Increment for the rest of the data
+    # SketchySVD
+    full_increment!(sketchy, data["X"][:, :, j], verbose=true)
+
+    # Batch (just storing data)
+    push!(Xall, data["X"][:, :, j])
+end
+
+## Increment for the rest of the data
 for (i,data_file) in enumerate(training_data_files[2:end])
-    @info "Processing file $(i+1) out of $(length(training_data_files))"
+    @info "Processing file $(i+1) out of $(n_files)"
     jldopen(data_file, "r") do data
-        # Load the data
-        X = data["X"]
-        # Compute the POD basis using Baker's algorithm
-        tmp = full_increment!(baker, X, verbose=true, runtime=true)
-        push!(time_baker, tmp)
-        # Comput the POD basis using Brand's algorithm
-        tmp = full_increment!(brand, X, verbose=true, tol=1e-12, runtime=true)
-        push!(time_brand, tmp)
-        # Compute the POD basis using SketchySVD
-        tmp = full_increment!(sketchy, X, verbose=true, runtime=true, dump_all=true)
-        push!(time_sketchy, tmp.runtime)
-        # Save the data for batch SVD
-        push!(Xall, X)
+        for j in 1:n_inputs
+            # Load the data
+            X = data["X"][:,:,j]
+            # Baker
+            full_increment!(baker, X, verbose=true)
+            # Brand
+            full_increment!(brand, X, verbose=true)
+            # SketchySVD
+            full_increment!(sketchy, X, verbose=true)
+            # Save the data for batch SVD
+            push!(Xall, X)
+        end
     end
 end
 
-#============================================#
-## Compute the POD basis using the batch SVD 
-#============================================#
-time_batch = @elapsed F = svd(reduce(hcat, Xall))
+#=============================================#
+## Compute the POD basis using the batch SVD ##
+#=============================================#
+F = svd(reduce(hcat, Xall))
+
+#===============================##
+## Approximate Xdothat and Xhat ##
+#===============================##
+IncrementalSVD.terminate!(sketchy, false, false)
+@assert size(sketchy.W, 1) == n_t * n_inputs * n_files
+@assert size(sketchy.W, 2) == rmax
+for i in 1:n_files
+    @info "Processing file $(i) out of $(n_files) for Xhat and Xhatdot"
+    data = load(training_data_files[i])
+    X = data["X"]
+    Xhat_save = Array{Float64,3}(undef, rmax, size(X,2)-1, n_inputs)
+    Xhatdot_save = Array{Float64,3}(undef, rmax, size(X,2)-1, n_inputs)
+    for j in 1:n_inputs 
+        @info "  Processing input $(j) out of $(n_inputs)"
+        idx_start = (i-1) * n_t * n_inputs + (j-1) * n_t + 1
+        idx_end = idx_start + n_t - 1
+        Xhat = Diagonal(sketchy.Σ) * sketchy.W[idx_start:idx_end, 1:rmax]'
+        E, Δidx = LnL.finite_diff_matrix(
+            options.data.deriv_type, n_t, options.data.Δt
+        )
+        Xhatdot = Xhat * E
+        Xhat = Xhat[:, Δidx]
+
+        # Check accuracy of the reduced data 
+        Xj = X[:, :, j]
+        Xhat_true = sketchy.Q[:, 1:rmax]' * Xj
+        Xhatdot_true = Xhat_true * E
+        Xhat_true = Xhat_true[:, Δidx]
+        @info "    || Xhat - Xhat_true ||_2 / ||X||_2 = $(norm(Xhat - Xhat_true, 2) / norm(X, 2))"
+        @info "    || Xdothat - Xdothat_true ||_2 / ||X||_2 = $(norm(Xhatdot - Xhatdot_true, 2) / norm(X, 2))"
+
+        # Store values
+        Xhat_save[:, :, j] = Xhat
+        Xhatdot_save[:, :, j] = Xhatdot
+    end
+    # Save the approximated data
+    data["Xhat"] = Xhat_save
+    data["Xhatdot"] = Xhatdot_save
+    save(training_data_files[i], data)
+end
 
 #=====================================================================#
 ## Save the POD basis and singular values from the iSVD and batch SVD
 #=====================================================================#
 bases = Dict(
-    "baker" => (iVr=baker.Q[:,1:rmax], iΣr=baker.Σ[1:rmax]),
-    "brand" => (iVr=brand.Q[:,1:rmax], iΣr=brand.Σ[1:rmax]),
-    "sketchy" => (iVr=sketchy.Q[:,1:rmax], iΣr=sketchy.Σ[1:rmax]),
-    "batch" => (Vr=F.U[:,1:rmax], Σr=F.S[1:rmax]),
+    "baker"   => (iVr=baker.Q[:,1:rmax], iΣr=baker.Σ[1:rmax]),
+    "brand"   => (iVr=brand.Q[:,1:rmax], iΣr=brand.Σ[1:rmax]),
+    "sketchy" => (iVr=sketchy.Q[:,1:rmax], iΣr=sketchy.Σ[1:rmax], iWr=sketchy.W[:,1:rmax]),
+    "batch"   => (Vr=F.U[:,1:rmax], Σr=F.S[1:rmax], Wr=F.V[:,1:rmax]),
 )
 save(joinpath(FILEPATH, "data/streaming/basis.jld2"), bases)
-
-#============================================================#
-## Save the runtime of the iSVD algorithms over all streams
-#============================================================#
-time_baker = reduce(vcat, time_baker)
-time_brand = reduce(vcat, time_brand)
-time_sketchy = reduce(vcat, time_sketchy)
-# time_mergingsketchy = reduce(vcat, time_mergingsketchy)
-save(
-    joinpath(FILEPATH, "data/streaming/basis_runtime.jld2"),
-    "baker", time_baker, "brand", time_brand, "sketchy", time_sketchy, 
-    "batch", time_batch,
-)
 
 #================================#
 ## Compute the projection errors
@@ -141,10 +161,17 @@ proj_error = Dict(
     "batch" => zeros(rmax),
 )
 for i in 1:rmax
-    proj_error["baker"][i] = norm(X - bases["baker"].iVr[:,1:i] * bases["baker"].iVr[:,1:i]' * X, 2) / norm(X, 2)
-    proj_error["brand"][i] = norm(X - bases["brand"].iVr[:,1:i] * bases["brand"].iVr[:,1:i]' * X, 2) / norm(X, 2)
-    proj_error["sketchy"][i] = norm(X - bases["sketchy"].iVr[:,1:i] * bases["sketchy"].iVr[:,1:i]' * X, 2) / norm(X, 2)
-    proj_error["batch"][i] = norm(X - bases["batch"].Vr[:,1:i] * bases["batch"].Vr[:,1:i]' * X, 2) / norm(X, 2)
+    proj_error["baker"][i] = norm(
+        X - bases["baker"].iVr[:,1:i] * bases["baker"].iVr[:,1:i]' * X, 2
+    ) / norm(X, 2)
+    proj_error["brand"][i] = norm(
+        X - bases["brand"].iVr[:,1:i] * bases["brand"].iVr[:,1:i]' * X, 2
+    ) / norm(X, 2)
+    proj_error["sketchy"][i] = norm(
+        X - bases["sketchy"].iVr[:,1:i] * bases["sketchy"].iVr[:,1:i]' * X, 2
+    ) / norm(X, 2)
+    proj_error["batch"][i] = norm(
+        X - bases["batch"].Vr[:,1:i] * bases["batch"].Vr[:,1:i]' * X, 2
+    ) / norm(X, 2)
 end
-
 save(joinpath(FILEPATH, "data/projection_errors.jld2"), proj_error)
