@@ -74,16 +74,16 @@ options = LnL.LSOpInfOption(
     ),
     use_backslash=true,
 )
-rmax = 300
+rmax = 500
 
 #====================================#
 ## Compute One-Pass Streaming-OpInf ##
 #====================================#
 LOAD_STREAM = false
-GRID_SEARCH = true
+GRID_SEARCH = false
 
 if LOAD_STREAM
-    stream_res = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
+    # stream_res = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
 else
     # # Baker
     # stream_res = LnL.OnePassStreamingOpInf(
@@ -110,6 +110,15 @@ else
         LnL.stream!(stream_res, preprocess!(ds[i], means, shifts, scales))
     end
     LnL.compute_svd_sketchy!(stream_res)
+    # Free up memory
+    stream_res.Xrange = [0.0]
+    stream_res.Xcorange = [0.0]
+    stream_res.Xcore = [0.0]
+    stream_res.H = [0.0]
+    stream_res.Ξ = [0.0]
+    stream_res.Ω = [0.0]
+    stream_res.Φ = [0.0]
+    stream_res.Ψ = [0.0]
 
     save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream_res)
 end
@@ -157,8 +166,8 @@ end
 #     # beta1 = 2.1544346900318866e11
 #     # beta1 = 5.179474679231202e12
 #     # beta2 = 5.179474679231202e12
-#     beta1 = 1.0e14
-#     beta2 = 1.0e14
+#     beta1 = 1.0e12
+#     beta2 = 1.0e12
 #     options.λ = LnL.TikhonovParameter(A=beta1, K=beta1, A2=beta2)
 #     op_stream = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 
