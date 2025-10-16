@@ -71,7 +71,7 @@ options = LnL.LSOpInfOption(
     use_backslash=false,
     use_svd_truncation=true,
 )
-rmax = 200
+rmax = 500
 
 #====================================#
 ## Compute One-Pass Streaming-OpInf ##
@@ -81,39 +81,85 @@ LOAD_STREAM = true
 if LOAD_STREAM
     stream = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
 else
-    stream = LnL.OnePassStreamingOpInf(
-        preprocess!(ds[1], means, shifts, scales); 
+    # # Baker
+    # stream_res = LnL.OnePassStreamingOpInf(
+    #     preprocess!(ds[1], means, shifts, scales); 
+    #     options=options, 
+    #     n_state=Int(nxyz * n_fields), 
+    #     rank=rmax, 
+    #     finite_diff=true
+    # )
+    # @showprogress for i in 2:n_train
+    #     LnL.stream!(stream_res, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
+    # end
+
+    # Sketchy
+    stream_res = LnL.OnePassStreamingOpInf(
+        Float64[0.0];
         options=options, 
-        n=Int(nxyz * n_fields), 
+        isvd_method=:sketchy,
+        n_state=Int(nxyz * n_fields), 
+        n_snapshots=n_train,
         rank=rmax, 
-        finite_diff=true
     )
-    @showprogress for i in 2:n_train
-        LnL.stream!(stream, preprocess!(ds[i], means, shifts, scales), tol=1e-10)
+    @showprogress for i in 1:n_train  # make sure to include first snapshot
+        LnL.stream!(stream_res, preprocess!(ds[i], means, shifts, scales))
     end
-    save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream)
+    LnL.compute_svd_sketchy!(stream_res)
+    # Free up memory
+    LnL.purge!(stream_res)
+
+    save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream_res)
 end
 
-## Construct the reduced data matrices
-E, Δidx = LnL.finite_diff_matrix(
-    options.data.deriv_type, n_train, options.data.Δt
-)
-r = rmax
-Xhat = Diagonal(stream.Σ[1:r]) * stream.W[:, 1:r]'
-Xhatdot = Xhat * E
-Xhat = Xhat[:, Δidx]
+# ## Construct the reduced data matrices
+# E, Δidx = LnL.finite_diff_matrix(
+#     options.data.deriv_type, n_train, options.data.Δt
+# )
+# r = 300
+# Xhat = Diagonal(stream_res.Σ[1:r]) * stream_res.W[:, 1:r]'
+# Xhatdot = Xhat * E
+# Xhat = Xhat[:, Δidx]
 
-## Solve the OpInf problem 
-options.with_reg = true
-options.λ = LnL.TikhonovParameter(A=1e13, K=1e13, A2=1e13)
-op_stream = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+# ## Free memory 
+# stream_res = nothing
+# GC.gc()
 
-## Save operators
-save(joinpath(FILEPATH, "data/results/op_stream_r$(r).jld2"), "op_stream", op_stream)
+# ## Run grid Search
+# if GRID_SEARCH
+#     @info "Running grid search for regularization parameters"
+#     include(joinpath(FILEPATH, "grid_search.jl"))
+#     B1 = logrange(10^6, 10^13, length=25)    # best_beta1 = 1.7782794100389227e7
+#     B2 = logrange(10^12, 10^16, length=20)   # best_beta2 = 4.281332398719394e12
+#     reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
+#     n_reg_global = length(reg_pairs_global)
+#     max_growth = 5.0
+#     options.with_reg = true
+#     op, best_beta1, best_beta2, best_train_err, states, eval_time, fidx = 
+#         find_best_opinf_model(reg_pairs_global, Xhat, Xhat, Xhatdot,
+#                             n_train, n_train, max_growth, options,
+#                             ds["times"][1:n_train])
 
-##
-include(joinpath(FILEPATH, "integrate.jl"))
-include(joinpath(FILEPATH, "preprocess.jl"))
-tspan = ds["times"][1:n_train] .- ds["times"][1]
-x0 = stream.V[:,1:r]' * preprocess!(ds[1], means, shifts, scales)
-states, _ = rk4_integrate(x0, tspan, op_stream.A, op_stream.A2u, op_stream.K)
+#     ## Save results
+#     save(joinpath(FILEPATH, "data/results", 
+#         "reg_grid_search_r$(r).jld2"), 
+#         "beta1", best_beta1, "beta2", best_beta2, 
+#         "train_err", best_train_err, "states", states, 
+#         "eval_time", eval_time, "final_idx", fidx)
+
+#     ## Save the best model
+#     save(joinpath(FILEPATH, "data/models", 
+#         "op_stream_r$(r)_lamGS.jld2"), 
+#         "op_stream", op)
+# else
+#     @info "No grid search, using fixed regularization parameters"
+#     ## Solve the OpInf problem 
+#     options.with_reg = true
+#     beta1 = 1.7782794100389227e7
+#     beta2 = 4.281332398719394e12
+#     options.λ = LnL.TikhonovParameter(A=beta1, K=beta1, A2=beta2)
+#     op_stream = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+
+#     ## Save operators
+#     save(joinpath(FILEPATH, "data/models/op_stream_r$(r).jld2"), "op_stream", op_stream)
+# end

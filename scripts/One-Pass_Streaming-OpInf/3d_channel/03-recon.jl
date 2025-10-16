@@ -313,7 +313,7 @@ with_theme(theme_latexfonts()) do
         [LineElement(color=:black, linewidth=2),
         LineElement(color=field_colors[1], linewidth=2),
         LineElement(color=pod_colors[1], linewidth=2, linestyle=:dash)],
-        ["True", "Streaming-OpInf", "POD"],
+        ["True", "Streaming-OpInf", "Projection"],
         orientation=:horizontal,
         labelsize=25,
         patchsize=(60, 30),
