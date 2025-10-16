@@ -1090,3 +1090,15 @@ function compute_stream_operators(obj::OnePassStreamingOpInfSketchy,
 
     return operators
 end
+
+function purge!(obj::OnePassStreamingOpInfSketchy)
+    obj.Φ = zeros(eltype(obj.Φ), 0, 0)
+    obj.Ψ = zeros(eltype(obj.Ψ), 0, 0)
+    obj.Ξ = zeros(eltype(obj.Ξ), 0, 0)
+    obj.Ω = zeros(eltype(obj.Ω), 0, 0)
+    obj.H = zeros(eltype(obj.H), 0, 0)
+    obj.Xcore = zeros(eltype(obj.Xcore), 0, 0)
+    obj.Xrange = zeros(eltype(obj.Xrange), 0, 0)
+    obj.Xcorange = zeros(eltype(obj.Xcorange), 0, 0)
+    return nothing
+end

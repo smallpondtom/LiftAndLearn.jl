@@ -79,11 +79,11 @@ rmax = 500
 #====================================#
 ## Compute One-Pass Streaming-OpInf ##
 #====================================#
-LOAD_STREAM = false
-GRID_SEARCH = false
+LOAD_STREAM = true
+GRID_SEARCH = true
 
 if LOAD_STREAM
-    # stream_res = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
+    stream_res = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
 else
     # # Baker
     # stream_res = LnL.OnePassStreamingOpInf(
@@ -111,66 +111,59 @@ else
     end
     LnL.compute_svd_sketchy!(stream_res)
     # Free up memory
-    stream_res.Xrange = [0.0]
-    stream_res.Xcorange = [0.0]
-    stream_res.Xcore = [0.0]
-    stream_res.H = [0.0]
-    stream_res.Ξ = [0.0]
-    stream_res.Ω = [0.0]
-    stream_res.Φ = [0.0]
-    stream_res.Ψ = [0.0]
+    LnL.purge!(stream_res)
 
     save(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream", stream_res)
 end
 
-# ## Construct the reduced data matrices
-# E, Δidx = LnL.finite_diff_matrix(
-#     options.data.deriv_type, n_train, options.data.Δt
-# )
-# r = 300
-# Xhat = Diagonal(stream_res.Σ[1:r]) * stream_res.W[:, 1:r]'
-# Xhatdot = Xhat * E
-# Xhat = Xhat[:, Δidx]
+## Construct the reduced data matrices
+E, Δidx = LnL.finite_diff_matrix(
+    options.data.deriv_type, n_train, options.data.Δt
+)
+r = 300
+Xhat = Diagonal(stream_res.Σ[1:r]) * stream_res.W[:, 1:r]'
+Xhatdot = Xhat * E
+Xhat = Xhat[:, Δidx]
 
-# ## Run grid Search
-# if GRID_SEARCH
-#     @info "Running grid search for regularization parameters"
-#     include(joinpath(FILEPATH, "grid_search.jl"))
-#     B1 = 10.0 .^ range(10, 12, length=12)  # best_beta1 = 1.0e12
-#     B2 = 10.0 .^ range(12, 13, length=8)  # best_beta2 = 5.179474679231202e12
-#     reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
-#     n_reg_global = length(reg_pairs_global)
-#     max_growth = 5.0
-#     options.with_reg = true
-#     op, best_beta1, best_beta2, best_train_err, states, eval_time, fidx = 
-#         find_best_opinf_model(reg_pairs_global, Xhat, Xhat, Xhatdot,
-#                             n_train, n_train, max_growth, options,
-#                             ds["times"][1:n_train])
+## Free memory 
+stream_res = nothing
+GC.gc()
 
-#     ## Save results
-#     save(joinpath(FILEPATH, "data/results", 
-#         "reg_grid_search_r$(r).jld2"), 
-#         "beta1", best_beta1, "beta2", best_beta2, 
-#         "train_err", best_train_err, "states", states, 
-#         "eval_time", eval_time, "final_idx", fidx)
+## Run grid Search
+if GRID_SEARCH
+    @info "Running grid search for regularization parameters"
+    include(joinpath(FILEPATH, "grid_search.jl"))
+    B1 = logrange(10^6, 10^12, length=25)    # best_beta1 = 1.7782794100389227e7
+    B2 = logrange(10^12, 10^16, length=20)   # best_beta2 = 4.281332398719394e12
+    reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
+    n_reg_global = length(reg_pairs_global)
+    max_growth = 5.0
+    options.with_reg = true
+    op, best_beta1, best_beta2, best_train_err, states, eval_time, fidx = 
+        find_best_opinf_model(reg_pairs_global, Xhat, Xhat, Xhatdot,
+                            n_train, n_train, max_growth, options,
+                            ds["times"][1:n_train])
 
-#     ## Save the best model
-#     save(joinpath(FILEPATH, "data/models", 
-#         "op_stream_r$(r)_lamGS.jld2"), 
-#         "op", op)
-# else
-#     @info "No grid search, using fixed regularization parameters"
-#     ## Solve the OpInf problem 
-#     options.with_reg = true
-#     # beta1 = 4.641588833612782e6
-#     # beta1 = 2.1544346900318866e11
-#     # beta1 = 5.179474679231202e12
-#     # beta2 = 5.179474679231202e12
-#     beta1 = 1.0e12
-#     beta2 = 1.0e12
-#     options.λ = LnL.TikhonovParameter(A=beta1, K=beta1, A2=beta2)
-#     op_stream = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+    ## Save results
+    save(joinpath(FILEPATH, "data/results", 
+        "reg_grid_search_r$(r).jld2"), 
+        "beta1", best_beta1, "beta2", best_beta2, 
+        "train_err", best_train_err, "states", states, 
+        "eval_time", eval_time, "final_idx", fidx)
 
-#     ## Save operators
-#     save(joinpath(FILEPATH, "data/models/op_stream_r$(r).jld2"), "op_stream", op_stream)
-# end
+    ## Save the best model
+    save(joinpath(FILEPATH, "data/models", 
+        "op_stream_r$(r)_lamGS.jld2"), 
+        "op_stream", op)
+else
+    @info "No grid search, using fixed regularization parameters"
+    ## Solve the OpInf problem 
+    options.with_reg = true
+    beta1 = 1.7782794100389227e7
+    beta2 = 4.281332398719394e12
+    options.λ = LnL.TikhonovParameter(A=beta1, K=beta1, A2=beta2)
+    op_stream = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+
+    ## Save operators
+    save(joinpath(FILEPATH, "data/models/op_stream_r$(r).jld2"), "op_stream", op_stream)
+end
