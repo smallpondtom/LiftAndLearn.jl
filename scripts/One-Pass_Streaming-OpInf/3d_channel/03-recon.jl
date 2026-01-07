@@ -25,9 +25,6 @@ FILEPATH = occursin("scripts", pwd()) ?
            joinpath(pwd(), "scripts/One-Pass_Streaming-OpInf/3d_channel")
 fn = "channel_5200_data_0_10000.h5"
 datafile = joinpath(DATAPATH, fn)
-# FILEPATH2 = occursin("scripts", pwd()) ? 
-#            joinpath(pwd(),"Two-Pass_Streaming-OpInf/3d_channel") : 
-#            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/3d_channel")
 
 #==========================================#
 ## Load struct to read data in HDF5 format 
@@ -47,7 +44,7 @@ rmax = 300
 #=======================#
 ## Load the Stream model 
 #=======================#
-GRID_SEARCH = true
+GRID_SEARCH = false
 op_filename = GRID_SEARCH ? 
     joinpath(FILEPATH, "data/models/op_stream_r$(rmax)_lamGS.jld2") : 
     joinpath(FILEPATH, "data/models/op_stream_r$(rmax).jld2")
@@ -62,15 +59,6 @@ iVrmax = iSVD.V[:, 1:rmax]
 iΣrmax = Diagonal(iSVD.Σ[1:rmax])
 iWrmax = iSVD.W[:, 1:rmax]
 iSVD = nothing
-
-# iSVD = load(joinpath(
-#     FILEPATH2, "data/bases/basis_0_8000_r400.jld2") 
-# )["bases"]["baker"]
-# iVrmax = iSVD.iVr[:, 1:rmax]
-# iΣrmax = Diagonal(iSVD.iΣr[1:rmax])
-# iWrmax = iSVD.iW[:, 1:rmax]
-# iSVD = nothing
-
 GC.gc()
 
 #============================#
@@ -124,7 +112,7 @@ with_theme(theme_latexfonts()) do
     train_or_test = "test"
     fig = Figure(size=(1200, 1200)) # Increased height for 5 rows
 
-    fld = "u"
+    fld = "p"
     if fld == "u"
         i_s = 1
         i_f = nxyz
@@ -216,36 +204,39 @@ with_theme(theme_latexfonts()) do
         n_label = train_or_test == "train" ? n_train : n_test
         # Create axes
         ax_full = Axis(fig[1, i], 
+            # title = i == 1 ? 
+            #         L"$t$=%$(round(ds_t, digits=2)) \n snapshot %$(t_idx)/%$(n_label)" : 
+            #         L"$t$=%$(round(ds_t, digits=2)) \n %$(t_idx)/%$(n_label)",
             title = i == 1 ? 
-                    L"$t$=%$(round(ds_t, digits=2)) \n snapshot %$(t_idx)/%$(n_label)" : 
-                    L"$t$=%$(round(ds_t, digits=2)) \n %$(t_idx)/%$(n_label)",
-            ylabel = i == 1 ? L"$y$" : "", 
+                    L"$t$=%$(round(ds_t, digits=2))" :
+                    L"$t$=%$(round(ds_t, digits=2))",
+            ylabel = i == 1 ? L"$\omega_2$" : "", 
             xlabelsize=30, ylabelsize=30, 
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
             titlesize=30,
         )
         ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? L"$y$" : "", 
+            ylabel = i == 1 ? L"$\omega_2$" : "", 
             xlabelsize=30, ylabelsize=30, 
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
         )
         ax_pod = Axis(fig[3, i], 
-            ylabel = i == 1 ? L"$y$" : "", 
+            ylabel = i == 1 ? L"$\omega_2$" : "", 
             xlabelsize=30, ylabelsize=30, 
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
         )
         ax_error = Axis(fig[4, i], 
-            ylabel = i == 1 ? L"$y$" : "", 
+            ylabel = i == 1 ? L"$\omega_2$" : "", 
             xlabelsize=30, ylabelsize=30, 
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
         )
         ax_pod_error = Axis(fig[5, i], 
-            ylabel = i == 1 ? L"$y$" : "", 
-            xlabel = L"$x$",
+            ylabel = i == 1 ? L"$\omega_2$" : "", 
+            xlabel = L"$\omega_1$",
             xlabelsize=30, ylabelsize=30, 
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
@@ -265,14 +256,204 @@ with_theme(theme_latexfonts()) do
     end
     
     # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Original", labelsize=23)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="Streaming OpInf", labelsize=23)
-    Colorbar(fig[3, length(time_indices) + 1], hm_pod, label="Projection", labelsize=23)
-    Colorbar(fig[4, length(time_indices) + 1], hm_error, label="Streaming OpInf Error", labelsize=23)
-    Colorbar(fig[5, length(time_indices) + 1], hm_pod_error, label="Projection Error", labelsize=23)
+    Colorbar(fig[1, length(time_indices) + 1], hm_full, 
+             label="Original", labelsize=25, ticklabelsize=25)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, 
+             label="Streaming OpInf", labelsize=25, ticklabelsize=25)
+    Colorbar(fig[3, length(time_indices) + 1], hm_pod, 
+             label="Projection", labelsize=25, ticklabelsize=25)
+    Colorbar(fig[4, length(time_indices) + 1], hm_error,
+             label="Streaming OpInf Error", labelsize=24, ticklabelsize=25)
+    Colorbar(fig[5, length(time_indices) + 1], hm_pod_error,
+             label="Projection Error", labelsize=24, ticklabelsize=25)
     
     save(joinpath(FILEPATH, "plots", 
          "$(fld)_slice_comparison_$(train_or_test)_$(rmax).png"),
+         dpi=600, px_per_unit=4.0, fig)
+    display(fig)
+end
+
+#========================================#
+## Plot the field with projection error ##
+#========================================#
+using CairoMakie
+
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1500, 950))
+
+    fld = "v"
+    if fld == "u"
+        i_s = 1
+        i_f = nxyz
+    elseif fld == "v"
+        i_s = nxyz + 1
+        i_f = 2 * nxyz
+    elseif fld == "w"
+        i_s = 2 * nxyz + 1
+        i_f = 3 * nxyz
+    elseif fld == "p"
+        i_s = 3 * nxyz + 1
+        i_f = 4 * nxyz
+    end
+
+    # Get midpoint index for z-direction
+    z_mid = nz ÷ 2
+
+    # Define time indices for train (3) and test (2)
+    tspan_train = ds["times"][1:n_train] .- ds["times"][1]
+    tspan_test = ds["times"][n_train+1:n_train+n_test] .- ds["times"][n_train+1]
+    
+    train_time_indices = [50, 1000, length(tspan_train)-10]
+    test_time_indices = [50, length(tspan_test)-10]
+    
+    # Combine all time indices with their shifts
+    all_time_data = [
+        (train_time_indices[1], 0, "train"),
+        (train_time_indices[2], 0, "train"),
+        (train_time_indices[3], 0, "train"),
+        (test_time_indices[1], n_train, "test"),
+        (test_time_indices[2], n_train, "test")
+    ]
+
+    # Pre-calculate all data for colorbar scaling
+    all_full_data = Vector{Matrix{Float64}}(undef, 5)
+    all_rom_data = Vector{Matrix{Float64}}(undef, 5)
+    all_error_data = Vector{Matrix{Float64}}(undef, 5)
+    all_pod_data = Vector{Matrix{Float64}}(undef, 5)
+    all_pod_error_data = Vector{Matrix{Float64}}(undef, 5)
+
+    # Collect all data first
+    for (col_idx, (t_idx, n_shift, data_type)) in enumerate(all_time_data)
+        # Get full data
+        u_full_field = reshape(ds[t_idx+n_shift][i_s:i_f], nx, ny, nz)
+        all_full_data[col_idx] = u_full_field[:, :, z_mid]
+        
+        # Get ROM data
+        if data_type == "train"
+            x_rom_t = iVrmax * states[:, t_idx]
+            x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
+        else
+            x_rom_t = iVrmax * test_states[:, t_idx]
+            x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
+        end
+        u_rom_field = reshape(x_rom_t[i_s:i_f], nx, ny, nz)
+        all_rom_data[col_idx] = u_rom_field[:, :, z_mid]
+
+        # Get POD reconstruction
+        x_full_preprocessed = preprocess!(copy(ds[t_idx+n_shift]), means, shifts, scales)
+        x_pod_t = iVrmax * (iVrmax' * x_full_preprocessed)
+        x_pod_t = unprocess!(x_pod_t, means, shifts, scales)
+        u_pod_field = reshape(x_pod_t[i_s:i_f], nx, ny, nz)
+        all_pod_data[col_idx] = u_pod_field[:, :, z_mid]
+
+        # Compute errors
+        all_error_data[col_idx] = abs.(all_full_data[col_idx] - all_rom_data[col_idx]) 
+        all_pod_error_data[col_idx] = abs.(all_full_data[col_idx] - all_pod_data[col_idx])
+    end
+
+    # Calculate global min/max for each row type
+    full_min, full_max = extrema(vcat(all_full_data...))
+    rom_min, rom_max = extrema(vcat(all_rom_data...))
+    pod_min, pod_max = extrema(vcat(all_pod_data...))
+    error_min, error_max = extrema(vcat(all_error_data...))
+    pod_error_min, pod_error_max = extrema(vcat(all_pod_error_data...))
+
+    # Align the color ranges for first three rows
+    common_min = min(full_min, rom_min, pod_min)
+    common_max = max(full_max, rom_max, pod_max)
+    
+    # Align error color ranges
+    error_common_min = min(error_min, pod_error_min)
+    error_common_max = max(error_max, pod_error_max)
+
+    # Create axes and heatmaps
+    hm_full = nothing
+    hm_rom = nothing
+    hm_error = nothing
+    hm_pod = nothing
+    hm_pod_error = nothing
+
+    for (col_idx, (t_idx, n_shift, data_type)) in enumerate(all_time_data)
+        ds_t = ds["times"][t_idx+n_shift] .- ds["times"][1+n_shift]
+        ds_t = data_type == "train" ? 
+            ds["times"][t_idx] .- ds["times"][1] : 
+            ds["times"][t_idx+n_shift] .- ds["times"][1]
+        
+        # Column title showing time and train/test
+        col_title = col_idx <= 3 ? 
+                    L"Train: $t$=%$(round(ds_t, digits=2))" : 
+                    L"Test: $t$=%$(round(ds_t, digits=2))"
+        
+        # Row 1: Original
+        ax_full = Axis(fig[1, col_idx], 
+            title = col_title,
+            ylabel = col_idx == 1 ? L"$\omega_2$" : "", 
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+            titlesize=30,
+        )
+        
+        # Row 2: Streaming OpInf
+        ax_rom = Axis(fig[2, col_idx], 
+            ylabel = col_idx == 1 ? L"$\omega_2$" : "", 
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+        )
+        
+        # Row 3: POD Projection
+        ax_pod = Axis(fig[3, col_idx], 
+            ylabel = col_idx == 1 ? L"$\omega_2$" : "", 
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+        )
+        
+        # Row 4: Streaming OpInf Error
+        ax_error = Axis(fig[4, col_idx], 
+            ylabel = col_idx == 1 ? L"$\omega_2$" : "", 
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+        )
+        
+        # Row 5: POD Error
+        ax_pod_error = Axis(fig[5, col_idx], 
+            ylabel = col_idx == 1 ? L"$\omega_2$" : "", 
+            xlabel = L"$\omega_1$",
+            xlabelsize=30, ylabelsize=30, 
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+        )
+
+        # Create heatmaps with aligned color ranges
+        hm_full = heatmap!(ax_full, ds["x"][:], ds["y"][:], all_full_data[col_idx], 
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_rom = heatmap!(ax_rom, ds["x"][:], ds["y"][:], all_rom_data[col_idx], 
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_pod = heatmap!(ax_pod, ds["x"][:], ds["y"][:], all_pod_data[col_idx], 
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_error = heatmap!(ax_error, ds["x"][:], ds["y"][:], all_error_data[col_idx], 
+            colormap = :matter, colorrange = (error_common_min, error_common_max))
+        hm_pod_error = heatmap!(ax_pod_error, ds["x"][:], ds["y"][:], all_pod_error_data[col_idx], 
+            colormap = :matter, colorrange = (error_common_min, error_common_max))
+    end
+    
+    # Add colorbars at the end of each row
+    Colorbar(fig[1, 6], hm_full, 
+             label="Original", labelsize=26, ticklabelsize=25)
+    Colorbar(fig[2, 6], hm_rom, 
+             label="Streaming\nOpInf", labelsize=26, ticklabelsize=25)
+    Colorbar(fig[3, 6], hm_pod, 
+             label="Projection", labelsize=26, ticklabelsize=25)
+    Colorbar(fig[4, 6], hm_error,
+             label="Streaming\nOpInf Error", labelsize=26, ticklabelsize=25)
+    Colorbar(fig[5, 6], hm_pod_error,
+             label="Projection\nError", labelsize=26, ticklabelsize=25)
+    
+    save(joinpath(FILEPATH, "plots", 
+         "$(fld)_slice_comparison_train_test_$(rmax).png"),
          dpi=600, px_per_unit=4.0, fig)
     display(fig)
 end

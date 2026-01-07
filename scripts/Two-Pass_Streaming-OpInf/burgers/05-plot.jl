@@ -309,8 +309,8 @@ with_theme(theme_latexfonts()) do
          legends=["POD", "OpInf", "iSVD-iQRRLS"], 
          title="iSVD-iQRRLS"),
         (methods=["pod", "opinf", "stream"], 
-         legends=["POD", "OpInf", "iSVD-Compact LS"], 
-         title="iSVD-Compact LS")
+         legends=["POD", "OpInf", "iSVD-LS"], 
+         title="iSVD-LS")
     ]
 
     colors = Makie.wong_colors()[1:5]
@@ -746,8 +746,8 @@ with_theme(theme_latexfonts()) do
          legends=["POD", "OpInf", "iSVD-iQRRLS"], 
          title="iSVD-iQRRLS"),
         (methods=["pod", "opinf", "stream"], 
-         legends=["POD", "OpInf", "iSVD-Compact LS"], 
-         title="iSVD-Compact LS")
+         legends=["POD", "OpInf", "iSVD-LS"], 
+         title="iSVD-LS")
     ]
 
     colors = Makie.wong_colors()[1:5]

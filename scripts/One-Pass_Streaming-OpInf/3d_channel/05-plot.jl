@@ -236,8 +236,8 @@ with_theme(theme_latexfonts()) do
                    labelsize=25, ticklabelsize=20)
     
     display(fig)
-    save(joinpath(FILEPATH, 
-        "plots/$(batch_or_stream)_zprofile_heatmap_r$(rmax).png"), fig)
+    # save(joinpath(FILEPATH, 
+    #     "plots/$(batch_or_stream)_zprofile_heatmap_r$(rmax).png"), fig)
 end
 
 
@@ -455,7 +455,7 @@ end
 ## Plot 4: Z Profile 
 #===========================================#
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1500, 900))
+    fig = Figure(size=(1500, 650))
 
     # Calculate error ranges first to ensure consistent scaling
     zprof_error_train = abs.(mean(zprof_train_rom, dims=2)[:] - mean(zprof_train, dims=2)[:]) ./ 
@@ -488,6 +488,7 @@ with_theme(theme_latexfonts()) do
         titlesize=40, xlabelsize=40, ylabelsize=43, 
         xticklabelsize=35, yticklabelsize=35,
         xticksvisible=false, xticklabelsvisible=false, xgridvisible=true,
+        ylabelpadding=20,
         width=640,
         xscale=log10,
         limits = (nothing, nothing, common_vel_limits...)
@@ -513,7 +514,7 @@ with_theme(theme_latexfonts()) do
     lines!(ax1_train, z_coords[2:end], zprof_train_rom_mean,
                 label="Streaming OpInf", color=c2,
                 linewidth=14, linestyle=:dash)
-    axislegend(ax1_train, position=:lt, labelsize=40, patchsize=(120, 30))
+    axislegend(ax1_train, position=:lt, labelsize=38, patchsize=(100, 30))
 
     # Plot mean profiles over time - Testing
     zprof_test_mean = mean(zprof_test, dims=2)[2:end]
@@ -527,7 +528,7 @@ with_theme(theme_latexfonts()) do
     # Bottom left: Error in z profile (Training)
     ax2_train = Axis(fig[3, 1],
         xlabel = L"$\omega_3$ coordinate ($\log_{10}$ scale)",
-        ylabel = "Relative Error",
+        ylabel = "Relative\nError",
         xticks=round.(logrange(z_coords[2], z_coords[end], 4), digits=2), 
         yscale=log10,
         titlesize=40, xlabelsize=40, ylabelsize=43, 
@@ -687,11 +688,13 @@ with_theme(theme_latexfonts()) do
 
     c1, c2 = Makie.wong_colors()[1:2]
 
+    tlims = (-100, n_train + n_test + 300)
+
     # Top subplot: Combined utau values
     ax1 = Axis(fig[1, 1], 
         ylabel = L"$u_{\tau} \,/\, \overline{u_{\tau}}$",
         title = "Friction Velocity over Time (Training + Testing)",
-        limits = (nothing, nothing, utau_limits...),
+        limits = (tlims..., utau_limits...),
         titlesize=40, xlabelsize=38, ylabelsize=45, 
         xticklabelsize=35, yticklabelsize=35,
         xticksvisible=false, xticklabelsvisible=false
@@ -704,14 +707,24 @@ with_theme(theme_latexfonts()) do
         title = "Relative Error",
         yscale=log10, ylabelpadding=15,
         xticks=0:2000:10000,
-        limits = (nothing, nothing, error_limits...),
+        limits = (tlims..., error_limits...),
         titlesize=40, xlabelsize=40, ylabelsize=42, 
-        xticklabelsize=39, yticklabelsize=35
+        xticklabelsize=39, yticklabelsize=35,
     )
 
     # Combined time steps
     time_steps_combined = 1:(n_train + n_test)
+
+    # # Add background colors for training and testing regions
+    # # Training background (light blue)
+    # vspan!(ax1, tlims[1], n_train, color=RGBAf(0.9, 0.95, 1.0, 0.32))
+    # # Testing background (light orange)
+    # vspan!(ax1, n_train, tlims[2], color=RGBAf(1.0, 0.95, 0.85, 0.32))
     
+    # # For log scale axis (ax2)
+    # vspan!(ax2, tlims[1], n_train, color=RGBAf(0.9, 0.95, 1.0, 0.32))
+    # vspan!(ax2, n_train, tlims[2], color=RGBAf(1.0, 0.95, 0.85, 0.32))
+
     # Plot combined data
     lines!(ax1, time_steps_combined, utau_combined_orig, 
            label="Original", linewidth=3.5, color=:black)

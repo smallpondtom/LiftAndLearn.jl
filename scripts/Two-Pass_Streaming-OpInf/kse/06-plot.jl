@@ -755,7 +755,7 @@ with_theme(theme_latexfonts()) do
         fig[end+1,1:end], lines,
         [
             "POD", "OpInf",
-            "iSVD-Projection-RLS", "iSVD-Projection-iQRRLS", 
+            "iSVD-Project-RLS", "iSVD-Project-iQRRLS", 
             # "Stream-QRRLS",
             # "Edson", "Cvitanovic"
         ],
@@ -771,9 +771,179 @@ with_theme(theme_latexfonts()) do
         patchsize=(130,30),
         patchlabelgap=10,
     )
-    save(joinpath(FILEPATH, "plots/lyapunov_exponent_and_ky.pdf"), fig)
+    # save(joinpath(FILEPATH, "plots/lyapunov_exponent_and_ky.pdf"), fig)
     display(fig)
 end
+
+##
+training_stats = load(joinpath(FILEPATH, "data/training_statistics.jld2"))
+test_stats = load(joinpath(FILEPATH, "data/testing_statistics.jld2"))
+using ChaosGizmo: kaplan_yorke_dim
+# Reference values
+edson = [
+    0.043, 0.003, 0.002, -0.004, -0.008, 
+    -0.185, -0.253, -0.296, -0.309, -1.965
+]
+cvitanovic = [
+    0.048, 0, 0, -0.003, -0.189,
+    -0.256, -0.290, -0.310, -1.963, -1.967
+]
+edson_ky = kaplan_yorke_dim(edson)
+cvitanovic_ky = kaplan_yorke_dim(cvitanovic)
+
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1800, 980))
+    
+    # Both columns use r=24, but different methods
+    labels_col1 = ["pod", "tropinf", "stream_rls"]
+    labels_col2 = ["pod", "tropinf", "stream_iqrrls"]
+    labels = [labels_col1, labels_col2]
+    marker_styles1 = [:circle, :cross, :rect]
+    marker_styles2 = [:circle, :cross, :star5]
+    marker_styles = [marker_styles1, marker_styles2]
+    marker_sizes = [48, 50, 60]
+    line_styles1 = [:solid, :dash, :dot]
+    line_styles2 = [:solid, :dash, :dashdot]
+    line_styles = [line_styles1, line_styles2]
+    line_widths = [10, 13, 16]
+    colors = [Makie.wong_colors()[[1,2,3]], Makie.wong_colors()[[1,2,4]]]
+
+    # --- GRID: 2 rows (Train/Test) x 2 columns (RLS, iQRRLS) + 1 column (D_KY) ---
+    r = 24  # Both columns use r=24
+    r_idx = findfirst(isequal(r), rrange)
+    ax_le = Matrix{Axis}(undef, 2, 2)
+    
+    for (row, splitname, stats) in zip(1:2, ["Train","Test"], [training_stats, test_stats])
+        for (col, method_name) in zip(1:2, ["iSVD-Project-RLS", "iSVD-Project-iQRRLS"])
+            ax = Axis(fig[row, col], 
+                    title = (
+                        row == 1 ?
+                        L"Lyapunov exponent \n %$(splitname) ($r$ = %$r, %$method_name)" :
+                        L"%$(splitname) ($r$ = %$r, %$method_name)"
+                    ),
+                    xlabel = (row==2 ? L"Lyapunov index $i$" : ""),
+                    ylabel = (col==1 ? L"Lyapunov exponent $\lambda_i$" : ""),
+                    titlesize=34, xlabelsize=35, ylabelsize=35,
+                    xticklabelsize=30, yticklabelsize=30,)
+            ax_le[row, col] = ax
+            
+            if row == 1 && col == 1
+                axislegend(ax, 
+                    [MarkerElement(
+                        color=:transparent, marker=:star8,
+                        strokecolor=:black, strokewidth=3.5
+                    )],
+                    ["Edson et al."], position=:lb, framevisible=false,
+                    labelsize=35, markersize=40, 
+                    patchlabelgap=20
+                )
+            end
+
+            for (i, algo) in enumerate(labels[col])
+                algo = Symbol(algo)
+                l = scatterlines!(
+                    ax, 1:length(edson), 
+                    stats["LE"][algo][:, r_idx],
+                    marker=marker_styles[col][i], 
+                    markersize=marker_sizes[i],
+                    linestyle=line_styles[col][i], 
+                    linewidth=line_widths[i], #color=colors[col][i],
+                    color= :transparent,
+                    markercolor=:transparent, strokewidth=3.5,
+                    strokecolor=colors[col][i]
+                )
+                
+                # Reference values
+                scatter!(ax, 
+                    1:length(edson), edson, color=:transparent,
+                    strokewidth=2.5,
+                    markersize=35, marker=:star8, strokecolor=:black) 
+            end
+        end
+    end
+
+    axKYtrain = Axis(
+        fig[1, 3], 
+        ylabel=L"mean $D_{KY}$",
+        title=L"Kaplan-Yorke dimension \n Training$$", xticks=rrange,
+        titlesize=35, xlabelsize=35, ylabelsize=35, 
+        xticklabelsize=30, yticklabelsize=30,
+    )
+    axKYtest = Axis(
+        fig[2, 3], 
+        xlabel=L"reduced dimension $r$", ylabel=L"mean $D_{KY}$",
+        title=L"Test$$", xticks=rrange,
+        titlesize=35, xlabelsize=35, ylabelsize=35, 
+        xticklabelsize=30, yticklabelsize=30,
+    )
+
+    axislegend(axKYtrain, 
+        [LineElement(color=:black, linestyle=:dash)],
+        ["Edson et al."], position=:rb, framevisible=false,
+        labelsize=35, linewidth=10, patchsize=(100,20),
+        patchlabelgap=10
+    )
+
+    # Plot all methods on KY dimension plot
+    all_labels = ["pod", "tropinf", "stream_rls", "stream_iqrrls"]
+    colors = Makie.wong_colors()[1:length(all_labels)]
+    for (i, a) in enumerate(Symbol.(all_labels))
+        c = colors[i]
+        lines!(axKYtrain, rrange, training_stats["KY"][a]; color=c, linewidth=3)
+        lines!(axKYtest, rrange, test_stats["KY"][a]; color=c, linewidth=3)
+    end
+
+    # Reference values
+    hlines!(axKYtrain, [edson_ky], color=:black, linestyle=:dash, linewidth=5)
+    hlines!(axKYtest, [edson_ky], color=:black, linestyle=:dash, linewidth=5)
+
+    # Elements for the Legend
+    elem1 = [
+        MarkerElement(color=:transparent, marker=:circle, markersize=45,
+            strokecolor=colors[1], strokewidth=5.0),
+        LineElement(color=colors[1], linestyle=:solid, linewidth=8,
+            strokecolor=colors[1], strokewidth=5.0),
+    ]
+    elem2 = [
+        MarkerElement(color=:transparent, marker=:cross, markersize=45,
+            strokecolor=colors[2], strokewidth=5),
+        LineElement(color=colors[2], linestyle=:solid, linewidth=8,
+            strokecolor=colors[2], strokewidth=5),
+    ]
+    elem3 = [
+        MarkerElement(color=:transparent, marker=:rect, markersize=45,
+            strokecolor=colors[3], strokewidth=5),
+        LineElement(color=colors[3], linestyle=:solid, linewidth=8,
+            strokecolor=colors[3], strokewidth=5),
+    ]
+    elem4 = [
+        MarkerElement(color=:transparent, marker=:star5, markersize=45,
+            strokecolor=colors[4], strokewidth=5),
+        LineElement(color=colors[4], linestyle=:solid, linewidth=8,
+            strokecolor=colors[4], strokewidth=5),
+    ]
+
+    elements = [elem1, elem2, elem3, elem4]
+
+    Legend(
+        fig[end+1,1:end], elements,
+        [
+            "POD", "OpInf", "iSVD-Project-RLS", "iSVD-Project-iQRRLS" 
+        ],
+        colgap = 30,
+        rowgap = 20,
+        orientation=:horizontal, 
+        halign=:center,
+        labelsize=35,
+        nbanks=1,
+        framevisible=false,
+        patchsize=(169,30),
+        patchlabelgap=10,
+    )
+    save(joinpath(FILEPATH, "plots/lyapunov_exponent_and_ky.pdf"), fig)
+    display(fig)
+end 
+
 
 #==================================================================#
 ## Plot the flow field predictions for the training and test data ##

@@ -84,6 +84,8 @@ C_opinf = Vector{Matrix{Float64}}(undef, burger.param_dim)
 #===========================#
 ## Generate the data
 #===========================#
+Xtest = nothing
+Urand = nothing
 @info "Generate the data"
 @showprogress @Threads.threads for i in eachindex(burger.diffusion_coeffs)
     μ = burger.diffusion_coeffs[i]
@@ -122,6 +124,29 @@ C_opinf = Vector{Matrix{Float64}}(undef, burger.param_dim)
     Ytrain[i] = Y
     Utrain[i] = U
 end
+
+##
+μ = 0.1
+
+# Obtain full operators
+A, F, B = burger.finite_diff_model(burger, μ)
+
+# Integrate to obtain data
+X = burger.integrate_model(burger.tspan, burger.IC, Utest; linear_matrix=A,
+                           control_matrix=B, quadratic_matrix=F, system_input=true)
+U = Utest
+X2 = reduce(hcat, map(x -> kron(x,x), eachcol(X)))
+D = hcat(X', X2', U, ones(size(X,2)))
+svdvals(D)
+
+## 
+Vr = svd(X).U[:,1:10]
+Xr = Vr' * X
+Xr2 = reduce(hcat, map(x -> kron(x,x), eachcol(Xr)))
+Dr = hcat(Xr', Xr2', U, ones(size(Xr,2)))
+# Dr = hcat(Xr', Xr2', ones(size(Xr,2)))
+svdvals(Dr)
+
 
 #===========================#
 ## Generate the basis

@@ -44,8 +44,11 @@ rmax = 200
 #=======================#
 ## Load the Stream model 
 #=======================#
-op_stream = load(joinpath(FILEPATH, 
-        "data/results/op_stream_r$(rmax).jld2"))["op_stream"]
+GRID_SEARCH = false
+op_filename = GRID_SEARCH ? 
+    joinpath(FILEPATH, "data/models/op_stream_r$(rmax)_lamGS.jld2") : 
+    joinpath(FILEPATH, "data/models/op_stream_r$(rmax).jld2")
+op_stream = load(op_filename)["op_stream"]
 
 #=================#
 ## Load the bases 
@@ -102,7 +105,7 @@ with_theme(theme_latexfonts()) do
     train_or_test = "train"
     fig = Figure(size=(1200, 1200)) # Increased height for 5 rows
 
-    fld = "p"
+    fld = "u"
     if fld == "u"
         i_s = 1
         i_f = nxyz
@@ -209,13 +212,13 @@ with_theme(theme_latexfonts()) do
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
         )
-        ax_error = Axis(fig[3, i], 
+        ax_pod = Axis(fig[3, i], 
             ylabel = i == 1 ? L"$y$" : "", 
             xlabelsize=30, ylabelsize=30, 
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
         )
-        ax_pod = Axis(fig[4, i], 
+        ax_error = Axis(fig[4, i], 
             ylabel = i == 1 ? L"$y$" : "", 
             xlabelsize=30, ylabelsize=30, 
             xticklabelsvisible=false, xticksvisible=false,
@@ -243,11 +246,11 @@ with_theme(theme_latexfonts()) do
     end
     
     # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", labelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="Streaming-OpInf", labelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Streaming-OpInf Error", labelsize=20)
-    Colorbar(fig[4, length(time_indices) + 1], hm_pod, label="POD", labelsize=20)
-    Colorbar(fig[5, length(time_indices) + 1], hm_pod_error, label="POD Error", labelsize=20)
+    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Original", labelsize=23)
+    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="Streaming OpInf", labelsize=23)
+    Colorbar(fig[3, length(time_indices) + 1], hm_pod, label="Projection", labelsize=23)
+    Colorbar(fig[4, length(time_indices) + 1], hm_error, label="Streaming OpInf Error", labelsize=23)
+    Colorbar(fig[5, length(time_indices) + 1], hm_pod_error, label="Projection Error", labelsize=23)
     
     save(joinpath(FILEPATH, "plots", 
          "$(fld)_slice_comparison_$(train_or_test)_$(rmax).png"), fig)

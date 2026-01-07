@@ -80,7 +80,7 @@ rmax = 500
 ## Compute One-Pass Streaming-OpInf ##
 #====================================#
 LOAD_STREAM = true
-GRID_SEARCH = true
+GRID_SEARCH = false
 
 if LOAD_STREAM
     stream_res = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
