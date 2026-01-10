@@ -56,7 +56,7 @@ for (i,data_file) in enumerate(training_data_files)
 
         # Initialize the One-Pass Streaming-OpInf object
         stream = LnL.OnePassStreamingOpInf(
-            X[:,1,1]; options=options, n=size(X,1), m=1, 
+            X[:,1,1]; options=options, n_state=size(X,1), n_input=1, 
             rank=rmax, finite_diff=true
         )
 
