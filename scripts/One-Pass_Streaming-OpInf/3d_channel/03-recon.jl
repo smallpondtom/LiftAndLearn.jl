@@ -684,3 +684,349 @@ with_theme(theme_latexfonts()) do
          "state_evolution_$(train_or_test)_$(rmax).png"), fig)
     display(fig)
 end
+
+#=============================================#
+## Create animation of field reconstruction ##
+## (Training + Testing combined)            ##
+#=============================================#
+using CairoMakie
+
+"""
+    create_field_animation(fld; frame_skip=1, max_time=nothing, slice_dir="z", slice_idx=nothing)
+
+Create an animation comparing original data, streaming-OpInf reconstruction, and error
+for both training and testing data in a continuous timeline.
+
+# Arguments
+- `fld::String`: Field to animate ("u", "v", "w", or "p")
+- `frame_skip::Int`: Skip frames to reduce file size (default=1, use every frame)
+- `max_time::Union{Float64, Nothing}`: Maximum time to animate up to (default=nothing, animates all data)
+- `slice_dir::String`: Direction to slice ("x", "y", or "z", default="z")
+- `slice_idx::Union{Int, Nothing}`: Index along slice direction (default=nothing, uses midpoint)
+"""
+function create_field_animation(fld::String; frame_skip::Int=1, max_time::Union{Float64, Nothing}=nothing, 
+                                slice_dir::String="z", slice_idx::Union{Int, Nothing}=nothing)
+    @assert fld in ["u", "v", "w", "p"] "Field must be one of: u, v, w, p"
+    @assert slice_dir in ["x", "y", "z"] "slice_dir must be one of: x, y, z"
+    
+    # Determine field indices
+    if fld == "u"
+        i_s = 1
+        i_f = nxyz
+    elseif fld == "v"
+        i_s = nxyz + 1
+        i_f = 2 * nxyz
+    elseif fld == "w"
+        i_s = 2 * nxyz + 1
+        i_f = 3 * nxyz
+    elseif fld == "p"
+        i_s = 3 * nxyz + 1
+        i_f = 4 * nxyz
+    end
+    
+    # Determine slice index and plot dimensions based on slice direction
+    if slice_dir == "z"
+        slice_idx = slice_idx !== nothing ? slice_idx : nz ÷ 2
+        @assert 1 <= slice_idx <= nz "slice_idx must be between 1 and $nz for z-direction"
+        plot_x_coords = ds["x"][:]
+        plot_y_coords = ds["y"][:]
+        dim1, dim2 = nx, ny  # Width, Height of plot data
+        use_vertical_layout = false
+    elseif slice_dir == "y"
+        slice_idx = slice_idx !== nothing ? slice_idx : ny ÷ 2
+        @assert 1 <= slice_idx <= ny "slice_idx must be between 1 and $ny for y-direction"
+        plot_x_coords = ds["x"][:]
+        plot_y_coords = ds["z"][:]
+        dim1, dim2 = nx, nz  # Dimensions for heatmap: (nx, nz)
+        use_vertical_layout = true
+    else  # slice_dir == "x"
+        slice_idx = slice_idx !== nothing ? slice_idx : nx ÷ 2
+        @assert 1 <= slice_idx <= nx "slice_idx must be between 1 and $nx for x-direction"
+        plot_x_coords = ds["y"][:]
+        plot_y_coords = ds["z"][:]
+        dim1, dim2 = ny, nz  # Dimensions for heatmap: (ny, nz)
+        use_vertical_layout = true
+    end
+    
+    # Calculate aspect ratio for the plot
+    aspect_ratio = dim1 / dim2
+    
+    # Set figure size based on layout
+    if use_vertical_layout
+        if slice_dir == "x"
+            # For x and y slices: 3 rows, 2 columns (plot + colorbar)
+            base_width = 1600
+            fig_width = base_width
+            fig_height_raw = base_width / aspect_ratio * 2.8 # 3 rows
+            fig_height = Int(round(fig_height_raw / 2) * 2)
+            fig_width = Int(round(fig_width / 2) * 2)
+        else  # y slice
+            # For x and y slices: 3 rows, 2 columns (plot + colorbar)
+            base_width = 1600
+            fig_width = base_width
+            fig_height_raw = base_width / aspect_ratio * 3 + 20 # 3 rows
+            fig_height = Int(round(fig_height_raw / 2) * 2)
+            fig_width = Int(round(fig_width / 2) * 2)
+        end
+    else
+        # For z slice: 1 row, 5 columns (3 plots + 2 colorbars)
+        base_height = 720
+        fig_height = base_height
+        fig_width_raw = base_height * aspect_ratio * 2.4
+        fig_width = Int(round(fig_width_raw / 2) * 2)
+        fig_height = Int(round(fig_height / 2) * 2)
+        
+        # Constrain to reasonable limits
+        max_width = 2400
+        if fig_width > max_width
+            fig_width = max_width
+            fig_height = Int(round(max_width / aspect_ratio / 2.4 / 2) * 2)
+        end
+    end
+    
+    # Create combined time span
+    tspan_combined = ds["times"][1:n_train+n_test] .- ds["times"][1]
+    
+    # Determine the maximum index based on max_time
+    if max_time !== nothing
+        max_idx = findfirst(t -> t >= max_time, tspan_combined)
+        if max_idx === nothing
+            max_idx = n_train + n_test
+            @warn "max_time ($max_time) exceeds available data. Using all data."
+        end
+    else
+        max_idx = n_train + n_test
+    end
+    
+    time_indices = 1:frame_skip:max_idx
+    
+    println("Animating from time 0.0 to $(tspan_combined[max_idx]) (index 1 to $max_idx)")
+    println("Slice direction: $slice_dir, index: $slice_idx")
+    println("Plot dimensions: $(dim1) x $(dim2), aspect ratio: $(round(aspect_ratio, digits=2))")
+    println("Figure size: $(fig_width) x $(fig_height)")
+    println("Layout: $(use_vertical_layout ? "3×2 (vertical)" : "1×5 (horizontal)")")
+    
+    # Helper function to extract slice based on direction
+    function extract_slice(field_3d, slice_dir, slice_idx)
+        if slice_dir == "z"
+            # field_3d is (nx, ny, nz), return (nx, ny)
+            return field_3d[:, :, slice_idx]
+        elseif slice_dir == "y"
+            # field_3d is (nx, ny, nz), extract y-slice and transpose
+            # We want (nx, nz) to match dim1=nx, dim2=nz
+            return field_3d[:, slice_idx, :]
+        else  # x
+            # field_3d is (nx, ny, nz), extract x-slice and transpose
+            # We want (ny, nz) to match dim1=ny, dim2=nz  
+            return field_3d[slice_idx, :, :]
+        end
+    end 
+
+    # Pre-calculate global min/max for consistent color scaling
+    println("Calculating global color ranges for field: $fld")
+    all_full_min, all_full_max = Inf, -Inf
+    all_rom_min, all_rom_max = Inf, -Inf
+    all_error_min, all_error_max = Inf, -Inf
+    
+    # Sample frames from the range we're animating
+    sample_step = max(1, max_idx ÷ 100)
+    sample_indices = 1:sample_step:max_idx
+    
+    for t_idx in sample_indices
+        # Get full data
+        u_full_field = reshape(ds[t_idx][i_s:i_f], nx, ny, nz)
+        full_slice = extract_slice(u_full_field, slice_dir, slice_idx)
+        
+        # Get ROM data
+        if t_idx <= n_train
+            x_rom_t = iVrmax * states[:, t_idx]
+        else
+            x_rom_t = iVrmax * test_states[:, t_idx - n_train]
+        end
+        x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
+        u_rom_field = reshape(x_rom_t[i_s:i_f], nx, ny, nz)
+        rom_slice = extract_slice(u_rom_field, slice_dir, slice_idx)
+        
+        # Compute error
+        error_slice = abs.(full_slice - rom_slice)
+        
+        # Update min/max
+        all_full_min = min(all_full_min, minimum(full_slice))
+        all_full_max = max(all_full_max, maximum(full_slice))
+        all_rom_min = min(all_rom_min, minimum(rom_slice))
+        all_rom_max = max(all_rom_max, maximum(rom_slice))
+        all_error_min = min(all_error_min, minimum(error_slice))
+        all_error_max = max(all_error_max, maximum(error_slice))
+    end
+    
+    # Align color ranges for data fields
+    common_min = min(all_full_min, all_rom_min)
+    common_max = max(all_full_max, all_rom_max)
+    
+    println("Creating animation...")
+    
+    with_theme(theme_latexfonts()) do
+        fig = Figure(size=(fig_width, fig_height))
+        
+        if use_vertical_layout
+            # 3×2 layout for x and y slices
+            # Row 1: Original
+            ax_full = Axis(fig[1, 1],
+                xlabelsize=30, ylabelsize=30,
+                xticklabelsvisible=false, xticksvisible=false,
+                yticklabelsvisible=false, yticksvisible=false,
+                ylabel = "Original",
+                ylabelrotation = 0,
+                titlesize=30,
+                aspect = DataAspect()
+            )
+            
+            # Row 2: Streaming OpInf
+            ax_rom = Axis(fig[2, 1],
+                xlabelsize=30, ylabelsize=30,
+                xticklabelsvisible=false, xticksvisible=false,
+                yticklabelsvisible=false, yticksvisible=false,
+                ylabel =  "Streaming OpInf",
+                ylabelrotation = 0,
+                titlesize=30,
+                aspect = DataAspect()
+            )
+            
+            # Row 3: Absolute Error
+            ax_error = Axis(fig[3, 1],
+                xlabelsize=30, ylabelsize=30,
+                xticklabelsvisible=false, xticksvisible=false,
+                yticklabelsvisible=false, yticksvisible=false,
+                ylabel = "Absolute Error",
+                ylabelrotation = 0,
+                titlesize=30,
+                aspect = DataAspect()
+            )
+            
+            # Initialize observables for the data
+            full_data = Observable(zeros(dim1, dim2))
+            rom_data = Observable(zeros(dim1, dim2))
+            error_data = Observable(zeros(dim1, dim2))
+            
+            # Create heatmaps
+            hm_full = heatmap!(ax_full, plot_x_coords, plot_y_coords, full_data,
+                colormap = :viridis, colorrange = (common_min, common_max))
+            hm_rom = heatmap!(ax_rom, plot_x_coords, plot_y_coords, rom_data,
+                colormap = :viridis, colorrange = (common_min, common_max))
+            hm_error = heatmap!(ax_error, plot_x_coords, plot_y_coords, error_data,
+                colormap = :matter, colorrange = (all_error_min, all_error_max))
+            
+            # Add colorbars spanning rows
+            Colorbar(fig[1:2, 2], hm_full,
+                label="Field Value", labelsize=26, ticklabelsize=22,
+                )
+            Colorbar(fig[3, 2], hm_error,
+                label="Error", labelsize=26, ticklabelsize=22)
+            
+            # Add time and phase label at top
+            time_label = Label(fig[0, 1:2], "", fontsize=32, tellwidth=false)
+            
+        else
+            # 1×5 layout for z slice (original horizontal layout)
+            ax_full = Axis(fig[1, 1],
+                xlabelsize=30, ylabelsize=30,
+                xticklabelsvisible=false, xticksvisible=false,
+                yticklabelsvisible=false, yticksvisible=false,
+                title = "Original",
+                titlesize=30,
+                aspect = DataAspect()
+            )
+            
+            ax_rom = Axis(fig[1, 2],
+                xlabelsize=30, ylabelsize=30,
+                xticklabelsvisible=false, xticksvisible=false,
+                yticklabelsvisible=false, yticksvisible=false,
+                title = "Streaming OpInf",
+                titlesize=30,
+                aspect = DataAspect()
+            )
+            
+            ax_error = Axis(fig[1, 3],
+                xlabelsize=30, ylabelsize=30,
+                xticklabelsvisible=false, xticksvisible=false,
+                yticklabelsvisible=false, yticksvisible=false,
+                title = "Absolute Error",
+                titlesize=30,
+                aspect = DataAspect()
+            )
+            
+            # Initialize observables for the data
+            full_data = Observable(zeros(dim1, dim2))
+            rom_data = Observable(zeros(dim1, dim2))
+            error_data = Observable(zeros(dim1, dim2))
+            
+            # Create heatmaps
+            hm_full = heatmap!(ax_full, plot_x_coords, plot_y_coords, full_data,
+                colormap = :viridis, colorrange = (common_min, common_max))
+            hm_rom = heatmap!(ax_rom, plot_x_coords, plot_y_coords, rom_data,
+                colormap = :viridis, colorrange = (common_min, common_max))
+            hm_error = heatmap!(ax_error, plot_x_coords, plot_y_coords, error_data,
+                colormap = :matter, colorrange = (all_error_min, all_error_max))
+            
+            # Add colorbars
+            Colorbar(fig[1, 4], hm_full,
+                label="Field Value", labelsize=26, ticklabelsize=22)
+            Colorbar(fig[1, 5], hm_error,
+                label="Error", labelsize=26, ticklabelsize=22)
+            
+            # Add time and phase label at top
+            time_label = Label(fig[0, 1:3], "", fontsize=32, tellwidth=false)
+        end
+        
+        # Create animation filename with time suffix if specified
+        time_suffix = max_time !== nothing ? "_t$(Int(round(max_time)))" : "_full"
+        output_path = joinpath(FILEPATH, "plots",
+            "$(fld)_animation_combined_$(slice_dir)_slice_$(rmax)$(time_suffix).mp4")
+        
+        # Use explicit format and codec settings to avoid issues
+        record(fig, output_path, time_indices; 
+               framerate=30, format="mp4", compression=5,
+               px_per_unit=1.0) do t_idx
+            
+            # Determine if we're in training or testing phase
+            phase = t_idx <= n_train ? "Training" : "Testing"
+            
+            # Update time label
+            ds_t = tspan_combined[t_idx]
+            time_label.text = @sprintf(
+                "%s: Time = %.3f, %d/%d = %d× reduction", 
+                phase, ds_t, nxyz*4, rmax, div(nxyz*4, rmax))
+            
+            # Get full data
+            u_full_field = reshape(ds[t_idx][i_s:i_f], nx, ny, nz)
+            full_data[] = extract_slice(u_full_field, slice_dir, slice_idx)
+            
+            # Get ROM data (from training or testing states)
+            if t_idx <= n_train
+                x_rom_t = iVrmax * states[:, t_idx]
+            else
+                x_rom_t = iVrmax * test_states[:, t_idx - n_train]
+            end
+            x_rom_t = unprocess!(x_rom_t, means, shifts, scales)
+            u_rom_field = reshape(x_rom_t[i_s:i_f], nx, ny, nz)
+            rom_data[] = extract_slice(u_rom_field, slice_dir, slice_idx)
+            
+            # Compute error
+            error_data[] = abs.(full_data[] - rom_data[])
+        end
+        
+        println("Animation saved to: $output_path")
+    end
+end
+
+## Animate streamwise velocity with z-direction slice (default)
+create_field_animation("u", frame_skip=1, max_time=0.1, slice_dir="z")
+
+## Create animations for all fields 
+for dir in ["x", "y", "z"]
+    println("\nCreating animations for slice direction: $dir")
+    for fld in ["u", "v", "w", "p"]
+        println("  Field: $fld")
+        create_field_animation(fld, frame_skip=1, max_time=10.0, slice_dir=dir)
+    end
+end
