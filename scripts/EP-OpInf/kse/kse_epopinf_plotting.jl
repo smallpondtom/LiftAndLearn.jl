@@ -36,6 +36,25 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"EP-OpInf/") : joinpath(p
 #======================#
 ## Load all data files
 #======================#
+# Shim: old JLD2 files saved Operators without the new `O` field (and with `f` serialized).
+# Map the reconstructed tuple back into the current LnL.Operators via kwargs.
+function Base.convert(::Type{LnL.Operators},
+                      x::JLD2.ReconstructedMutable{:Operators, FN}) where {FN}
+    # NOTE: ReconstructedMutable overloads getproperty to look up saved field names,
+    # so `x.fields` would search FN for :fields and throw. Use getfield to bypass.
+    vals = getfield(x, :fields)::Vector{Any}
+    nt = NamedTuple{FN}(Tuple(vals))
+    current = fieldnames(LnL.Operators)
+    kw = Dict{Symbol,Any}()
+    for k in keys(nt)
+        # skip fields that no longer exist, and skip :f (it's a Function — let the default rebuild it)
+        (k in current && k !== :f) || continue
+        kw[k] = nt[k]
+    end
+    return LnL.Operators(; kw...)
+end
+
+#%%
 KSE = load(joinpath(FILEPATH, "data/kse_epopinf_model_setting.jld2"), "KSE")
 REDUCTION_INFO = load(joinpath(FILEPATH, "data/kse_epopinf_reduction_info.jld2"), "REDUCTION_INFO")
 # OPS = load(joinpath(FILEPATH, "data/kse_epopinf_ops.jld2"), "OPS")
@@ -260,7 +279,7 @@ p_ephec = plot(
     colorbar_ticks=(-3:3), yticks=(0:5:20), ylims=(0,22), 
     #right_margin=-3mm, left_margin=3mm,  bottom_margin=7mm, top_margin=-2mm,
     bottom_margin=15mm, left_margin=15mm,
-    ylabel=L"\textbf{EP}\rm{-}\textbf{OpInf}" * "\n" * L"\omega", xlabel=L"t" * "\n" * L"\textbf{Predicted}~" * L"x(\omega,t)",
+    ylabel=L"\textbf{EP}\rm{-}\textbf{OpInf}" * "\n" * L"\omega", xlabel=L"t" * "\n" * L"\textbf{Predicted}~" * L"s(\omega,t)",
 )
 p_ephec_err = plot(
     contourf(KSE.tspan[1:DS:end], KSE.xspan, abs.(X_fom[:, 1:DS:end] .- Vr * X_ephec[:, 1:DS:end]), lw=0, color=:roma), 

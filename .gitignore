@@ -12,6 +12,13 @@ __archive__/
 *.svg
 *.pdf
 
+## Other data files
+*.inp
+*.csv
+*.hdf5
+*.nc
+*.precursor
+
 ## JULIA
 debug.log
 *.jld2

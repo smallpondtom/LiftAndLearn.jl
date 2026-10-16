@@ -1,14 +1,25 @@
 """
-    streamify(X::AbstractArray{<:Number}, datasize::Integer)
+$(SIGNATURES)
 
-Split an array into streams of the given size.
+Split a data matrix into consecutive streams of `streamsize` snapshots each.
+
+The snapshot (time) dimension is taken to be the longer dimension of `X`: for a fat matrix
+(``n \\times K`` with ``K \\ge n``) the columns are split, for a tall matrix the rows are split.
+The last stream may be shorter if `streamsize` does not divide the number of snapshots.
 
 ## Arguments
-- `X::AbstractArray{<:Number}`: The array to split.
-- `streamsize::Integer`: A single size of the streams.
+- `X::AbstractArray{<:Number}`: data matrix (e.g., reduced states ``\\hat{\\mathbf{X}}``,
+  derivatives, or inputs). A vector is treated as a single column and split along its length.
+- `streamsize::Integer`: number of snapshots per stream.
 
 ## Returns
-An array of arrays, each containing a stream of the original array.
+- `streams::Vector{<:AbstractArray}`: the streams, in order.
+
+## Examples
+```julia
+X = rand(3, 10)
+streamify(X, 4)   # 3×4, 3×4, 3×2 blocks
+```
 """
 function streamify(X::AbstractArray{<:Number}, streamsize::Integer)
     m, n = checksize(X)
@@ -25,28 +36,37 @@ end
 
 
 """
-    streamify(X::AbstractArray{<:Number}, streamsize::Array{<:Integer})
+$(SIGNATURES)
 
-Split an array into streams of the given sizes.
+Split a data matrix into consecutive streams with the given (possibly varying) sizes.
+
+As for the `streamsize::Integer` method, the longer dimension of `X` is the snapshot dimension.
 
 ## Arguments
-- `X::AbstractArray{<:Number}`: The array to split.
-- `streamsize::Array{<:Integer}`: The sizes of the streams.
+- `X::AbstractArray{<:Number}`: data matrix to split.
+- `streamsize::Array{<:Integer}`: size of each stream; `sum(streamsize)` should equal the number
+  of snapshots (a final stream is truncated at the end of the data).
 
 ## Returns
-An array of arrays, each containing a stream of the original array.
+- `streams::Vector{<:AbstractArray}`: the streams, in order.
+
+## Examples
+```julia
+X = rand(3, 10)
+streamify(X, [2, 3, 5])   # 3×2, 3×3, 3×5 blocks
+```
 """
 function streamify(X::AbstractArray{<:Number}, streamsize::Array{<:Integer})
     m, n = checksize(X)
     cum = cumsum(streamsize)
     if m > n
         return [
-            i==1 ? X[1:cum[i],:] : X[1+cum[i-1]:min(cum[i],size(X,1)),:] 
+            i==1 ? X[1:cum[i],:] : X[1+cum[i-1]:min(cum[i],size(X,1)),:]
             for i in eachindex(cum)
         ]
     else
         return [
-            i==1 ? X[:,1:cum[i]] : X[:,1+cum[i-1]:min(cum[i],size(X,2))] 
+            i==1 ? X[:,1:cum[i]] : X[:,1+cum[i-1]:min(cum[i],size(X,2))]
             for i in eachindex(cum)
         ]
     end

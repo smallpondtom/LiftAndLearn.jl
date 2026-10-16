@@ -1,14 +1,18 @@
 using Statistics
 include(joinpath(FILEPATH, "integrate.jl"))
-
 function simulate_opinf(x0, n_time, op, tspan=nothing)
+    contains_nan = false
+    final_idx = 0
     states, final_idx = rk4_integrate(x0, tspan, op.A, op.A2u, op.A3u, op.K)
     contains_nan = final_idx < n_time ? true : false
     return contains_nan, states, final_idx
 end
 
-function find_best_opinf_model(reg_pairs, Xhat, Xhatdot, n_time, n_time_pred, 
-                               max_growth, opinf_options, tspan=nothing)
+
+function find_best_opinf_model(
+    reg_pairs, Xhat, Xhat1, Xhat2, 
+    n_time, n_time_pred, max_growth, opinf_options, tspan=nothing,
+)
 
     @assert options.with_reg == true "Regularization must be enabled in options."
     
@@ -21,8 +25,8 @@ function find_best_opinf_model(reg_pairs, Xhat, Xhatdot, n_time, n_time_pred,
 
     mean_Xhat = mean(Xhat, dims=2)
     max_diff_Xhat = maximum(abs.(Xhat .- mean_Xhat), dims=2)
-    ct = 0
     tot = length(reg_pairs)
+    ct = 0
     
     # Loop over all regularization pairs
     for (beta1, beta2, beta3) in reg_pairs
@@ -34,21 +38,23 @@ function find_best_opinf_model(reg_pairs, Xhat, Xhatdot, n_time, n_time_pred,
         opinf_options.λ = reg
         
         # Solve the regularized OpInf problem
-        ops = LnL.opinf(Xhat, opinf_options; Xhatdot=Xhatdot)
+        ops = LnL.opinf(Xhat1, opinf_options; Xhatdot=Xhat2)
         
         # Extract the reduced initial condition from Qhat_1
-        xhat0 = Xhat[:,1]
+        xhat0 = Xhat1[:,1]
         
         # Compute the reduced solution over the trial time horizon
         start_eval_time = time()
-        contains_nans, Xtilde, fidx = simulate_opinf(xhat0, n_time_pred, ops, tspan)
+        contains_nans, Xtilde, fidx = simulate_opinf(
+            xhat0, n_time_pred, ops, tspan
+        )
         end_eval_time = time()
         time_opinf_eval = end_eval_time - start_eval_time
         
         # If the model produced an unstable solution, move on to the next
         # regularization candidates
         if contains_nans
-            @info "OpInf model with (β1, β2, β3) = ($beta1, $beta2, $beta3) produced NaNs. Skipping."
+            @info "NaN detected in trajectory for (β1, β2, β3) = ($beta1, $beta2, $beta3)"
             @info "Complete pair $ct / $tot"
             ops = nothing
             GC.gc() 
@@ -61,20 +67,35 @@ function find_best_opinf_model(reg_pairs, Xhat, Xhatdot, n_time, n_time_pred,
         max_growth_trial = maximum(max_diff_Xhat_trial) / maximum(max_diff_Xhat)
         if max_growth_trial > max_growth
             @info "Max growth = $max_growth_trial exceeded threshold for \
-                   (β1, β2, β3) = ($beta1, $beta2, $beta3)"
+                   (β1, β2) = ($beta1, $beta2)"
             @info "Complete pair $ct / $tot"
             ops = nothing
             GC.gc() 
             continue
         end
+
+        #! NOT for turbulent flows
+        # train_err = norm(
+        #         Xhat[:, 1:n_time] - Xtilde[:, 1:n_time]
+        #     )^2 / norm(Xhat[:, 1:n_time])^2
         
         # At this point we know the model produced a stable solution without too
-        # much growth. Compute the training error and, if it's better than the
-        # current best error, save the regularization, reduced solution, and
-        # the learning times
-        train_err = norm(
-                Xhat[:, 1:n_time] - Xtilde[:, 1:n_time]
-            )^2 / norm(Xhat[:, 1:n_time])^2
+        # much growth. Compute the statistical training error by discarding the
+        # initial transient and comparing time-averaged mean and variance.
+        transient_idx = max(1, div(n_time, 10))
+
+        true_mean = mean(Xhat[:, transient_idx:n_time], dims=2)
+        pred_mean = mean(Xtilde[:, transient_idx:n_time], dims=2)
+        err_mean = norm(true_mean - pred_mean) / norm(true_mean)
+
+        true_var = var(Xhat[:, transient_idx:n_time], dims=2)
+        pred_var = var(Xtilde[:, transient_idx:n_time], dims=2)
+        # Avoid division by zero if true variance norm is nearly zero
+        norm_true_var = norm(true_var)
+        err_var = norm_true_var > 1e-12 ? norm(true_var - pred_var) / norm_true_var : norm(true_var - pred_var)
+
+        train_err = err_mean + err_var
+
         if train_err < best_train_err
             best_beta1 = beta1
             best_beta2 = beta2
@@ -109,3 +130,5 @@ function find_best_opinf_model(reg_pairs, Xhat, Xhatdot, n_time, n_time_pred,
     return (best_model, best_betas, best_train_err, 
             Xtilde_opt, eval_time_opt, best_final_idx)
 end
+
+

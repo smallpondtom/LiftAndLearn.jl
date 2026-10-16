@@ -1,14 +1,25 @@
 """
-    tikhonov_matrix!(Γ::AbstractArray, dims::Dict, options::AbstractOption)
+$(SIGNATURES)
 
-Construct the Tikhonov matrix
+Fill the diagonal entries of the Tikhonov matrix ``\\boldsymbol{\\Gamma}`` block by block
+from the regularization parameters `λ`.
+
+The entries of `Γ` are split into consecutive blocks of lengths `dims`; the block of
+operator symbol `s` is set to `getproperty(λ, s)`. For polynomial state operators the
+first two characters of the symbol are used, so `:A2` and `:A2u` both take `λ.A2`.
 
 ## Arguments
-- `Γ::AbstractArray`: Tikhonov matrix (pass by reference)
-- `options::AbstractOption`: options for the operator inference set by the user
+- `Γ::AbstractArray`: vector of length `sum(dims)` holding the diagonal of ``\\boldsymbol{\\Gamma}`` (mutated).
+- `dims::AbstractArray`: number of columns of the data matrix belonging to each operator.
+- `operator_symbols::AbstractArray`: operator symbols in the same order as `dims` (e.g. `[:A, :B, :A2u]`).
+- `λ::TikhonovParameter`: regularization parameter of each operator.
 
 ## Returns
-- `Γ`: Tikhonov matrix (pass by reference)
+- `nothing`; mutates `Γ` in place.
+
+## Notes
+- Symbols without a matching `TikhonovParameter` field (e.g. `:N2` for higher-order
+  state-input coupling) raise an error.
 """
 function tikhonov_matrix!(Γ::AbstractArray, dims::AbstractArray, operator_symbols::AbstractArray, 
                          λ::TikhonovParameter)
@@ -27,10 +38,23 @@ function tikhonov_matrix!(Γ::AbstractArray, dims::AbstractArray, operator_symbo
 end
 
 """
-    TikhonovSolver
+$(TYPEDEF)
 
-High-performance Tikhonov regularized least squares solver with multiple 
-optimization strategies.
+Configuration of the Tikhonov-regularized least-squares solver used by `tikhonov`.
+Internal helper.
+
+Construct with the keyword constructor `TikhonovSolver{T}(; kwargs...)`, whose keywords
+and defaults are the fields listed below.
+
+## Fields
+- `tolerance::T=1e-12`: absolute tolerance of the iterative solvers and relative singular-value cutoff of the SVD-truncation solver.
+- `use_gpu::Bool=false`: request GPU acceleration.
+- `use_normal_form::Bool=false`: allow the normal-form solver.
+- `use_svd_truncation::Bool=false`: allow the SVD-truncation solver.
+- `use_backslash::Bool=false`: use the backslash operator (forced to `false` when `use_gpu=true`).
+- `chunk_size::Int=1000`: number of right-hand-side columns solved per batch.
+- `max_iterations::Int=1000`: maximum number of iterations of the iterative solvers.
+- `preconditioning::Bool=false`: use diagonal preconditioning (only in `solve_iterative_normal_form`).
 """
 struct TikhonovSolver{T<:Real}
     tolerance::T
@@ -55,23 +79,60 @@ struct TikhonovSolver{T<:Real}
     end
 end
 
+"""
+$(SIGNATURES)
+
+Construct a `TikhonovSolver{Float64}`; the keywords are the fields of `TikhonovSolver`.
+Internal helper.
+"""
 TikhonovSolver(; kwargs...) = TikhonovSolver{Float64}(; kwargs...)
 
 """
-    RegularizationMethod
+$(TYPEDEF)
 
-Abstract type for different regularization approaches.
+Abstract supertype of the Tikhonov solution methods selected by `select_optimal_method`.
+Internal helper.
 """
 abstract type RegularizationMethod end
 
+"""
+$(TYPEDEF)
+
+Tag for the augmented-system method ``[\\mathbf{A}; \\boldsymbol{\\Gamma}^{1/2}]\\mathbf{x} = [\\mathbf{b}; \\mathbf{0}]``
+(see `solve_augmented_system`). Internal helper.
+"""
 struct AugmentedSystem <: RegularizationMethod end
+
+"""
+$(TYPEDEF)
+
+Tag for the normal-form method ``(\\mathbf{A}^\\top\\mathbf{A} + \\boldsymbol{\\Gamma})\\mathbf{x} = \\mathbf{A}^\\top\\mathbf{b}``
+(see `solve_normal_form`). Internal helper.
+"""
 struct NormalForm <: RegularizationMethod end
+
+"""
+$(TYPEDEF)
+
+Tag for the SVD-truncation method (see `solve_svd_truncation`). Internal helper.
+"""
 struct SVDTruncation <: RegularizationMethod end
 
 """
-    setup_gpu_computation(arrays...; use_gpu::Bool)
+$(SIGNATURES)
 
-Efficiently setup GPU computation with proper error handling.
+Move `arrays` to the GPU if `use_gpu` is `true` and a functional GPU backend (Metal.jl on
+macOS, CUDA.jl otherwise) is available. Internal helper.
+
+## Arguments
+- `arrays...`: arrays to transfer.
+
+## Keyword Arguments
+- `use_gpu::Bool=false`: whether GPU computation is requested.
+
+## Returns
+- `(arrays..., gpu_active)`: the (possibly GPU) arrays followed by a `Bool` that is `true`
+  if the arrays were moved to the GPU; falls back to the CPU with a warning otherwise.
 """
 function setup_gpu_computation(arrays...; use_gpu::Bool=false)
     if !use_gpu
@@ -100,13 +161,36 @@ function setup_gpu_computation(arrays...; use_gpu::Bool=false)
 end
 
 """
-    compute_regularization_matrix(Γ::AbstractMatrix, method::Symbol=:cholesky)
+$(SIGNATURES)
 
-Compute the square root of the regularization matrix using the most efficient method.
+Compute a square-root factor ``\\boldsymbol{\\Gamma}^{1/2}`` of the Tikhonov matrix, used as
+the lower block of the augmented system in `solve_augmented_system`. Internal helper.
+
+## Arguments
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix of size ``n \\times n``.
+- `method::Symbol=:cholesky`: `:cholesky` (upper Cholesky factor ``\\mathbf{U}`` with
+  ``\\mathbf{U}^\\top\\mathbf{U} = \\boldsymbol{\\Gamma}``, used if `Γ` is positive definite),
+  `:eigen` (``\\mathbf{V}\\boldsymbol{\\Lambda}^{1/2}`` from a symmetric eigendecomposition,
+  which satisfies ``\\mathbf{S}\\mathbf{S}^\\top = \\boldsymbol{\\Gamma}``) or anything else for
+  the element-wise square root.
+
+## Returns
+- `Γsq::AbstractMatrix`: the square-root factor.
+
+## Notes
+- A diagonal `Γ` (the default built by `tikhonov_matrix!`) is factored exactly by the
+  element-wise square root, which preserves sparsity.
+- If `Γ` is not positive definite (e.g. it has zero diagonal entries) or the Cholesky
+  factorization fails, the element-wise square root `sqrt.(Γ)` is returned, which is
+  exact only for diagonal `Γ`.
 """
 function compute_regularization_matrix(Γ::AbstractMatrix{T}, 
                                        method::Symbol=:cholesky) where T
-    if method === :cholesky && isposdef(Γ)
+    if isdiag(Γ)
+        # Diagonal Tikhonov matrices (the default built by `tikhonov_matrix!`): the
+        # element-wise square root is the exact factor
+        return sqrt.(Γ)
+    elseif method === :cholesky && isposdef(Γ)
         # Most efficient for positive definite matrices
         try
             chol_factor = cholesky(Γ)
@@ -133,9 +217,25 @@ function compute_regularization_matrix(Γ::AbstractMatrix{T},
 end
 
 """
-    solve_augmented_system(A, b, Γ, solver)
+$(SIGNATURES)
 
-Solve using the augmented system approach: [A; Γ^(1/2)] * x = [b; 0]
+Solve the Tikhonov problem through the augmented least-squares system
+``[\\mathbf{A}; \\boldsymbol{\\Gamma}^{1/2}]\\mathbf{x} \\approx [\\mathbf{b}; \\mathbf{0}]``.
+Internal helper.
+
+``\\boldsymbol{\\Gamma}^{1/2}`` is obtained from `compute_regularization_matrix`. The
+system is solved with backslash (sparse augmented matrix on the CPU) if the GPU is
+active or `solver.use_backslash` is `true`, otherwise with `solve_least_squares_batch`.
+On `OutOfMemoryError` it falls back to `solve_normal_form`.
+
+## Arguments
+- `A::AbstractMatrix{T}`: data matrix of size ``m \\times n``.
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix of size ``n \\times n``.
+- `solver::TikhonovSolver{T}`: solver configuration.
+
+## Returns
+- `x::AbstractMatrix{T}`: regularized solution of size ``n \\times p``.
 """
 function solve_augmented_system(A::AbstractMatrix{T}, b::AbstractArray{T}, 
                                Γ::AbstractMatrix{T}, solver::TikhonovSolver{T}) where T
@@ -175,9 +275,24 @@ function solve_augmented_system(A::AbstractMatrix{T}, b::AbstractArray{T},
 end
 
 """
-    solve_normal_form(A, b, Γ, solver)
+$(SIGNATURES)
 
-Solve using normal form: (A'*A + Γ) * x = A' * b
+Solve the Tikhonov problem through the normal form
+``(\\mathbf{A}^\\top\\mathbf{A} + \\boldsymbol{\\Gamma})\\mathbf{x} = \\mathbf{A}^\\top\\mathbf{b}``.
+Internal helper.
+
+The normal-form matrix is solved with backslash if the GPU is active or
+`solver.use_backslash` is `true`; otherwise the matrix-free iterative solver
+`solve_iterative_tikhonov` is used.
+
+## Arguments
+- `A::AbstractMatrix{T}`: data matrix of size ``m \\times n``.
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix of size ``n \\times n``.
+- `solver::TikhonovSolver{T}`: solver configuration.
+
+## Returns
+- `x::AbstractMatrix{T}`: regularized solution of size ``n \\times p``.
 """
 function solve_normal_form(A::AbstractMatrix{T}, b::AbstractArray{T}, 
                           Γ::AbstractMatrix{T}, solver::TikhonovSolver{T}) where T
@@ -212,9 +327,22 @@ function solve_normal_form(A::AbstractMatrix{T}, b::AbstractArray{T},
 end
 
 """
-    solve_iterative_normal_form(M, Atb, solver)
+$(SIGNATURES)
 
-Solve normal form using iterative methods with preconditioning.
+Solve the assembled normal-form system ``\\mathbf{M}\\mathbf{x} = \\mathbf{A}^\\top\\mathbf{b}``
+column by column with LinearSolve.jl, optionally with the diagonal (Jacobi-type)
+preconditioner ``\\mathrm{diag}(\\mathbf{M})^{-1/2}``. Internal helper.
+
+## Arguments
+- `M::AbstractMatrix{T}`: normal-form matrix ``\\mathbf{A}^\\top\\mathbf{A} + \\boldsymbol{\\Gamma}`` of size ``n \\times n``.
+- `Atb::AbstractArray{T}`: right-hand side ``\\mathbf{A}^\\top\\mathbf{b}`` of size ``n \\times p``.
+- `solver::TikhonovSolver{T}`: solver configuration (`preconditioning`, `tolerance`, `max_iterations`).
+
+## Returns
+- `x::AbstractMatrix{T}`: solution of size ``n \\times p``.
+
+## Notes
+- Not called by the default solve paths (its call in `solve_normal_form` is commented out).
 """
 function solve_iterative_normal_form(M::AbstractMatrix{T}, Atb::AbstractArray{T}, 
                                      solver::TikhonovSolver{T}) where T
@@ -247,9 +375,20 @@ function solve_iterative_normal_form(M::AbstractMatrix{T}, Atb::AbstractArray{T}
 end
 
 """
-    solve_iterative_tikhonov(A, b, Γ, solver)
+$(SIGNATURES)
 
-Memory-efficient iterative solver using linear operators.
+Solve ``(\\mathbf{A}^\\top\\mathbf{A} + \\boldsymbol{\\Gamma})\\mathbf{x} = \\mathbf{A}^\\top\\mathbf{b}``
+column by column with an iterative LinearSolve.jl solver, applying the normal-form
+operator matrix-free (``\\mathbf{A}^\\top\\mathbf{A}`` is never formed). Internal helper.
+
+## Arguments
+- `A::AbstractMatrix{T}`: data matrix of size ``m \\times n``.
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix of size ``n \\times n``.
+- `solver::TikhonovSolver{T}`: solver configuration (`tolerance`, `max_iterations`).
+
+## Returns
+- `x::AbstractMatrix{T}`: regularized solution of size ``n \\times p``.
 """
 function solve_iterative_tikhonov(A::AbstractMatrix{T}, 
                                   b::AbstractArray{T}, 
@@ -308,8 +447,21 @@ end
 
 
 """
-Efficient SVD-based solver for scalar regularization (Γ = λI).
-Equivalent to the Python lstsq_l2_numpy implementation.
+$(SIGNATURES)
+
+Solve ``\\min_{\\mathbf{x}} \\|\\mathbf{A}\\mathbf{x} - \\mathbf{b}\\|_2^2 + \\lambda^2\\|\\mathbf{x}\\|_2^2``
+with the SVD ``\\mathbf{A} = \\mathbf{U}\\boldsymbol{\\Sigma}\\mathbf{V}^\\top`` as
+``\\mathbf{x} = \\mathbf{V}\\,\\mathrm{diag}(\\sigma_i/(\\sigma_i^2+\\lambda^2))\\,\\mathbf{U}^\\top\\mathbf{b}``.
+Internal helper.
+
+## Arguments
+- `A::AbstractMatrix{T}`: data matrix of size ``m \\times n``.
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `λ::T`: regularization parameter; note that it is squared, so pass ``\\sqrt{\\gamma}`` for ``\\boldsymbol{\\Gamma} = \\gamma\\mathbf{I}``.
+- `solver::TikhonovSolver{T}`: solver configuration; if `solver.tolerance > 0` the residual norm is logged.
+
+## Returns
+- `x::AbstractMatrix{T}`: regularized solution of size ``n \\times p``.
 """
 function solve_svd_scalar_regularization(A::AbstractMatrix{T}, 
                                          b::AbstractArray{T}, 
@@ -349,9 +501,18 @@ function solve_svd_scalar_regularization(A::AbstractMatrix{T},
 end
 
 """
-Check if Γ is a scalar multiple of identity matrix.
-Returns (is_scalar, scalar_value) where is_scalar is boolean
-and scalar_value is the diagonal value if is_scalar is true.
+$(SIGNATURES)
+
+Check whether the Tikhonov matrix is a scalar multiple of the identity,
+``\\boldsymbol{\\Gamma} = \\gamma\\mathbf{I}`` (diagonal entries equal up to a relative tolerance of `1e-14`).
+Internal helper.
+
+## Arguments
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix.
+
+## Returns
+- `is_scalar::Bool`: `true` if `Γ` is diagonal with equal diagonal entries.
+- `γ::T`: the common diagonal value if `is_scalar`, otherwise `zero(T)`.
 """
 function is_scalar_regularization(Γ::AbstractMatrix{T}) where T
     n = size(Γ, 1)
@@ -376,9 +537,26 @@ function is_scalar_regularization(Γ::AbstractMatrix{T}) where T
 end
 
 """
-    solve_svd_truncation(A, b, Γ, solver)
+$(SIGNATURES)
 
-Solve using SVD with intelligent truncation for rank-deficient problems.
+Solve the Tikhonov problem with an SVD of the normal-form matrix and truncation of small
+singular values, for (nearly) rank-deficient problems. Internal helper.
+
+If ``\\boldsymbol{\\Gamma} = \\gamma\\mathbf{I}`` with ``\\gamma > 0``, the problem is
+delegated to `solve_svd_scalar_regularization`. Otherwise the SVD of
+``\\mathbf{M} = \\mathbf{A}^\\top\\mathbf{A} + \\boldsymbol{\\Gamma}`` is computed; singular values
+below `solver.tolerance * σ_max` are discarded (truncated pseudoinverse) and, if none are
+discarded, ``\\mathbf{M}\\mathbf{x} = \\mathbf{A}^\\top\\mathbf{b}`` is solved directly. On
+`OutOfMemoryError` it falls back to `LAPACK.gelsd!` on the unregularized problem.
+
+## Arguments
+- `A::AbstractMatrix{T}`: data matrix of size ``m \\times n``.
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix of size ``n \\times n``.
+- `solver::TikhonovSolver{T}`: solver configuration (`tolerance`).
+
+## Returns
+- `x::AbstractMatrix{T}`: regularized solution of size ``n \\times p``.
 """
 function solve_svd_truncation(A::AbstractMatrix{T}, 
                               b::AbstractArray{T}, 
@@ -408,8 +586,8 @@ function solve_svd_truncation(A::AbstractMatrix{T},
         M .+= Γ
         LinearAlgebra.BLAS.gemm!('T', 'N', one(T), A, b, zero(T), rhs)
         
-        # Compute SVD
-        U, S, Vt = svd(M)
+        # Compute SVD (iterating an SVD object yields U, S, V -- not Vt)
+        U, S, V = svd(M)
         
         # Determine effective rank using relative tolerance
         σ_max = S[1]
@@ -424,7 +602,7 @@ function solve_svd_truncation(A::AbstractMatrix{T},
             inv_S[1:effective_rank] = 1 ./ S[1:effective_rank]
             
             # Efficient computation: V * (inv_S .* (U' * rhs))
-            return Vt' * (inv_S .* (U' * rhs))
+            return V * (inv_S .* (U' * rhs))
         else
             # Full rank, use standard solve
             return M \ rhs
@@ -448,9 +626,18 @@ function solve_svd_truncation(A::AbstractMatrix{T},
 end
 
 """
-    solve_least_squares_batch(A, b, chunk_size)
+$(SIGNATURES)
 
-Solve least squares with batching for memory efficiency.
+Solve the least-squares problem ``\\mathbf{A}\\mathbf{x} \\approx \\mathbf{b}`` with backslash,
+processing the right-hand-side columns in chunks of `chunk_size`. Internal helper.
+
+## Arguments
+- `A::AbstractMatrix{T}`: coefficient matrix of size ``m \\times n``.
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `chunk_size::Int`: number of right-hand-side columns per chunk.
+
+## Returns
+- `x::AbstractMatrix{T}`: least-squares solution of size ``n \\times p``.
 """
 function solve_least_squares_batch(A::AbstractMatrix{T}, b::AbstractArray{T}, 
                                    chunk_size::Int) where T
@@ -472,9 +659,31 @@ function solve_least_squares_batch(A::AbstractMatrix{T}, b::AbstractArray{T},
 end
 
 """
-    select_optimal_method(A, b, Γ, solver)
+$(SIGNATURES)
 
-Automatically select the most efficient solution method based on problem characteristics.
+Select the Tikhonov solution method from the solver flags and the problem size.
+Internal helper.
+
+The first matching rule is used:
+1. `SVDTruncation()` if `solver.use_svd_truncation` and the condition estimate exceeds `1e12`;
+2. `NormalForm()` if `solver.use_normal_form`, ``m > 2n`` and ``p < 100``;
+3. `AugmentedSystem()` if `solver.use_backslash`;
+4. otherwise `nothing` (the iterative solver `solve_iterative_tikhonov`).
+
+## Arguments
+- `A::AbstractMatrix{T}`: data matrix of size ``m \\times n``.
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix (unused).
+- `solver::TikhonovSolver{T}`: solver configuration.
+
+## Returns
+- `method::Union{RegularizationMethod,Nothing}`: the selected method tag.
+- `method_symbol::Symbol`: `:svd`, `:normal`, `:augmented` or `:auto`.
+
+## Notes
+- The "condition estimate" is `norm(A, 2) / norm(A, -2)`, i.e. a ratio of entry-wise
+  vector norms (Frobenius norm over the ``p=-2`` entry norm), not the spectral condition
+  number. It is infinite if `A` has a zero entry.
 """
 function select_optimal_method(A::AbstractMatrix{T}, 
                                b::AbstractArray{T}, 
@@ -503,27 +712,46 @@ function select_optimal_method(A::AbstractMatrix{T},
 end
 
 """
-    tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix; kwargs...)
+$(SIGNATURES)
 
-High-performance Tikhonov regularized least squares solver.
+Solve the Tikhonov-regularized least-squares problem
 
-Solves the regularized least squares problem:
-    minimize ||A*x - b||₂² + ||Γ^(1/2)*x||₂²
+```math
+\\min_{\\mathbf{x}} \\|\\mathbf{A}\\mathbf{x} - \\mathbf{b}\\|_2^2 + \\mathbf{x}^\\top\\boldsymbol{\\Gamma}\\mathbf{x}
+= \\|\\mathbf{A}\\mathbf{x} - \\mathbf{b}\\|_2^2 + \\|\\boldsymbol{\\Gamma}^{1/2}\\mathbf{x}\\|_2^2
+```
+
+column by column for all right-hand sides in `b`. In Operator Inference (OpInf),
+`A` is the data matrix ``\\mathbf{D}``, `b` the derivative data ``\\mathbf{R}^\\top`` and the
+solution is ``\\mathbf{O}^\\top``.
+
+The solution method is chosen by `select_optimal_method`: SVD truncation
+(`use_svd_truncation`), normal form (`use_normal_form`), augmented system
+(`use_backslash`), or, by default, a matrix-free iterative solver. On
+`OutOfMemoryError` it falls back to the iterative solver.
 
 ## Arguments
-- `b::AbstractArray`: Right-hand side vector/matrix (m × p)
-- `A::AbstractArray`: Coefficient matrix (m × n)  
-- `Γ::AbstractMatrix`: Regularization matrix (n × n)
-- `tol::Real`: Tolerance for SVD truncation (default: 1e-12)
-- `use_gpu::Bool`: Enable GPU acceleration (default: false)
-- `use_normal_form::Bool`: Force normal equations method (default: false)
-- `use_svd_truncation::Bool`: Enable SVD-based truncation (default: false)
-- `chunk_size::Int`: Batch size for multiple RHS (default: 1000)
-- `max_iterations::Int`: Maximum iterations for iterative methods (default: 1000)
-- `estimate_memory::Bool`: Estimate memory usage (default: false)
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `A::AbstractArray{T}`: coefficient (data) matrix of size ``m \\times n``.
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix ``\\boldsymbol{\\Gamma}`` of size ``n \\times n`` (symmetric positive semidefinite).
+
+## Keyword Arguments
+- `tol::Real=1e-12`: absolute tolerance of the iterative solvers and relative singular-value cutoff of the SVD-truncation solver.
+- `use_gpu::Bool=false`: use the GPU (CUDA.jl or Metal.jl) if functional. This forces `use_backslash=false`, so the augmented-system solver is not selected and only the normal-form solver runs on the GPU.
+- `use_normal_form::Bool=false`: allow the normal-form solver (used if ``m > 2n`` and ``p < 100``).
+- `use_svd_truncation::Bool=false`: allow the SVD-truncation solver (used if the condition estimate exceeds `1e12`).
+- `use_backslash::Bool=false`: use backslash in the augmented-system and normal-form solvers.
+- `chunk_size::Int=1000`: number of right-hand-side columns per batch.
+- `max_iterations::Int=1000`: maximum number of iterations of the iterative solvers.
+- `estimate_memory::Bool=false`: log an estimate of the memory usage (see `estimate_tikhonov_memory`).
+- `preconditioning::Bool=false`: stored in the solver configuration (see `TikhonovSolver`).
 
 ## Returns
-- Solution matrix x (n × p)
+- `x::AbstractMatrix{T}`: regularized solution of size ``n \\times p``.
+
+## Notes
+- The iterative solvers stop at an absolute tolerance `tol`, so their accuracy is lower
+  than that of the direct (backslash) solvers.
 """
 function tikhonov(b::AbstractArray{T}, A::AbstractArray{T}, Γ::AbstractMatrix{T};
                   tol::Real=1e-12, use_gpu::Bool=false, use_normal_form::Bool=false,
@@ -577,7 +805,24 @@ end
 # tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix; kwargs...) = 
 #     tikhonov(promote(b, A, Γ)...; kwargs...)
 
-# Convenience method for automatic type promotion
+"""
+$(SIGNATURES)
+
+Convenience method of `tikhonov` for inputs with different element types or `Adjoint`
+wrappers: materializes adjoints, promotes `b`, `A` and `Γ` to a common element type and
+calls the typed method with the same keyword arguments.
+
+## Arguments
+- `b::AbstractArray`: right-hand side of size ``m \\times p``.
+- `A::AbstractArray`: coefficient (data) matrix of size ``m \\times n``.
+- `Γ::AbstractMatrix`: Tikhonov matrix of size ``n \\times n``.
+
+## Keyword Arguments
+- `kwargs...`: forwarded to the typed `tikhonov` method.
+
+## Returns
+- `x::AbstractMatrix`: regularized solution of size ``n \\times p``.
+"""
 function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix; kwargs...)
     # Convert Adjoint to Matrix to avoid promotion issues
     b_matrix = b isa Adjoint ? Matrix(b) : b
@@ -596,9 +841,26 @@ function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix; kwargs
 end
 
 """
-    tikhonov_regularization_path(b, A, Γ_vals; kwargs...)
+$(SIGNATURES)
 
-Compute Tikhonov solutions for multiple regularization parameters efficiently.
+Compute the Tikhonov solutions ``(\\mathbf{A}^\\top\\mathbf{A} + \\gamma\\mathbf{I})^{-1}\\mathbf{A}^\\top\\mathbf{b}``
+for each scalar parameter ``\\gamma`` in `Γ_vals`, reusing ``\\mathbf{A}^\\top\\mathbf{A}`` and
+``\\mathbf{A}^\\top\\mathbf{b}``.
+
+## Arguments
+- `b::AbstractArray{T}`: right-hand side matrix of size ``m \\times p``.
+- `A::AbstractArray{T}`: coefficient (data) matrix of size ``m \\times n``.
+- `Γ_vals::AbstractVector{T}`: scalar regularization parameters ``\\gamma``.
+
+## Keyword Arguments
+- `kwargs...`: accepted but ignored.
+
+## Returns
+- `solutions::Vector{Matrix{T}}`: one ``n \\times p`` solution per entry of `Γ_vals`.
+
+## Notes
+- `b` must be a matrix; a vector `b` produces vector solutions that cannot be stored in the
+  `Vector{Matrix{T}}` result.
 """
 function tikhonov_regularization_path(b::AbstractArray{T}, A::AbstractArray{T}, 
                                      Γ_vals::AbstractVector{T}; kwargs...) where T
@@ -618,9 +880,22 @@ function tikhonov_regularization_path(b::AbstractArray{T}, A::AbstractArray{T},
 end
 
 """
-    estimate_tikhonov_memory(A, b, Γ, method)
+$(SIGNATURES)
 
-Estimate memory requirements for different Tikhonov methods.
+Estimate the memory (in bytes) required by the Tikhonov solution `method`.
+
+The base memory is `sizeof(T)*(m*n + m*p + n*n)`; `:augmented` adds
+`sizeof(T)*(m+n)*(n+p)`, `:normal` adds `sizeof(T)*(n*n + n*p)`, `:svd` adds
+`sizeof(T)*3*n*n`, and any other symbol returns the base memory.
+
+## Arguments
+- `A::AbstractMatrix{T}`: coefficient (data) matrix of size ``m \\times n``.
+- `b::AbstractArray{T}`: right-hand side of size ``m \\times p``.
+- `Γ::AbstractMatrix{T}`: Tikhonov matrix (unused).
+- `method::Symbol=:auto`: `:augmented`, `:normal`, `:svd` or `:auto`.
+
+## Returns
+- `mem::Integer`: estimated memory in bytes.
 """
 function estimate_tikhonov_memory(A::AbstractMatrix{T}, b::AbstractArray{T}, 
                                  Γ::AbstractMatrix{T}, method::Symbol=:auto) where T
@@ -647,9 +922,30 @@ function estimate_tikhonov_memory(A::AbstractMatrix{T}, b::AbstractArray{T},
 end
 
 """
-    optimize_regularization_parameter(A, b, Γ_base; method=:gcv, n_params=50)
+$(SIGNATURES)
 
-Find optimal regularization parameter using cross-validation or GCV.
+Select the scale ``\\gamma`` of the Tikhonov matrix ``\\boldsymbol{\\Gamma} = \\gamma\\boldsymbol{\\Gamma}_{\\text{base}}``
+by generalized cross-validation (GCV) over `n_params` log-spaced values in ``[10^{-8}, 10^{2}]``.
+
+For each ``\\gamma`` the GCV score
+``K\\,\\|\\mathbf{A}\\mathbf{x}_\\gamma - \\mathbf{b}\\|^2 / (K - \\mathrm{tr}(\\mathbf{A}(\\mathbf{A}^\\top\\mathbf{A}+\\boldsymbol{\\Gamma})^{-1}\\mathbf{A}^\\top))^2``
+is computed, where ``K`` is the length of `b`.
+
+## Arguments
+- `A::AbstractMatrix{T}`: coefficient (data) matrix of size ``K \\times n``.
+- `b::AbstractVector{T}`: right-hand-side vector of length ``K``.
+- `Γ_base::AbstractMatrix{T}`: base Tikhonov matrix of size ``n \\times n``.
+
+## Keyword Arguments
+- `method::Symbol=:gcv`: selection criterion; only `:gcv` is supported.
+- `n_params::Int=50`: number of candidate values of ``\\gamma``.
+
+## Returns
+- `γ_opt::Float64`: the candidate with the smallest GCV score.
+- `scores::Vector{T}`: GCV score of each candidate.
+
+## Notes
+- Throws an `ArgumentError` for any `method` other than `:gcv`.
 """
 function optimize_regularization_parameter(A::AbstractMatrix{T}, 
                                            b::AbstractVector{T}, 
@@ -686,10 +982,8 @@ end
 #==============================================================================#
 #==================== Old code left for deubbging purposes ====================#
 #==============================================================================#
-"""
-This is the old version of the tikhonov function. It is kept here for reference.
-Will be archived in the future.
-"""
+# This is the old version of the tikhonov function. It is kept here for reference.
+# Will be archived in the future.
 # function tikhonov(b::AbstractArray, A::AbstractArray, Γ::AbstractMatrix, tol::Real; flag::Bool=false)
 #     if flag
 #         # Ag = A' * A + Γ' * Γ  # This is if || Γ*O ||_F is desired

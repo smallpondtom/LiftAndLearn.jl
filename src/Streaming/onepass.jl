@@ -1,5 +1,30 @@
 export OnePassStreamingOpInf
 
+"""
+$(TYPEDEF)
+
+One-pass Streaming OpInf state when the time derivative is approximated by finite differences
+(`finite_diff=true`, Baker iSVD).
+
+Only the snapshot matrix is compressed on the fly with an incremental SVD
+``\\mathbf{X} \\approx \\mathbf{V}\\boldsymbol{\\Sigma}\\mathbf{W}^\\top``. Because the reduced
+snapshots are ``\\hat{\\mathbf{X}}^\\top = \\mathbf{W}\\boldsymbol{\\Sigma}``, the reduced
+time-derivative data can be formed afterwards by applying a finite-difference matrix to
+``\\mathbf{W}\\boldsymbol{\\Sigma}`` without revisiting the full-order data.
+Created by [`OnePassStreamingOpInf`](@ref).
+
+## Fields
+- `V::AbstractArray{T}`: left singular vectors (POD basis), ``n \\times r_s``.
+- `Σ::AbstractVector{T}`: singular values, length ``r_s``.
+- `W::AbstractArray{T}`: right singular vectors, ``K \\times r_s`` (one row per snapshot).
+- `state_dim::Int`: full state dimension ``n``.
+- `input_dim::Int`: input dimension ``m``.
+- `num_of_snapshots::Int`: number of snapshots streamed so far ``K``.
+- `r_s::Int`: current rank of the iSVD.
+- `rmax::Int`: maximum rank kept by the iSVD (truncation rank).
+- `Cs`, `q1cache`, `q2cache`, `xperp_cache`: preallocated work arrays.
+- `options::LSOpInfOption`: standard OpInf options defining the model structure.
+"""
 mutable struct OnePassStreamingOpInf1{T<:Number}
     # iSVD components
     V::AbstractArray{T}
@@ -23,6 +48,27 @@ mutable struct OnePassStreamingOpInf1{T<:Number}
     options::LSOpInfOption
 end
 
+"""
+$(TYPEDEF)
+
+One-pass Streaming OpInf state when time-derivative data are streamed alongside the snapshots
+(`finite_diff=false`, Baker iSVD).
+
+Both the snapshot matrix ``\\mathbf{X} \\approx \\mathbf{V}\\boldsymbol{\\Sigma}\\mathbf{W}^\\top``
+and the derivative matrix ``\\dot{\\mathbf{X}} \\approx \\mathbf{P}\\mathbf{S}\\mathbf{Q}^\\top``
+are compressed with incremental SVDs. Created by [`OnePassStreamingOpInf`](@ref).
+
+## Fields
+- `V::AbstractArray{T}`, `Σ::AbstractVector{T}`, `W::AbstractArray{T}`: iSVD of the snapshots.
+- `P::AbstractArray{T}`, `S::AbstractVector{T}`, `Q::AbstractArray{T}`: iSVD of the derivatives.
+- `state_dim::Int`: full state dimension ``n``.
+- `input_dim::Int`: input dimension ``m``.
+- `r_s::Int`: current rank of the snapshot iSVD.
+- `r_d::Int`: current rank of the derivative iSVD.
+- `rmax::Int`: maximum rank kept by both iSVDs.
+- `Cs`, `Cd`, `q1cache`, `q2cache`, `xperp_cache`: preallocated work arrays.
+- `options::LSOpInfOption`: standard OpInf options defining the model structure.
+"""
 mutable struct OnePassStreamingOpInf2{T<:Number}
     # iSVD components
     V::AbstractArray{T}
@@ -50,6 +96,40 @@ mutable struct OnePassStreamingOpInf2{T<:Number}
     options::LSOpInfOption
 end
 
+"""
+$(TYPEDEF)
+
+One-pass Streaming OpInf state based on a randomized sketch of the snapshot matrix
+(`isvd_method=:sketchy`).
+
+Each streamed snapshot updates three linear sketches (range, co-range, and core) with sparse
+random sign test matrices; the truncated SVD of the snapshot matrix is recovered at the end
+with [`compute_svd_sketchy!`](@ref). The total number of snapshots must be known in advance.
+Created by [`OnePassStreamingOpInf`](@ref).
+
+## Fields
+- `V::AbstractArray{T}`, `Σ::AbstractVector{T}`, `W::AbstractArray{T}`: truncated SVD of the
+  snapshot matrix (populated by [`compute_svd_sketchy!`](@ref)).
+- `Ξ::AbstractArray{T}`: range test matrix, ``k \\times n``.
+- `Ω::AbstractArray{T}`: co-range test matrix, ``k \\times K``.
+- `Φ::AbstractArray{T}`: core test matrix, ``s \\times n``.
+- `Ψ::AbstractArray{T}`: core test matrix, ``s \\times K``.
+- `Xcorange::AbstractArray{T}`: co-range sketch, ``k \\times K``.
+- `Xrange::AbstractArray{T}`: range sketch, ``n \\times k``.
+- `Xcore::AbstractArray{T}`: core sketch, ``s \\times s``.
+- `H::AbstractArray{T}`: sparse innovation buffer, ``n \\times K``.
+- `k::Int`: range sketch size.
+- `s::Int`: core sketch size.
+- `input_dim::Int`: input dimension ``m``.
+- `rmax::Int`: target rank.
+- `num_of_snapshots::Int`: number of snapshots streamed so far.
+- `options::LSOpInfOption`: standard OpInf options defining the model structure.
+
+## References
+- Tropp, J. A., Yurtsever, A., Udell, M., and Cevher, V. Streaming low-rank matrix
+  approximation with an application to scientific simulation. SIAM Journal on Scientific
+  Computing, 41(4):A2430–A2463, 2019.
+"""
 mutable struct OnePassStreamingOpInfSketchy{T<:Number}
     # SVD components
     V::AbstractArray{T}
@@ -84,8 +164,63 @@ mutable struct OnePassStreamingOpInfSketchy{T<:Number}
 end
 
 
+"""
+$(SIGNATURES)
+
+Create a one-pass Streaming OpInf object that compresses snapshot data on the fly.
+
+In one-pass Streaming OpInf every full-order snapshot is seen exactly once: it updates a
+low-rank (incremental or sketched) SVD of the snapshot matrix and is then discarded. After all
+data has been streamed, the POD basis and the reduced data needed by OpInf are read off the
+compressed factors and the reduced operators are computed with
+[`compute_stream_operators`](@ref).
+
+## Arguments
+- `x_init::AbstractVector{T}=Float64[]`: the first snapshot (required, nonzero, length
+  `n_state` for `isvd_method=:baker`; ignored for `:sketchy`).
+
+## Keyword Arguments
+- `xdot_init::AbstractVector{T}=T[1]`: the first time-derivative snapshot (only used when
+  `finite_diff=false`).
+- `options::LSOpInfOption`: standard OpInf options defining the model structure.
+- `n_state::Int`: full state dimension ``n``.
+- `n_input::Int=0`: input dimension ``m``.
+- `n_snapshots::Int=1`: total number of snapshots ``K`` (required for `:sketchy`).
+- `rank::Int=1`: maximum (truncation) rank of the SVD.
+- `finite_diff::Bool=true`: if `true`, only snapshots are streamed and time derivatives are
+  later approximated by a finite-difference matrix; if `false`, derivative snapshots are
+  streamed too (`:baker` only).
+- `isvd_method::Symbol=:baker`: `:baker` (deterministic incremental SVD of Baker et al.) or
+  `:sketchy` (randomized streaming sketch of Tropp et al.).
+- `sketch_size::Tuple{Int,Int,Int}=(0,0,0)`: `(k, s, ζ)` for `:sketchy` (range sketch size,
+  core sketch size, nonzeros per column of the sparse test matrices). Zeros select the defaults
+  `k = 4rank + 1`, `s = 2k + 1`, `ζ = min(k, 8)`.
+
+## Returns
+- `obj`: an [`OnePassStreamingOpInf1`](@ref) (`:baker`, `finite_diff=true`),
+  [`OnePassStreamingOpInf2`](@ref) (`:baker`, `finite_diff=false`), or
+  [`OnePassStreamingOpInfSketchy`](@ref) (`:sketchy`).
+
+## Examples
+```julia
+stream = OnePassStreamingOpInf(X[:, 1]; options=options, n_state=n, n_input=1, rank=10)
+for k in 2:size(X, 2)
+    LiftAndLearn.stream!(stream, X[:, k])
+end
+E, idx = LiftAndLearn.finite_diff_matrix(options.data.deriv_type, size(X, 2), Δt)
+op = LiftAndLearn.compute_stream_operators(stream, E, idx; U=U)
+Vr = stream.V   # POD basis
+```
+
+## References
+- Baker, C. G., Gallivan, K. A., and Van Dooren, P. Low-rank incremental methods for
+  computing dominant singular subspaces. Linear Algebra and its Applications, 436(8), 2012.
+- Tropp, J. A., Yurtsever, A., Udell, M., and Cevher, V. Streaming low-rank matrix
+  approximation with an application to scientific simulation. SIAM Journal on Scientific
+  Computing, 41(4), 2019.
+"""
 function OnePassStreamingOpInf(
-    x_init::AbstractVector{T}=T[0];          # Initial state data 
+    x_init::AbstractVector{T}=Float64[];     # Initial state data
     xdot_init::AbstractVector{T}=T[1],       # Initial derivative data
     options::LSOpInfOption,                  # Standard (Least-Squares) Operator Inference options
     n_state::Int, n_input::Int=0,            # state and input dimensions
@@ -170,6 +305,24 @@ function OnePassStreamingOpInf(
     end
 end
 
+"""
+$(SIGNATURES)
+
+Generate a sparse random sign matrix with exactly `zeta` nonzeros (``\\pm 1``) per column,
+used as a test matrix by the sketchy streaming SVD. Internal helper.
+
+## Arguments
+- `k::Int`: number of rows.
+- `n::Int`: number of columns.
+- `zeta::Int`: nonzeros per column, ``1 \\le \\zeta \\le k``.
+
+## Keyword Arguments
+- `field::String="real"`: `"real"` for ``\\pm 1`` entries or `"complex"` for unit-modulus
+  complex entries.
+
+## Returns
+- `S::SparseMatrixCSC`: the ``k \\times n`` sparse sign matrix.
+"""
 function sparse_sign_matrix(k::Int, n::Int, zeta::Int;
                             field::String="real")
     if zeta < 1 || zeta > k
@@ -201,7 +354,55 @@ function sparse_sign_matrix(k::Int, n::Int, zeta::Int;
     end
 end
 
-function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T}; 
+"""
+$(SIGNATURES)
+
+Compute the full SVD of the small sparse "broken arrowhead" matrix arising in an incremental
+SVD update. Internal helper.
+
+PROPACK's `tsvd` is tried first; if it fails (e.g., an invariant subspace is found because the
+new snapshot lies in the current subspace), the dense LAPACK SVD is used instead.
+
+## Arguments
+- `C::AbstractMatrix`: the ``(r+1) \\times (r+1)`` arrowhead matrix.
+
+## Returns
+- `(U, S, V)`: left singular vectors, singular values (descending), right singular vectors.
+"""
+function arrowhead_svd(C::AbstractMatrix)
+    k = minimum(size(C))
+    try
+        U, S, V, _, _, _ = tsvd(C, k=k)
+        return U, S, V
+    catch
+        @debug "PROPACK tsvd failed for the arrowhead matrix; using dense svd instead."
+        F = svd(Matrix(C))
+        return F.U, F.S, F.V
+    end
+end
+
+
+"""
+$(SIGNATURES)
+
+Stream one full-order snapshot `x` into a one-pass object (finite-difference variant), updating
+its incremental SVD.
+
+The new snapshot is orthogonalized twice against the current basis, the small arrowhead
+matrix is diagonalized, the factors ``\\mathbf{V}, \\boldsymbol{\\Sigma}, \\mathbf{W}`` are
+updated and truncated to `obj.rmax`, and the basis is re-orthogonalized if needed.
+
+## Arguments
+- `obj::OnePassStreamingOpInf1`: the one-pass object (mutated).
+- `x::AbstractVector{T}`: the next snapshot (length ``n``).
+
+## Keyword Arguments
+- `tol::T=1e-12`: orthogonality tolerance that triggers re-orthogonalization of ``\\mathbf{V}``.
+
+## Returns
+- `nothing`; mutates `obj`.
+"""
+function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T};
                  tol::T=1e-12) where {T<:Real}
     # Reduced dimensions
     r1 = obj.r_s
@@ -245,20 +446,8 @@ function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T};
     end
     obj.Cs[r1+1,r1+1] = p[1]
 
-    # Use PROPACK svd solver for SparseMatrixCSC type
-    Vc, Σc, Wc = nothing, nothing, nothing
-    try
-        Vc, Σc, Wc, _, _, _ = tsvd(obj.Cs[1:r1+1, 1:r1+1], k=r1+1)
-    catch e 
-        @warn "PROPACK tsvd failed, increasing kmax"
-        try 
-            Vc, Σc, Wc, _, _, _ = tsvd(obj.Cs[1:r1+1, 1:r1+1], k=r1+1,
-                                        kmax=min(size(obj.Cs))+25)
-        catch e
-            @error "PROPACK tsvd failed again, using svd instead"
-            Vc, Σc, Wc = svd(Matrix(obj.Cs[1:r1+1, 1:r1+1]))
-        end
-    end
+    # SVD of the broken arrowhead matrix
+    Vc, Σc, Wc = arrowhead_svd(obj.Cs[1:r1+1, 1:r1+1])
 
     # Update the iSVD components
     obj.V = hcat(obj.V, xperp) * Vc
@@ -267,7 +456,7 @@ function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T};
     obj.r_s += 1  # increment the rank
 
     ##
-    # --- (3) Truncate the rank 
+    # --- (3) Truncate the rank
     ##
     if obj.r_s > rmax
         obj.V = obj.V[:,1:rmax]
@@ -287,7 +476,24 @@ function stream!(obj::OnePassStreamingOpInf1, x::AbstractVector{T};
 end
 
 
-function stream!(obj::OnePassStreamingOpInf2, x::AbstractVector{T}, 
+"""
+$(SIGNATURES)
+
+Stream one full-order snapshot `x` and its time derivative `xdot` into a one-pass object,
+updating the incremental SVDs of both the snapshot and derivative matrices.
+
+## Arguments
+- `obj::OnePassStreamingOpInf2`: the one-pass object (mutated).
+- `x::AbstractVector{T}`: the next snapshot (length ``n``).
+- `xdot::AbstractVector{T}`: the time derivative at that snapshot (length ``n``).
+
+## Keyword Arguments
+- `tol::T=1e-12`: orthogonality tolerance that triggers re-orthogonalization of the bases.
+
+## Returns
+- `nothing`; mutates `obj`.
+"""
+function stream!(obj::OnePassStreamingOpInf2, x::AbstractVector{T},
     xdot::AbstractVector{T}; tol::T=1e-12) where {T<:Real}
 
     # Reduced dimensions
@@ -333,8 +539,8 @@ function stream!(obj::OnePassStreamingOpInf2, x::AbstractVector{T},
     end
     obj.Cs[r1+1,r1+1] = p[1]
 
-    # Use PROPACK svd solver for SparseMatrixCSC type
-    Vc, Σc, Wc, _, _, _ = tsvd(obj.Cs[1:r1+1, 1:r1+1], k=r1+1)
+    # SVD of the broken arrowhead matrix
+    Vc, Σc, Wc = arrowhead_svd(obj.Cs[1:r1+1, 1:r1+1])
 
     # Update the iSVD components
     obj.V = hcat(obj.V, xperp) * Vc
@@ -374,7 +580,7 @@ function stream!(obj::OnePassStreamingOpInf2, x::AbstractVector{T},
     end
     obj.Cd[r2+1,r2+1] = p[1]
 
-    Pc, Sc, Qc, _, _, _ = tsvd(obj.Cd[1:r2+1, 1:r2+1], k=r2+1)
+    Pc, Sc, Qc = arrowhead_svd(obj.Cd[1:r2+1, 1:r2+1])
     obj.P = hcat(obj.P, xdotperp) * Pc
     obj.S = Sc
     obj.Q = [obj.Q zeros(size(obj.Q,1), 1); zeros(1, r2) 1.0] * Qc
@@ -405,7 +611,20 @@ function stream!(obj::OnePassStreamingOpInf2, x::AbstractVector{T},
     return nothing
 end
 
-function stream!(obj::OnePassStreamingOpInfSketchy, 
+"""
+$(SIGNATURES)
+
+Stream a block of consecutive snapshots (columns of `x`) into a sketchy one-pass object,
+updating the range, co-range, and core sketches.
+
+## Arguments
+- `obj::OnePassStreamingOpInfSketchy`: the one-pass object (mutated).
+- `x::AbstractMatrix{T}`: the next ``n \\times b`` block of snapshots.
+
+## Returns
+- `nothing`; mutates `obj`.
+"""
+function stream!(obj::OnePassStreamingOpInfSketchy,
                  x::AbstractMatrix{T}) where {T<:Real}
 
     # Form the innovation
@@ -413,13 +632,13 @@ function stream!(obj::OnePassStreamingOpInfSketchy,
     d = size(x,2)
     obj.H[:, i:i+d-1] = x
 
-    # Update the sketches 
-    obj.Xcorange .+= obj.Ξ * H
-    obj.Xrange   .+= H * obj.Ω'
-    obj.Xcore    .+= (obj.Φ * H) * obj.Ψ'
+    # Update the sketches
+    obj.Xcorange .+= obj.Ξ * obj.H
+    obj.Xrange   .+= obj.H * obj.Ω'
+    obj.Xcore    .+= (obj.Φ * obj.H) * obj.Ψ'
 
     # Reset the innovation
-    obj.H[:, i:i+d-1] = 0.0
+    obj.H[:, i:i+d-1] .= zero(T)
     dropzeros!(obj.H)
 
     # Increment the number of streams
@@ -428,6 +647,19 @@ function stream!(obj::OnePassStreamingOpInfSketchy,
     return nothing
 end
 
+"""
+$(SIGNATURES)
+
+Stream one snapshot `x` into a sketchy one-pass object, updating the range, co-range, and core
+sketches in place (exploiting the sparsity of the test matrices).
+
+## Arguments
+- `obj::OnePassStreamingOpInfSketchy`: the one-pass object (mutated).
+- `x::AbstractVector{T}`: the next snapshot (length ``n``).
+
+## Returns
+- `nothing`; mutates `obj`.
+"""
 function stream!(obj::OnePassStreamingOpInfSketchy,
                  x::AbstractVector{T}) where {T<:Real}
 
@@ -489,6 +721,30 @@ function stream!(obj::OnePassStreamingOpInfSketchy,
     return nothing
 end
 
+"""
+$(SIGNATURES)
+
+Compute the reduced operators from a finite-difference one-pass object using the contiguous
+snapshot range `indices[1]:indices[2]`.
+
+Same as the `indices::AbstractVector` method but takes the range as a tuple.
+
+## Arguments
+- `obj`: the one-pass object after all snapshots have been streamed.
+- `E::AbstractArray{T}`: finite-difference matrix of size ``K \\times K'`` such that
+  ``\\mathbf{X}\\mathbf{E}`` approximates the time derivatives (see
+  [`finite_diff_matrix`](@ref)). For several trajectories use a block-diagonal matrix.
+- `indices::Tuple{<:Int,<:Int}`: first and last snapshot index paired with the columns of `E`.
+
+## Keyword Arguments
+- `U::AbstractArray{T}=[0.0]`: input data with one row per snapshot (``K \\times m``; an
+  ``m \\times K`` matrix is transposed automatically). Only linear inputs (`B`) are supported.
+- `rank::Int=obj.rmax`: reduced dimension ``r \\le`` `obj.rmax` used to build the model.
+
+## Returns
+- `operators::Operators`: the learned reduced operators (`A`, `B`, `A2u`, `K`, ...) with the
+  full operator matrix in `operators.O`.
+"""
 function compute_stream_operators(obj::OnePassStreamingOpInf1, 
     E::AbstractArray{T}, indices::Tuple{<:Int,<:Int};
     U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
@@ -608,6 +864,33 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
 end
 
 
+"""
+$(SIGNATURES)
+
+Compute the reduced operators from a finite-difference one-pass object using the snapshots at
+the positions `indices`.
+
+The reduced snapshots are ``\\hat{\\mathbf{X}}^\\top = \\mathbf{W}\\boldsymbol{\\Sigma}`` and
+the reduced time derivatives are ``\\mathbf{E}^\\top\\mathbf{W}\\boldsymbol{\\Sigma}``; the
+least-squares (optionally Tikhonov-regularized, per `obj.options`) OpInf problem is then solved.
+
+## Arguments
+- `obj`: the one-pass object after all snapshots have been streamed.
+- `E::AbstractArray{T}`: finite-difference matrix of size ``K \\times K'`` such that
+  ``\\mathbf{X}\\mathbf{E}`` approximates the time derivatives (see
+  [`finite_diff_matrix`](@ref)). For several trajectories use a block-diagonal matrix.
+- `indices::Union{Array{<:Int},UnitRange}`: snapshot indices (rows of ``\\mathbf{W}``) paired
+  with the columns of `E`, e.g. the index range returned by [`finite_diff_matrix`](@ref).
+
+## Keyword Arguments
+- `U::AbstractArray{T}=[0.0]`: input data with one row per snapshot (``K \\times m``; an
+  ``m \\times K`` matrix is transposed automatically). Only linear inputs (`B`) are supported.
+- `rank::Int=obj.rmax`: reduced dimension ``r \\le`` `obj.rmax` used to build the model.
+
+## Returns
+- `operators::Operators`: the learned reduced operators (`A`, `B`, `A2u`, `K`, ...) with the
+  full operator matrix in `operators.O`.
+"""
 function compute_stream_operators(obj::OnePassStreamingOpInf1,
     E::AbstractArray{T}, indices::Union{Array{<:Int},UnitRange};
     U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
@@ -724,6 +1007,28 @@ function compute_stream_operators(obj::OnePassStreamingOpInf1,
 end
 
 
+"""
+$(SIGNATURES)
+
+Compute the reduced operators from a one-pass object that streamed both snapshots and time
+derivatives (`finite_diff=false`).
+
+The reduced snapshots are ``\\mathbf{W}\\boldsymbol{\\Sigma}`` and the reduced time
+derivatives are ``\\mathbf{Q}\\mathbf{S}\\mathbf{P}^\\top\\mathbf{V}``, both obtained from the
+incremental SVD factors.
+
+## Arguments
+- `obj::OnePassStreamingOpInf2`: the one-pass object after streaming.
+
+## Keyword Arguments
+- `U::AbstractArray{T}=[0.0]`: input data with one row per snapshot (``K \\times m``; an
+  ``m \\times K`` matrix is transposed automatically). Only linear inputs (`B`) are supported.
+- `rank::Int=obj.rmax`: reduced dimension ``r \\le`` `obj.rmax` used to build the model.
+
+## Returns
+- `operators::Operators`: the learned reduced operators (`A`, `B`, `A2u`, `K`, ...) with the
+  full operator matrix in `operators.O`.
+"""
 function compute_stream_operators(obj::OnePassStreamingOpInf2;
     U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
 
@@ -840,6 +1145,21 @@ function compute_stream_operators(obj::OnePassStreamingOpInf2;
     return operators
 end
 
+"""
+$(SIGNATURES)
+
+Recover the truncated SVD ``\\mathbf{X} \\approx \\mathbf{V}\\boldsymbol{\\Sigma}\\mathbf{W}^\\top``
+of the streamed snapshot matrix from the sketches of a sketchy one-pass object.
+
+## Arguments
+- `obj::OnePassStreamingOpInfSketchy`: the one-pass object after streaming (mutated).
+
+## Keyword Arguments
+- `rank::Int=obj.rmax`: truncation rank.
+
+## Returns
+- `nothing`; sets `obj.V`, `obj.Σ`, and `obj.W`.
+"""
 function compute_svd_sketchy!(obj::OnePassStreamingOpInfSketchy; 
                              rank::Int=obj.rmax)
     # initial approximation with QR decompositions
@@ -857,6 +1177,30 @@ function compute_svd_sketchy!(obj::OnePassStreamingOpInfSketchy;
     return nothing
 end
 
+"""
+$(SIGNATURES)
+
+Compute the reduced operators from a sketchy one-pass object using the contiguous snapshot
+range `indices[1]:indices[2]`.
+
+Call [`compute_svd_sketchy!`](@ref) first, with the same `rank`.
+
+## Arguments
+- `obj`: the one-pass object after all snapshots have been streamed.
+- `E::AbstractArray{T}`: finite-difference matrix of size ``K \\times K'`` such that
+  ``\\mathbf{X}\\mathbf{E}`` approximates the time derivatives (see
+  [`finite_diff_matrix`](@ref)). For several trajectories use a block-diagonal matrix.
+- `indices::Tuple{<:Int,<:Int}`: first and last snapshot index paired with the columns of `E`.
+
+## Keyword Arguments
+- `U::AbstractArray{T}=[0.0]`: input data with one row per snapshot (``K \\times m``; an
+  ``m \\times K`` matrix is transposed automatically). Only linear inputs (`B`) are supported.
+- `rank::Int=obj.rmax`: reduced dimension ``r \\le`` `obj.rmax` used to build the model.
+
+## Returns
+- `operators::Operators`: the learned reduced operators (`A`, `B`, `A2u`, `K`, ...) with the
+  full operator matrix in `operators.O`.
+"""
 function compute_stream_operators(obj::OnePassStreamingOpInfSketchy, 
     E::AbstractArray{T}, indices::Tuple{<:Int,<:Int};
     U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
@@ -976,6 +1320,31 @@ function compute_stream_operators(obj::OnePassStreamingOpInfSketchy,
 end
 
 
+"""
+$(SIGNATURES)
+
+Compute the reduced operators from a sketchy one-pass object using the snapshots at the
+positions `indices`.
+
+Call [`compute_svd_sketchy!`](@ref) first, with the same `rank`.
+
+## Arguments
+- `obj`: the one-pass object after all snapshots have been streamed.
+- `E::AbstractArray{T}`: finite-difference matrix of size ``K \\times K'`` such that
+  ``\\mathbf{X}\\mathbf{E}`` approximates the time derivatives (see
+  [`finite_diff_matrix`](@ref)). For several trajectories use a block-diagonal matrix.
+- `indices::Union{Array{<:Int},UnitRange}`: snapshot indices (rows of ``\\mathbf{W}``) paired
+  with the columns of `E`, e.g. the index range returned by [`finite_diff_matrix`](@ref).
+
+## Keyword Arguments
+- `U::AbstractArray{T}=[0.0]`: input data with one row per snapshot (``K \\times m``; an
+  ``m \\times K`` matrix is transposed automatically). Only linear inputs (`B`) are supported.
+- `rank::Int=obj.rmax`: reduced dimension ``r \\le`` `obj.rmax` used to build the model.
+
+## Returns
+- `operators::Operators`: the learned reduced operators (`A`, `B`, `A2u`, `K`, ...) with the
+  full operator matrix in `operators.O`.
+"""
 function compute_stream_operators(obj::OnePassStreamingOpInfSketchy,
     E::AbstractArray{T}, indices::Union{Array{<:Int},UnitRange};
     U::AbstractArray{T}=[0.0], rank::Int=obj.rmax) where {T<:Real}
@@ -1091,6 +1460,18 @@ function compute_stream_operators(obj::OnePassStreamingOpInfSketchy,
     return operators
 end
 
+"""
+$(SIGNATURES)
+
+Free the random test matrices, sketches, and innovation buffer of a sketchy one-pass object
+(after [`compute_svd_sketchy!`](@ref)) to release memory. The SVD factors are kept.
+
+## Arguments
+- `obj::OnePassStreamingOpInfSketchy`: the one-pass object (mutated).
+
+## Returns
+- `nothing`; mutates `obj`.
+"""
 function purge!(obj::OnePassStreamingOpInfSketchy)
     obj.Φ = zeros(eltype(obj.Φ), 0, 0)
     obj.Ψ = zeros(eltype(obj.Ψ), 0, 0)

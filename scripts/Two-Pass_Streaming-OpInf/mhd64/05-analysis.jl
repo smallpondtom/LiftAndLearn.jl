@@ -35,6 +35,10 @@ n = n_time * n_traj
 # Load data source (testing)
 ds_test = DataSource(fn_test)
 
+# Load POD basis
+baker = load(joinpath(FILEPATH, "data/bases/baker_basis.jld2"))["baker"]
+V = baker.Q
+
 #=======================================#
 ## Compute the velocity power spectrum ##
 #=======================================#
@@ -104,10 +108,6 @@ GC.gc()
 Xrom_train = load(joinpath(
     FILEPATH, "data/results/stream_rom_training_states.jld2"))["states"][:iqrrls]
 
-## Load the basis
-baker = load(joinpath(FILEPATH, "data/bases/baker_basis.jld2"))["baker"]
-V = baker.Q
-
 ## Reproject the data back to full space
 Xrom_train_full = V * Xrom_train
 
@@ -167,6 +167,64 @@ Xvx_rom_train_full = nothing; Xvy_rom_train_full = nothing; Xvz_rom_train_full =
 Xbx_rom_train_full = nothing; Xby_rom_train_full = nothing; Xbz_rom_train_full = nothing
 GC.gc()
 
+
+
+##---- Projected training data: X_proj = V * V' * X ----#
+## Load the preprocessed training data and project onto the POD basis
+Xproj_train_full = load(joinpath(FILEPATH, "data/preprocessed_data.jld2"))["X"]["all"]
+Xproj_train_full = V * (V' * Xproj_train_full)
+
+## Unprocess the data
+Xproj_train_full = unprocess!(
+    Xproj_train_full, vec(means["all"]), vec(shifts["all"]), vec(scales["all"])
+)
+
+## Extract the velocity
+Xr_proj_train_full = Xproj_train_full[1:nxyz, :]
+Xmx_proj_train_full = Xproj_train_full[2*nxyz+1:3*nxyz, :]
+Xmy_proj_train_full = Xproj_train_full[3*nxyz+1:4*nxyz, :]
+Xmz_proj_train_full = Xproj_train_full[4*nxyz+1:5*nxyz, :]
+Xvx_proj_train_full = Xmx_proj_train_full ./ Xr_proj_train_full
+Xvy_proj_train_full = Xmy_proj_train_full ./ Xr_proj_train_full
+Xvz_proj_train_full = Xmz_proj_train_full ./ Xr_proj_train_full
+
+# Extract the magnetic field
+Xbx_proj_train_full = Xproj_train_full[5*nxyz+1:6*nxyz, :]
+Xby_proj_train_full = Xproj_train_full[6*nxyz+1:7*nxyz, :]
+Xbz_proj_train_full = Xproj_train_full[7*nxyz+1:8*nxyz, :]
+
+## Compute the velocity and magnetic power spectrum of the projected training data
+k_proj_train = zeros(8)
+Pv_proj_train = zeros(8)
+Pb_proj_train = zeros(8)
+for i in 1:n 
+    Xvx_proj_train_3d = reshape(view(Xvx_proj_train_full, :, i), nx, ny, nz)
+    Xvy_proj_train_3d = reshape(view(Xvy_proj_train_full, :, i), nx, ny, nz)
+    Xvz_proj_train_3d = reshape(view(Xvz_proj_train_full, :, i), nx, ny, nz)
+
+    Xbx_proj_train_3d = reshape(view(Xbx_proj_train_full, :, i), nx, ny, nz)
+    Xby_proj_train_3d = reshape(view(Xby_proj_train_full, :, i), nx, ny, nz)
+    Xbz_proj_train_3d = reshape(view(Xbz_proj_train_full, :, i), nx, ny, nz)
+
+    k, Pv, Pb = mhd_energy_spectra(
+        (Xvx_proj_train_3d, Xvy_proj_train_3d, Xvz_proj_train_3d),
+        (Xbx_proj_train_3d, Xby_proj_train_3d, Xbz_proj_train_3d),
+        dx, dy, dz, n_bins=8
+    )
+    k_proj_train += k
+    Pv_proj_train += Pv
+    Pb_proj_train += Pb
+end
+k_proj_train ./= n
+Pv_proj_train ./= n
+Pb_proj_train ./= n
+
+## Free some memory
+Xvx_proj_train_full = nothing; Xvy_proj_train_full = nothing; Xvz_proj_train_full = nothing
+Xbx_proj_train_full = nothing; Xby_proj_train_full = nothing; Xbz_proj_train_full = nothing
+Xmx_proj_train_full = nothing; Xmy_proj_train_full = nothing; Xmz_proj_train_full = nothing
+Xr_proj_train_full = nothing; Xproj_train_full = nothing
+GC.gc()
 
 ##-------- Test --------#
 # Load the original density data
@@ -272,13 +330,78 @@ Xvx_rom_test_full = nothing; Xvy_rom_test_full = nothing; Xvz_rom_test_full = no
 Xbx_rom_test_full = nothing; Xby_rom_test_full = nothing; Xbz_rom_test_full = nothing
 GC.gc()
 
+
+##---- Projected testing data: X_proj = V * V' * X ----#
+## Load the testing data, preprocess it, and project onto the POD basis
+Xproj_test_full = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["all"]
+Xproj_test_full = preprocess!(
+    Xproj_test_full, vec(means["all"]), vec(shifts["all"]), vec(scales["all"])
+)
+Xproj_test_full = V * (V' * Xproj_test_full)
+
+## Unprocess the data
+Xproj_test_full = unprocess!(
+    Xproj_test_full, vec(means["all"]), vec(shifts["all"]), vec(scales["all"])
+)
+
+## Extract the velocity
+Xr_proj_test_full = Xproj_test_full[1:nxyz, :]
+Xmx_proj_test_full = Xproj_test_full[2*nxyz+1:3*nxyz, :]
+Xmy_proj_test_full = Xproj_test_full[3*nxyz+1:4*nxyz, :]
+Xmz_proj_test_full = Xproj_test_full[4*nxyz+1:5*nxyz, :]
+Xvx_proj_test_full = Xmx_proj_test_full ./ Xr_proj_test_full
+Xvy_proj_test_full = Xmy_proj_test_full ./ Xr_proj_test_full
+Xvz_proj_test_full = Xmz_proj_test_full ./ Xr_proj_test_full
+
+# Extract the magnetic field
+Xbx_proj_test_full = Xproj_test_full[5*nxyz+1:6*nxyz, :]
+Xby_proj_test_full = Xproj_test_full[6*nxyz+1:7*nxyz, :]
+Xbz_proj_test_full = Xproj_test_full[7*nxyz+1:8*nxyz, :]
+
+## Compute the velocity and magnetic power spectrum of the projected testing data
+k_proj_test = zeros(8)
+Pv_proj_test = zeros(8)
+Pb_proj_test = zeros(8)
+for i in 1:size(Xproj_test_full, 2) 
+    Xvx_proj_test_3d = reshape(view(Xvx_proj_test_full, :, i), nx, ny, nz)
+    Xvy_proj_test_3d = reshape(view(Xvy_proj_test_full, :, i), nx, ny, nz)
+    Xvz_proj_test_3d = reshape(view(Xvz_proj_test_full, :, i), nx, ny, nz)
+
+    Xbx_proj_test_3d = reshape(view(Xbx_proj_test_full, :, i), nx, ny, nz)
+    Xby_proj_test_3d = reshape(view(Xby_proj_test_full, :, i), nx, ny, nz)
+    Xbz_proj_test_3d = reshape(view(Xbz_proj_test_full, :, i), nx, ny, nz)
+
+    k, Pv, Pb = mhd_energy_spectra(
+        (Xvx_proj_test_3d, Xvy_proj_test_3d, Xvz_proj_test_3d),
+        (Xbx_proj_test_3d, Xby_proj_test_3d, Xbz_proj_test_3d),
+        dx, dy, dz, n_bins=8
+    )
+    k_proj_test += k
+    Pv_proj_test += Pv
+    Pb_proj_test += Pb
+end
+k_proj_test ./= size(Xproj_test_full, 2)
+Pv_proj_test ./= size(Xproj_test_full, 2)
+Pb_proj_test ./= size(Xproj_test_full, 2)
+
+## Free some memory
+Xvx_proj_test_full = nothing; Xvy_proj_test_full = nothing; Xvz_proj_test_full = nothing
+Xbx_proj_test_full = nothing; Xby_proj_test_full = nothing; Xbz_proj_test_full = nothing
+Xmx_proj_test_full = nothing; Xmy_proj_test_full = nothing; Xmz_proj_test_full = nothing
+Xr_proj_test_full = nothing; Xproj_test_full = nothing
+GC.gc()
+
 ## Save results 
 save(joinpath(FILEPATH, "data/results/power_spectrum.jld2"), 
      "k_orig_train", k_orig, "Pv_orig_train", Pv_orig, "Pb_orig_train", Pb_orig,
      "k_rom_train", k_rom_train, "Pv_rom_train", Pv_rom_train, "Pb_rom_train", Pb_rom_train,
+     "k_proj_train", k_proj_train, "Pv_proj_train", Pv_proj_train,
+     "Pb_proj_train", Pb_proj_train,
      "k_orig_test", k_orig_test, "Pv_orig_test", Pv_orig_test, "Pb_orig_test", Pb_orig_test,
      "k_rom_test", k_rom_test, "Pv_rom_test", Pv_rom_test, 
-     "Pb_rom_test", Pb_rom_test)
+     "Pb_rom_test", Pb_rom_test,
+     "k_proj_test", k_proj_test, "Pv_proj_test", Pv_proj_test,
+     "Pb_proj_test", Pb_proj_test)
 
 #====================#
 ## Compute the 3PCF ##

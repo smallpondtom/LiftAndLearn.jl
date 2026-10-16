@@ -1,6 +1,30 @@
 """
-Cache for inverse-QR RLS via square-root updates, with vectorized loops.
-Maintains lower-triangular Psq = Cholesky factor of P^{-1}. With GPU support.
+$(TYPEDEF)
+
+State of an inverse QR-decomposition Recursive Least-Squares (iQRRLS) solver for
+``\\mathbf{D}\\mathbf{O} = \\mathbf{R}`` with rank-1 (one data row per step) updates.
+
+iQRRLS propagates a lower-triangular square root ``\\mathbf{P}^{1/2}`` of the inverse
+correlation matrix by QR-factorizing a small ``(N+1) \\times (N+1)`` pre-array, from which the
+gain vector is read off directly.
+
+## Fields
+- `N::Int`: number of features (columns of ``\\mathbf{D}``).
+- `n::Int`: number of right-hand sides (columns of ``\\mathbf{R}``).
+- `λ::T`: forgetting factor.
+- `O`: operator matrix estimate, ``N \\times n``.
+- `Psq::LowerTriangular`: square-root inverse correlation matrix, ``N \\times N``.
+- `u`: work vector of length ``N``.
+- `K`: gain vector, ``N \\times 1``.
+- `ξpre`: a-priori error, ``1 \\times n``.
+- `ξpost`: a-posteriori error, ``1 \\times n``.
+- `A`: pre-array work matrix, ``(N+1) \\times (N+1)``.
+- `temp_dO`, `temp_Ke`: preallocated work arrays.
+- `C::T`: conversion factor.
+- `J::T`: accumulated cost.
+- `mthd::Symbol`: factorization method, `:qr` or `:givens`.
+- `use_gpu::Bool`: whether the arrays live on a CUDA device.
+- `tau`: workspace for `CUSOLVER.geqrf!` (GPU only, otherwise `nothing`).
 """
 mutable struct iQRRLSCache{T<:AbstractFloat}
     N::Int                     # number of features
@@ -25,7 +49,21 @@ mutable struct iQRRLSCache{T<:AbstractFloat}
 end
 
 """
-Constructor: initialize all fields and wrap Psq via LowerTriangular.
+$(SIGNATURES)
+
+Construct an [`iQRRLSCache`](@ref) with all work arrays preallocated.
+
+## Keyword Arguments
+- `N::Int=1`: number of features.
+- `n::Int=1`: number of right-hand sides.
+- `λ::T=one(T)`: forgetting factor.
+- `Psq::AbstractMatrix=Matrix{T}(I, N, N)`: initial square-root inverse correlation matrix
+  (``\\boldsymbol{\\Gamma}^{-1/2}``); wrapped as `LowerTriangular`.
+- `method::Symbol=:qr`: `:qr` or `:givens`; any other value falls back to `:qr`.
+- `use_gpu::Bool=false`: allocate the arrays on a CUDA device.
+
+## Returns
+- `cache::iQRRLSCache{T}`: the initialized cache with ``\\mathbf{O} = \\mathbf{0}``.
 """
 function iQRRLSCache{T}(;
     N::Int=1,
@@ -74,16 +112,34 @@ function iQRRLSCache{T}(;
 end
 
 
-function iqrrls!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
+"""
+$(SIGNATURES)
+
+Perform one rank-1 iQRRLS update of `obj` with data row `d` (``1 \\times N``) and right-hand
+side row `r` (``1 \\times n``), dispatching to the CPU or GPU implementation.
+
+## Arguments
+- `obj::iQRRLSCache{T}`: the iQRRLS state (mutated).
+- `d::AbstractArray{T}`: data row, ``1 \\times N``.
+- `r::AbstractArray{T}`: right-hand side row, ``1 \\times n``.
+
+## Returns
+- `nothing`; mutates `obj`.
+"""
+function iqrrls!(obj::iQRRLSCache{T}, d::AbstractArray{T},
                  r::AbstractArray{T}) where T<:AbstractFloat
     return obj.use_gpu ? iqrrls_step_gpu!(obj, d, r) : iqrrls_step!(obj, d, r)
 end
 
 
 """
-iqrrls! - Perform one rank-1 iQRRLS update using QR factorization or Givens.
+$(SIGNATURES)
 
-Note: This is slow when `N` is large, as it uses O(N^3) operations for QR.
+CPU implementation of one rank-1 iQRRLS update (see [`iqrrls!`](@ref)). Internal helper.
+
+## Notes
+- With `mthd == :qr` each step costs ``\\mathcal{O}(N^3)``; `:givens` exploits the structure of
+  the pre-array and costs ``\\mathcal{O}(N^2)``.
 """
 function iqrrls_step!(obj::iQRRLSCache{T}, d::AbstractArray{T}, 
                     r::AbstractArray{T}) where T<:Real
@@ -159,6 +215,11 @@ function iqrrls_step!(obj::iQRRLSCache{T}, d::AbstractArray{T},
 end
 
 
+"""
+$(SIGNATURES)
+
+CUDA implementation of one rank-1 iQRRLS update (see [`iqrrls!`](@ref)). Internal helper.
+"""
 function iqrrls_step_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2}, 
                         r::CuArray{T,2}) where T<:Union{Float32,Float64}
     N, n = obj.N, obj.n
@@ -207,11 +268,19 @@ function iqrrls_step_gpu!(obj::iQRRLSCache{T}, d::CuArray{T,2},
 end
 
 
+"""
+$(SIGNATURES)
+
+Annihilate the first row of the iQRRLS pre-array `A` (except `A[1,1]`) with Givens rotations
+against the first column. Internal helper.
+
+## Arguments
+- `A::AbstractMatrix{T}`: iQRRLS pre-array (overwritten with the post-array).
+
+## Returns
+- `A`; the input matrix modified in place.
+"""
 function iqrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
-    """
-    In-place Givens rotation applied to the first column.
-    Modifies A directly and returns it.
-    """
     np1 = size(A, 1)
     n = size(A, 2)
     
@@ -250,7 +319,12 @@ function iqrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
 end
 
 
-# GPU kernel for applying a single Givens rotation to two rows
+"""
+$(SIGNATURES)
+
+CUDA kernel applying one Givens rotation `(c, s)` to rows `row1` and `row2` of `A` over the
+first `ncols` columns. Internal helper.
+"""
 function givens_rotation_kernel!(A::CuDeviceMatrix{T}, c::T, s::T, 
                                  row1::Int32, row2::Int32, ncols::Int32) where T
     tid = threadIdx().x + (blockIdx().x - 1) * blockDim().x
@@ -266,12 +340,18 @@ function givens_rotation_kernel!(A::CuDeviceMatrix{T}, c::T, s::T,
 end
 
 
-# GPU-compatible Givens rotation implementation
+"""
+$(SIGNATURES)
+
+GPU version of [`iqrrls_givens_fast!`](@ref) using a custom CUDA kernel. Internal helper.
+
+## Arguments
+- `A::CuArray{T,2}`: iQRRLS pre-array on the GPU (overwritten).
+
+## Returns
+- `A`; modified in place.
+"""
 function iqrrls_givens_gpu!(A::CuArray{T,2}) where {T<:AbstractFloat}
-    """
-    GPU implementation of Givens rotations applied to the first column.
-    Modifies A directly using GPU kernels.
-    """
     np1, n = size(A)
     
     # Apply Givens rotations from bottom to top
@@ -298,11 +378,19 @@ function iqrrls_givens_gpu!(A::CuArray{T,2}) where {T<:AbstractFloat}
 end
 
 
-# Alternative: Batched Givens rotation using CuBLAS (more efficient)
+"""
+$(SIGNATURES)
+
+Vectorized GPU version of [`iqrrls_givens_gpu!`](@ref) using broadcasting instead of a custom
+kernel. Internal helper.
+
+## Arguments
+- `A::CuArray{T,2}`: iQRRLS pre-array on the GPU (overwritten).
+
+## Returns
+- `A`; modified in place.
+"""
 function iqrrls_givens_gpu_optimized!(A::CuArray{T,2}) where {T<:AbstractFloat}
-    """
-    Optimized GPU implementation using vectorized operations where possible.
-    """
     np1, n = size(A)
     
     # Pre-allocate temporary arrays for rotation parameters

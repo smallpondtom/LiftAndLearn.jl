@@ -19,7 +19,7 @@ FILEPATH = occursin("scripts", pwd()) ?
            joinpath(pwd(), "scripts/Two-Pass_Streaming-OpInf/mhd64")
 DATAPATH = "../../../../DATA/THE_WELL/mhd64"
 train_files = readdir(DATAPATH, join=true)
-fn = train_files[1]
+fn = train_files[7]
 
 # Include the data sourcing module for data access
 include(joinpath(FILEPATH, "datasource.jl"))
@@ -124,7 +124,7 @@ if !isfile(joinpath(FILEPATH, "data/mean.jld2"))
     )
 end
 
-## Normalize to [0,1] with (row-wise) minmax scaling
+## Normalize to [-1,1] with (row-wise) minmax scaling
 SCALE_TYPE = :minmaxsym
 function minmax_shift_scale(X)
     X_min = minimum(X, dims=2)

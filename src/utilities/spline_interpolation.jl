@@ -1,16 +1,34 @@
 """
-    interpolate_matrix_elements(z::Vector, matrices::Vector, ẑ)
+$(SIGNATURES)
 
-Interpolate each element of a set of matrices at a given parameter value.
+Interpolate a parametric family of matrices entry-wise with a 1-D spline in the parameter.
 
-# Arguments
-- `z::Vector`: The vector of parameter values.
-- `matrices::Vector`: A vector of matrices corresponding to each parameter value.
-- `ẑ`: The point at which to interpolate.
-- `order::Int`: The order of the spline interpolation.
+For every entry ``(i,j)`` the scalar data ``\\{(z_k, [\\mathbf{A}_k]_{ij})\\}_k`` is interpolated with
+a spline of the chosen `order` and evaluated at `ẑ`. The spline types and their boundary
+conditions are those of the underlying routines:
+- `order=3`: natural cubic spline ([`cubic_spline_coefficients`](@ref)), ``s''=0`` at both ends.
+- `order=4`: quartic spline ([`quartic_spline_coefficients`](@ref)), ``s''=s'''=0`` at the first
+  knot and ``s''=0`` at the last knot.
+- `order=5`: quintic spline ([`quintic_spline_coefficients`](@ref)), clamped with ``s'=s''=0``
+  at both ends.
 
-# Returns
-- The interpolated matrix at `ẑ`.
+All three reproduce the data at the knots. The cubic and quartic splines reproduce matrices
+that depend affinely on ``z`` exactly; the quintic spline only reproduces constant families
+exactly because of its zero-slope end conditions.
+
+## Arguments
+- `z::Vector`: strictly increasing parameter values (knots) ``z_1 < \\cdots < z_N``, ``N \\ge 2``.
+- `matrices::Vector`: the ``N`` matrices ``\\mathbf{A}_k`` (all of the same size) at the knots.
+- `ẑ`: parameter value at which to interpolate, ``\\hat{z} \\ge z_1``; values beyond ``z_N``
+  are extrapolated with the last spline piece.
+
+## Keyword Arguments
+- `order::Int=3`: spline order; only `3` (cubic), `4` (quartic), and `5` (quintic) are supported
+  (an `AssertionError` is thrown otherwise).
+
+## Returns
+- `result::AbstractMatrix`: the interpolated matrix at `ẑ`, created with `similar(matrices[1])`
+  (so its element type follows the first matrix; use floating-point matrices).
 """
 function interpolate_matrix_elements(z::Vector, matrices::Vector, ẑ; order::Int=3)
     nrows, ncols = size(matrices[1])
@@ -48,16 +66,23 @@ end
 
 
 """
-    cubic_spline_coefficients(z::Vector, f::Vector)
+$(SIGNATURES)
 
-Calculate the cubic spline coefficients for interpolation.
+Compute the knot second derivatives of the natural cubic spline interpolating `f` at `z`.
 
-# Arguments
-- `z::Vector`: The vector of parameter values.
-- `f::Vector`: The vector of function values at each parameter.
+Solves the standard tridiagonal system
+``h_{i-1} M_{i-1} + 2(h_{i-1}+h_i) M_i + h_i M_{i+1} = 6\\left(\\frac{f_{i+1}-f_i}{h_i} - \\frac{f_i-f_{i-1}}{h_{i-1}}\\right)``
+for the interior knots with the natural boundary conditions ``M_1 = M_N = 0``
+(zero second derivative at both ends), where ``h_i = z_{i+1} - z_i``. The resulting spline
+reproduces linear functions exactly.
 
-# Returns
-- A tuple of vectors containing the spline coefficients for each interval.
+## Arguments
+- `z::Vector`: strictly increasing knots ``z_1 < \\cdots < z_N``, ``N \\ge 2``.
+- `f::Vector`: function values ``f_i`` at the knots.
+
+## Returns
+- `M::Vector`: the second derivatives ``M_i = s''(z_i)`` at the ``N`` knots, to be passed to
+  [`cubic_spline_interpolate`](@ref).
 """
 function cubic_spline_coefficients(z::Vector, f::Vector)
     n = length(z) - 1
@@ -86,22 +111,34 @@ function cubic_spline_coefficients(z::Vector, f::Vector)
 end
 
 """
-    cubic_spline_interpolate(z::Vector, f::Vector, M::Vector, ẑ)
+$(SIGNATURES)
 
-Interpolate the value at a given point using cubic spline interpolation.
+Evaluate the cubic spline defined by knots `z`, values `f`, and knot second derivatives `M`
+at the point `ẑ`.
 
-# Arguments
-- `z::Vector`: The vector of parameter values.
-- `f::Vector`: The vector of function values at each parameter.
-- `M::Vector`: The vector of second derivatives at each parameter.
-- `ẑ`: The point at which to interpolate.
+On the interval ``[z_i, z_{i+1}]`` containing `ẑ` (``h = z_{i+1} - z_i``) the spline is
+```math
+s(\\hat{z}) = \\frac{M_i (z_{i+1}-\\hat{z})^3 + M_{i+1} (\\hat{z}-z_i)^3}{6h}
+ + \\left(f_i - \\frac{M_i h^2}{6}\\right)\\frac{z_{i+1}-\\hat{z}}{h}
+ + \\left(f_{i+1} - \\frac{M_{i+1} h^2}{6}\\right)\\frac{\\hat{z}-z_i}{h} .
+```
 
-# Returns
-- The interpolated value at `ẑ`.
+## Arguments
+- `z::Vector`: strictly increasing knots ``z_1 < \\cdots < z_N``.
+- `f::Vector`: function values at the knots.
+- `M::Vector`: second derivatives at the knots, from [`cubic_spline_coefficients`](@ref).
+- `ẑ`: evaluation point with ``\\hat{z} \\ge z_1``. At ``\\hat{z} = z_N`` the last interval is used;
+  for ``\\hat{z} > z_N`` the last cubic piece is extrapolated.
+
+## Returns
+- `s::Real`: the spline value at `ẑ`.
 """
 function cubic_spline_interpolate(z::Vector, f::Vector, M::Vector, ẑ)
     # Find the interval [z[i], z[i+1]] that contains ẑ
     i = findlast(z .<= ẑ)
+    if i == length(z)
+        i -= 1  # Adjust index if ẑ is at the last knot
+    end
     h = z[i+1] - z[i]
     
     # The interpolation formula based on cubic splines (consistent with the image):
@@ -114,16 +151,27 @@ function cubic_spline_interpolate(z::Vector, f::Vector, M::Vector, ẑ)
 end
 
 """
-    quartic_spline_coefficients(x::Vector, y::Vector)
+$(SIGNATURES)
 
-Calculate the quartic spline coefficients for interpolation.
+Compute the coefficients of a quartic spline interpolating `y` at the knots `x`.
 
-# Arguments
-- `x::Vector`: The vector of parameter values (knots).
-- `y::Vector`: The vector of function values at each parameter.
+On each interval ``[x_i, x_{i+1}]``, ``i = 1, \\ldots, n`` (``n = N-1``), the spline is
+``s_i(x) = \\sum_{p=0}^{4} a_{ip} (x - x_i)^p``. The ``5n`` coefficients are determined by
+- interpolation at both ends of every interval (``2n`` equations),
+- continuity of ``s'``, ``s''``, and ``s'''`` at the interior knots (``3(n-1)`` equations),
+- the boundary conditions ``s''(x_1) = 0``, ``s'''(x_1) = 0``, and ``s''(x_N) = 0``.
 
-# Returns
-- A vector containing the spline coefficients for each interval.
+These conditions are satisfied by every linear function, so linear data is reproduced exactly.
+The ``5n \\times 5n`` system is assembled densely and solved with `\\`.
+
+## Arguments
+- `x::Vector`: strictly increasing knots ``x_1 < \\cdots < x_N``, ``N \\ge 2``.
+- `y::Vector`: function values at the knots.
+
+## Returns
+- `coefficients::Vector`: length-``5n`` vector; entries `5i-4:5i` hold
+  ``(a_{i0}, a_{i1}, a_{i2}, a_{i3}, a_{i4})`` for interval ``i``. Pass it to
+  [`quartic_spline_interpolate`](@ref).
 """
 function quartic_spline_coefficients(x::Vector, y::Vector)
     n = length(x) - 1
@@ -225,17 +273,18 @@ end
 
 
 """
-    quartic_spline_interpolate(x::Vector, coefficients::Vector, x̂)
+$(SIGNATURES)
 
-Interpolate the value at a given point using quartic spline interpolation.
+Evaluate a quartic spline at the point `x̂`.
 
-# Arguments
-- `x::Vector`: The vector of parameter values (knots).
-- `coefficients::Vector`: The vector of quartic spline coefficients.
-- `x̂`: The point at which to interpolate.
+## Arguments
+- `x::Vector`: strictly increasing knots ``x_1 < \\cdots < x_N``.
+- `coefficients::Vector`: spline coefficients from [`quartic_spline_coefficients`](@ref).
+- `x̂`: evaluation point with ``\\hat{x} \\ge x_1``. At ``\\hat{x} = x_N`` the last interval is used;
+  for ``\\hat{x} > x_N`` the last quartic piece is extrapolated.
 
-# Returns
-- The interpolated value at `x̂`.
+## Returns
+- `s::Real`: the spline value ``s_i(\\hat{x}) = \\sum_{p=0}^{4} a_{ip} (\\hat{x} - x_i)^p``.
 """
 function quartic_spline_interpolate(x::Vector, coefficients::Vector, x̂)
     n = length(x) - 1
@@ -260,16 +309,27 @@ end
 
 
 """
-    quintic_spline_coefficients(z::Vector, f::Vector)
+$(SIGNATURES)
 
-Calculate the quintic spline coefficients for interpolation.
+Compute the coefficients of a clamped quintic spline interpolating `f` at the knots `z`.
 
-# Arguments
-- `z::Vector`: The vector of parameter values.
-- `f::Vector`: The vector of function values at each parameter.
+On each interval ``[z_i, z_{i+1}]``, ``i = 1, \\ldots, n`` (``n = N-1``), the spline is
+``s_i(z) = \\sum_{p=0}^{5} a_{ip} (z - z_i)^p``. The ``6n`` coefficients are determined by
+- interpolation at both ends of every interval (``2n`` equations),
+- continuity of ``s'``, ``s''``, ``s'''``, and ``s^{(4)}`` at the interior knots (``4(n-1)`` equations),
+- the boundary conditions ``s'(z_1) = s''(z_1) = 0`` and ``s'(z_N) = s''(z_N) = 0``.
 
-# Returns
-- A tuple of vectors containing the spline coefficients for each interval.
+The zero-slope end conditions mean that only constant functions are reproduced exactly; data
+with a nonzero slope at the ends is matched at the knots but may deviate noticeably between
+them. The ``6n \\times 6n`` system is assembled densely and solved with `\\`.
+
+## Arguments
+- `z::Vector`: strictly increasing knots ``z_1 < \\cdots < z_N``, ``N \\ge 2``.
+- `f::Vector`: function values at the knots.
+
+## Returns
+- `coefficients::Vector`: length-``6n`` vector; entries `6i-5:6i` hold
+  ``(a_{i0}, \\ldots, a_{i5})`` for interval ``i``. Pass it to [`quintic_spline_interpolate`](@ref).
 """
 function quintic_spline_coefficients(z::Vector, f::Vector)
     n = length(z) - 1
@@ -352,17 +412,18 @@ end
 
 
 """
-    quintic_spline_interpolate(z::Vector, coefficients::Vector, ẑ)
+$(SIGNATURES)
 
-Interpolate the value at a given point using quintic spline interpolation.
+Evaluate a quintic spline at the point `ẑ`.
 
-# Arguments
-- `z::Vector`: The vector of parameter values.
-- `coefficients::Vector`: The vector of quintic spline coefficients.
-- `ẑ`: The point at which to interpolate.
+## Arguments
+- `z::Vector`: strictly increasing knots ``z_1 < \\cdots < z_N``.
+- `coefficients::Vector`: spline coefficients from [`quintic_spline_coefficients`](@ref).
+- `ẑ`: evaluation point with ``\\hat{z} \\ge z_1``. At ``\\hat{z} = z_N`` the last interval is used;
+  for ``\\hat{z} > z_N`` the last quintic piece is extrapolated.
 
-# Returns
-- The interpolated value at `ẑ`.
+## Returns
+- `s::Real`: the spline value ``s_i(\\hat{z}) = \\sum_{p=0}^{5} a_{ip} (\\hat{z} - z_i)^p``.
 """
 function quintic_spline_interpolate(z::Vector, coefficients::Vector, ẑ)
     n = length(z) - 1

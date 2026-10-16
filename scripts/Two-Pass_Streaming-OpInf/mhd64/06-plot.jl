@@ -132,6 +132,7 @@ with_theme(theme_latexfonts()) do
     )
     display(fig)
     save(joinpath(FILEPATH, "plots/subspace_angle_error.pdf"), fig)
+    save(joinpath(FILEPATH, "plots/subspace_angle_error.png"), fig)
 end
 
 
@@ -280,6 +281,7 @@ with_theme(theme_latexfonts()) do
     
     display(fig)
     save(joinpath(FILEPATH, "plots/streaming_errors.pdf"), fig)
+    save(joinpath(FILEPATH, "plots/streaming_errors.png"), fig)
 end
 
 
@@ -298,6 +300,10 @@ k_rom_train = power_data["k_rom_train"]
 Pv_rom_train = power_data["Pv_rom_train"]
 Pb_rom_train = power_data["Pb_rom_train"]
 
+k_proj_train = power_data["k_proj_train"]
+Pv_proj_train = power_data["Pv_proj_train"]
+Pb_proj_train = power_data["Pb_proj_train"]
+
 k_orig_test = power_data["k_orig_test"]
 Pv_orig_test = power_data["Pv_orig_test"]
 Pb_orig_test = power_data["Pb_orig_test"]
@@ -306,9 +312,13 @@ k_rom_test = power_data["k_rom_test"]
 Pv_rom_test = power_data["Pv_rom_test"]
 Pb_rom_test = power_data["Pb_rom_test"]
 
+k_proj_test = power_data["k_proj_test"]
+Pv_proj_test = power_data["Pv_proj_test"]
+Pb_proj_test = power_data["Pb_proj_test"]
+
 # Plot velocity and magnetic power spectra
 with_theme(theme_latexfonts()) do 
-    fig = Figure(size=(1200, 1000))
+    fig = Figure(size=(1200, 800))
     
     # Velocity Power Spectrum - Training
     ax1 = Axis(
@@ -321,21 +331,25 @@ with_theme(theme_latexfonts()) do
         xticklabelsize=18, yticklabelsize=18
     )
 
-    c2 = Makie.wong_colors()[2]
+    c1, c2, c3 = Makie.wong_colors()[1:3]
 
     lines1 = []
     l1 = lines!(ax1, k_orig_train, Pv_orig_train, 
-               color=:black, linewidth=4, label="Original")
+               color=:black, linewidth=6, label="Original")
     l2 = lines!(ax1, k_rom_train, Pv_rom_train, 
-               color=c2, linewidth=3, linestyle=:dash, label="ROM")
+               color=c2, linewidth=6, linestyle=:dash, label="ROM")
+    lp1 = lines!(ax1, k_proj_train, Pv_proj_train, 
+                color=c1, linewidth=6, linestyle=:dashdot, label="Projection")
     
     # Add Kolmogorov reference slope
     k_theory = k_orig_train[2:end-1]
     kolmogorov_slope = k_theory .^ (-5/3) .* Pv_orig_train[2] * k_orig_train[2]^(5/3)
-    l3 = lines!(ax1, k_theory, kolmogorov_slope, 
-               color=:gray, linewidth=3, linestyle=:dot, label=L"k^{-5/3}")
+    l3 = scatterlines!(ax1, k_theory, kolmogorov_slope, 
+                marker=:circle, markersize=30, markercolor=:transparent,
+                strokecolor=c3, strokewidth=4,
+               color=c3, linewidth=4, linestyle=:dot, label=L"k^{-5/3}")
     
-    push!(lines1, l1, l2, l3)
+    push!(lines1, l1, lp1, l2, l3)
     # axislegend(ax1, lines1, ["Original", "ROM", L"k^{-5/3}"], 
     #            position=:lb, labelsize=28, patchsize=(60,20))
     
@@ -351,17 +365,21 @@ with_theme(theme_latexfonts()) do
     
     lines2 = []
     l4 = lines!(ax2, k_orig_test, Pv_orig_test, 
-               color=:black, linewidth=4, label="Original")
+               color=:black, linewidth=6, label="Original")
     l5 = lines!(ax2, k_rom_test, Pv_rom_test, 
-               color=c2, linewidth=3, linestyle=:dash, label="ROM")
+               color=c2, linewidth=6, linestyle=:dash, label="ROM")
+    lp2 = lines!(ax2, k_proj_test, Pv_proj_test, 
+                color=c1, linewidth=6, linestyle=:dashdot, label="Projection")
     
     # Add Kolmogorov reference slope
     k_theory_test = k_orig_test[2:end-1]
     kolmogorov_slope_test = k_theory_test .^ (-5/3) .* Pv_orig_test[2] * k_orig_test[2]^(5/3)
-    l6 = lines!(ax2, k_theory_test, kolmogorov_slope_test, 
-               color=:gray, linewidth=3, linestyle=:dot, label=L"k^{-5/3}")
+    l6 = scatterlines!(ax2, k_theory_test, kolmogorov_slope_test, 
+                marker=:circle, markersize=30, markercolor=:transparent,
+                strokecolor=c3, strokewidth=4,
+               color=c3, linewidth=4, linestyle=:dot, label=L"k^{-5/3}")
     
-    push!(lines2, l4, l5, l6)
+    push!(lines2, l4, lp2, l5, l6)
     # axislegend(ax2, lines2, ["Original", "ROM", L"k^{-5/3}"], 
     #            position=:lb, labelsize=28, patchsize=(60,20))
     
@@ -378,16 +396,20 @@ with_theme(theme_latexfonts()) do
     
     lines3 = []
     l7 = lines!(ax3, k_orig_train, Pb_orig_train, 
-               color=:black, linewidth=4, label="Original")
+               color=:black, linewidth=6, label="Original")
     l8 = lines!(ax3, k_rom_train, Pb_rom_train, 
-               color=c2, linewidth=3, linestyle=:dash, label="ROM")
+               color=c2, linewidth=6, linestyle=:dash, label="ROM")
+    lp3 = lines!(ax3, k_proj_train, Pb_proj_train, 
+                color=c1, linewidth=6, linestyle=:dashdot, label="Projection")
     
     # Add reference slope for magnetic field (often k^(-5/3) as well)
     mag_slope = k_theory .^ (-5/3) .* Pb_orig_train[2] * k_orig_train[2]^(5/3)
-    l9 = lines!(ax3, k_theory, mag_slope, 
-               color=:gray, linewidth=3, linestyle=:dot, label=L"k^{-5/3}")
+    l9 = scatterlines!(ax3, k_theory, mag_slope, 
+                marker=:circle, markersize=30, markercolor=:transparent,
+                strokecolor=c3, strokewidth=4,
+               color=c3, linewidth=4, linestyle=:dot, label=L"k^{-5/3}")
     
-    push!(lines3, l7, l8, l9)
+    push!(lines3, l7, lp3, l8, l9)
     # axislegend(ax3, lines3, ["Original", "ROM", L"k^{-5/3}"], 
     #            position=:lb, labelsize=28, patchsize=(60,20))
     
@@ -403,21 +425,29 @@ with_theme(theme_latexfonts()) do
     
     lines4 = []
     l10 = lines!(ax4, k_orig_test, Pb_orig_test, 
-                color=:black, linewidth=4, label="Original")
+                color=:black, linewidth=6, label="Original")
     l11 = lines!(ax4, k_rom_test, Pb_rom_test, 
-                color=c2, linewidth=3, linestyle=:dash, label="ROM")
+                color=c2, linewidth=6, linestyle=:dash, label="ROM")
+    lp4 = lines!(ax4, k_proj_test, Pb_proj_test, 
+                 color=c1, linewidth=6, linestyle=:dashdot, label="Projection")
     
     # Add reference slope
     mag_slope_test = k_theory_test .^ (-5/3) .* Pb_orig_test[2] * k_orig_test[2]^(5/3)
-    l12 = lines!(ax4, k_theory_test, mag_slope_test, 
-                color=:gray, linewidth=3, linestyle=:dot, label=L"k^{-5/3}")
+    l12 = scatterlines!(ax4, k_theory_test, mag_slope_test, 
+                marker=:circle, markersize=30, markercolor=:transparent,
+                strokecolor=c3, strokewidth=4,
+                color=c3, linewidth=4, linestyle=:dot, label=L"k^{-5/3}")
     
-    push!(lines4, l10, l11, l12)
-    axislegend(ax4, lines4, ["Original", "Streaming-OpInf", L"k^{-5/3}"], 
-               position=:lb, labelsize=32, patchsize=(60,20))
+    push!(lines4, l10, lp4, l11, l12)
+    # Shared legend below the four panels
+    Legend(fig[3, 1:2], lines4, 
+           ["Original", "Projection", "Streaming-OpInf", L"k^{-5/3}"], 
+           orientation=:horizontal, labelsize=32, patchsize=(90,20), 
+           framevisible=false, colgap=40)
     
     display(fig)
     save(joinpath(FILEPATH, "plots/power_spectra_comparison.pdf"), fig)
+    save(joinpath(FILEPATH, "plots/power_spectra_comparison.png"), fig)
 end
 
 ## Create error analysis plot

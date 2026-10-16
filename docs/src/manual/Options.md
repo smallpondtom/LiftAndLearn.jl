@@ -55,12 +55,12 @@ The `SIGE` option is used to run the optimization successive from a lower reduce
 ```julia
 # r = 2
 options.optim.initial_guess = false  # turn off initial guess for the first iteration
-op_tmp = LnL.opinf(Xdata, Vr[:,1:2], options; U=zeros(100), Y=zeros(100), Xdot=Xdotdata)  # compute the first operator
+op_tmp = LnL.epopinf(Xdata, Vr[:,1:2], options; U=zeros(100), Xdot=Xdotdata)  # compute the first operator
 op[1] = op_tmp  # store the first operator
 
 # r =3
 options.optim.initial_guess = true  # turn on initial guess for the next step
-op_tmp = LnL.opinf(Xdata, Vr[:,1:3], options; U=zeros(100), Y=zeros(100), Xdot=Xdotdata, IG=LnL.Operators(A=op_tmp.A, F=op_tmp.F)) # compute the second operator
+op_tmp = LnL.epopinf(Xdata, Vr[:,1:3], options; U=zeros(100), Xdot=Xdotdata, IG=LnL.Operators(A=op_tmp.A, A2u=op_tmp.A2u)) # compute the second operator
 op[2] = op_tmp
 ```
 
@@ -79,12 +79,13 @@ Using the `TikhonovParameter` struct you will define the Tikhonov regularization
 
 The Tikhonov regulated optimization problem is defined as 
 ```math
-\text{min}~\|\|\mathbf{D}\mathbf{O}^\top - \dot{\mathbf{\hat{X}}}\|\|^2_F + \|\|\mathbf{\Gamma}\mathbf{O}^\top\|\|^2_F
+\text{min}~\|\mathbf{D}\mathbf{O}^\top - \dot{\mathbf{\hat{X}}}^\top\|^2_F + \|\mathbf{\Gamma}^{1/2}\mathbf{O}^\top\|^2_F
 ```
-where ``\mathbf{D}``, ``\mathbf{O}^\top``, ``\dot{\hat{\mathbf{X}}}`` are the data matrix, operator matrix (with minimizers), and time derivative snapshot matrix, respectively. The linear least-squares solution of this becomes
+where ``\mathbf{D}``, ``\mathbf{O}^\top``, ``\dot{\hat{\mathbf{X}}}`` are the data matrix, operator matrix (with minimizers), and time derivative snapshot matrix, respectively, and ``\mathbf{\Gamma}`` is a diagonal matrix whose entries are the values in `TikhonovParameter` for the corresponding operator blocks. The linear least-squares solution of this becomes
 ```math
-\mathbf{O}^\top = (\mathbf{D}^\top\mathbf{D} + \mathbf{\Gamma}^\top\mathbf{\Gamma})^\dag \mathbf{D}\dot{\mathbf{\hat{X}}}
+\mathbf{O}^\top = (\mathbf{D}^\top\mathbf{D} + \mathbf{\Gamma})^{-1} \mathbf{D}^\top\dot{\mathbf{\hat{X}}}^\top
 ```
+See [Least-Squares Solvers](Solvers.md) for the available solution methods.
 
 ```@docs
 TikhonovParameter
@@ -106,7 +107,9 @@ LSOpInfOption
 ```
 
 !!! note
-    The option `with_tol` turns on/off the settings to truncate ill-posed singular values with order of `pinv_tol`.
+    The solver settings (`use_backslash`, `use_normal_equations`, `use_svd_truncation`, `tolerance`, `chunk_size`, `use_gpu`, ...) select how the least-squares problem is solved; see [Least-Squares Solvers](Solvers.md). The `with_tol`/`pinv_tol` options of earlier versions have been removed: use `use_svd_truncation=true` with `tolerance` to truncate small singular values instead.
+
+`LSOpInfOption` is also used to configure [Streaming OpInf](streaming/Overview.md).
 
 ### Energy-Preserving Operator Inference Options
 The three options below are for the energy-preserving Operator Inference approaches: hard equality constraint, soft inequality constraint, and penalty. For details of each parameter please check out the documentation of [EP-OpInf Manual](nonintrusive/EPOpInf.md)

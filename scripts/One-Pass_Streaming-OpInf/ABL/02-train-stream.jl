@@ -77,7 +77,7 @@ rmax = 200
 ## Compute One-Pass Streaming-OpInf ##
 #====================================#
 LOAD_STREAM = true
-GRID_SEARCH = false
+GRID_SEARCH = true
 
 if LOAD_STREAM
     stream_res = load(joinpath(FILEPATH, "data/results/onepass_stream.jld2"), "stream")
@@ -117,7 +117,7 @@ end
 E, Δidx = LnL.finite_diff_matrix(
     options.data.deriv_type, n_train, options.data.Δt
 )
-r = 100
+r = 200
 Xhat = Diagonal(stream_res.Σ[1:r]) * stream_res.W[:, 1:r]'
 Xhatdot = Xhat * E
 Xhat = Xhat[:, Δidx]
@@ -130,8 +130,8 @@ GC.gc()
 if GRID_SEARCH
     @info "Running grid search for regularization parameters"
     include(joinpath(FILEPATH, "grid_search.jl"))
-    B1 = logrange(10^6, 10^13, length=25)    # best_beta1 = 1.0e6
-    B2 = logrange(10^12, 10^16, length=20)   # best_beta2 = 1.128837891684689e13
+    B1 = logrange(10^2, 10^12, length=20)    
+    B2 = logrange(10^12, 10^16, length=25)   
     reg_pairs_global = vec([(b1, b2) for b1 in B1, b2 in B2])
     n_reg_global = length(reg_pairs_global)
     max_growth = 2.0
@@ -156,8 +156,15 @@ else
     @info "No grid search, using fixed regularization parameters"
     ## Solve the OpInf problem 
     options.with_reg = true
-    beta1 = 1.0e6
-    beta2 = 1.128837891684689e13
+
+    # r = 120
+    beta1 = 1.0e10
+    beta2 = 1.623776739188722e12
+
+    # r= 200
+    beta1 = 1.4384498882876628e5
+    beta2 = 3.1622776601683794e12
+
     options.λ = LnL.TikhonovParameter(A=beta1, K=beta1, A2=beta2)
     op_stream = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
 

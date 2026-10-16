@@ -5,6 +5,7 @@ Cost analysis of Streaming-OpInf experiments
 using Printf
 
 ## Burgers' 
+println("\n=== Burgers' ===\n")
 n = 128
 K = 10001
 r = 14
@@ -26,6 +27,7 @@ stream_total = isvd_cost + rls_cost
 @printf("Total cost reduction: %.4f%%\n", 100 - stream_total / original_total * 100)
 
 ## KSE 
+println("\n=== KSE ===\n")
 n = 512
 K = 3000
 r = 24
@@ -47,9 +49,55 @@ stream_total = isvd_cost + rls_cost
 @printf("Total cost reduction: %.4f%%\n", 100 - stream_total / original_total * 100)
 
 ## Channel flow 
+println("\n=== Channel flow ===\n")
 n = 384 * 192 * 32
 K = 8000
 r = 300
+d = r + r * (r+1) / 2 + 1 
+q = 4*r + 1
+ζ = 8
+svd_cost = n * (K + r)
+ls_cost = d * (K + d)
+original_total = svd_cost + ls_cost
+isvd_cost = n * (q + ζ)
+rls_cost = d * (K + d)
+stream_total = isvd_cost + rls_cost
+@printf("Batch SVD cost: %.4e\n", svd_cost)
+@printf("Batch LS cost: %.4e\n", ls_cost)
+@printf("iSVD cost: %.4e\n", isvd_cost)
+@printf("RLS cost: %.4e\n", rls_cost)
+@printf("SVD cost reduction: %.4f%%\n", 100 - isvd_cost / svd_cost * 100)
+@printf("LS cost reduction: %.4f%%\n", 100 - rls_cost / ls_cost * 100)
+@printf("Total cost reduction: %.4f%%\n", 100 - stream_total / original_total * 100)
+
+## MHD
+println("\n=== MHD ===\n")
+n = 64 * 64 * 64 * 8
+K = 500
+r = 50
+d = r + r * (r+1) / 2 + r * (r+1) * (r+2) / 6 + 1 
+q = 4*r + 1
+ζ = 8
+svd_cost = n * (K + r)
+ls_cost = d * (K + d)
+original_total = svd_cost + ls_cost
+isvd_cost = n * r
+rls_cost = d^2
+stream_total = isvd_cost + rls_cost
+@printf("Batch SVD cost: %.4e\n", svd_cost)
+@printf("Batch LS cost: %.4e\n", ls_cost)
+@printf("iSVD cost: %.4e\n", isvd_cost)
+@printf("RLS cost: %.4e\n", rls_cost)
+@printf("SVD cost reduction: %.4f%%\n", 100 - isvd_cost / svd_cost * 100)
+@printf("LS cost reduction: %.4f%%\n", 100 - rls_cost / ls_cost * 100)
+@printf("Total cost reduction: %.4f%%\n", 100 - stream_total / original_total * 100)
+
+
+## ABL
+println("\n=== ABL ===\n")
+n = 384 * 160 * 96
+K = 8000
+r = 200
 d = r + r * (r+1) / 2 + 1 
 q = 4*r + 1
 ζ = 8

@@ -1,8 +1,19 @@
 """
-    LeastSquaresSolver
+$(TYPEDEF)
 
-A high-performance solver for least squares problems D*O ≈ Rt with multiple 
-optimization strategies.
+Configuration of the least-squares solver for ``\\mathbf{D}\\mathbf{O} \\approx \\mathbf{R}^\\top``
+used by `standard_least_squares`. Internal helper.
+
+Construct with the keyword constructor `LeastSquaresSolver{T}(; kwargs...)`, whose keywords
+and defaults are the fields listed below.
+
+## Fields
+- `use_gpu::Bool=false`: request GPU acceleration.
+- `use_normal_equations::Bool=false`: use the matrix-free normal-equations solver.
+- `chunk_size::Int=1000`: number of right-hand-side columns solved per batch.
+- `tolerance::T=1e-12`: absolute tolerance of the iterative solver.
+- `algorithm::Union{Function,Nothing}=nothing`: LinearSolve.jl algorithm (`nothing` = LinearSolve.jl default).
+- `max_iterations::Int=1000`: maximum number of iterations of the iterative solver.
 """
 struct LeastSquaresSolver{T}
     use_gpu::Bool
@@ -25,12 +36,29 @@ struct LeastSquaresSolver{T}
     end
 end
 
+"""
+$(SIGNATURES)
+
+Construct a `LeastSquaresSolver{Float64}`; the keywords are the fields of
+`LeastSquaresSolver`. Internal helper.
+"""
 LeastSquaresSolver(; kwargs...) = LeastSquaresSolver{Float64}(; kwargs...)
 
 """
-    setup_gpu_arrays(D, Rt, use_gpu)
+$(SIGNATURES)
 
-Efficiently transfer arrays to GPU if requested and available.
+Move `D` and `Rt` to the GPU if `use_gpu` is `true` and a functional GPU backend
+(Metal.jl on macOS, CUDA.jl otherwise) is available. Internal helper.
+
+## Arguments
+- `D::AbstractArray{T}`: data matrix.
+- `Rt::AbstractArray{T}`: right-hand-side matrix.
+- `use_gpu::Bool`: whether GPU computation is requested.
+
+## Returns
+- `D_out`: `D` (as a GPU array if the GPU is active).
+- `Rt_out`: `Rt` (as a GPU array if the GPU is active).
+- `gpu_active::Bool`: `true` if the arrays were moved to the GPU; falls back to the CPU with a warning otherwise.
 """
 function setup_gpu_arrays(D::AbstractArray{T}, Rt::AbstractArray{T}, 
                           use_gpu::Bool) where T
@@ -58,9 +86,19 @@ function setup_gpu_arrays(D::AbstractArray{T}, Rt::AbstractArray{T},
 end
 
 """
-    solve_direct_batch(D, Rt, solver)
+$(SIGNATURES)
 
-Solve using direct method with batching for memory efficiency.
+Solve ``\\mathbf{D}\\mathbf{O} \\approx \\mathbf{R}^\\top`` column by column with a direct
+LinearSolve.jl solver, reusing the factorization of `D` for every right-hand side.
+Internal helper.
+
+## Arguments
+- `D::AbstractArray{T}`: data matrix of size ``K \\times d``.
+- `Rt::AbstractArray{T}`: right-hand-side matrix of size ``K \\times p``.
+- `solver::LeastSquaresSolver{T}`: solver configuration (`algorithm`, `chunk_size`).
+
+## Returns
+- `O::AbstractMatrix{T}`: least-squares solution of size ``d \\times p``.
 """
 function solve_direct_batch(D::AbstractArray{T}, Rt::AbstractArray{T}, 
                             solver::LeastSquaresSolver{T}) where T
@@ -99,9 +137,22 @@ function solve_direct_batch(D::AbstractArray{T}, Rt::AbstractArray{T},
 end
 
 """
-    solve_normal_equations(D, Rt, solver)
+$(SIGNATURES)
 
-Solve using normal equations approach for better memory efficiency.
+Solve the normal equations ``\\mathbf{D}^\\top\\mathbf{D}\\mathbf{O} = \\mathbf{D}^\\top\\mathbf{R}^\\top``
+column by column with an iterative LinearSolve.jl solver, applying
+``\\mathbf{D}^\\top\\mathbf{D}`` matrix-free (it is never formed). Internal helper.
+
+## Arguments
+- `D::AbstractArray{T}`: data matrix of size ``K \\times d``.
+- `Rt::AbstractArray{T}`: right-hand-side matrix of size ``K \\times p``.
+- `solver::LeastSquaresSolver{T}`: solver configuration (`algorithm`, `tolerance`, `max_iterations`).
+
+## Returns
+- `O::AbstractMatrix{T}`: solution of size ``d \\times p``.
+
+## Notes
+- Accuracy is limited by the iterative solver tolerance and by the squared condition number of `D`.
 """
 function solve_normal_equations(D::AbstractArray{T}, Rt::AbstractArray{T}, 
                                 solver::LeastSquaresSolver{T}) where T
@@ -148,9 +199,19 @@ function solve_normal_equations(D::AbstractArray{T}, Rt::AbstractArray{T},
 end
 
 """
-    solve_qr_batch(D, Rt, solver)
+$(SIGNATURES)
 
-Solve using QR decomposition with efficient batching.
+Solve ``\\mathbf{D}\\mathbf{O} \\approx \\mathbf{R}^\\top`` with a single QR decomposition
+``\\mathbf{D} = \\mathbf{Q}\\mathbf{R}`` and batched triangular solves over chunks of
+right-hand-side columns. Internal helper.
+
+## Arguments
+- `D::AbstractArray{T}`: data matrix of size ``K \\times d`` (assumed full column rank).
+- `Rt::AbstractArray{T}`: right-hand-side matrix of size ``K \\times p``.
+- `solver::LeastSquaresSolver{T}`: solver configuration (`chunk_size`).
+
+## Returns
+- `O::AbstractMatrix{T}`: least-squares solution of size ``d \\times p``.
 """
 function solve_qr_batch(D::AbstractArray{T}, Rt::AbstractArray{T}, 
                         solver::LeastSquaresSolver{T}) where T
@@ -185,21 +246,41 @@ function solve_qr_batch(D::AbstractArray{T}, Rt::AbstractArray{T},
 end
 
 """
-    standard_least_squares(D::AbstractArray, Rt::AbstractArray; kwargs...)
+$(SIGNATURES)
 
-High-performance least squares solver with automatic method selection.
+Solve the least-squares problem ``\\min_{\\mathbf{O}} \\|\\mathbf{D}\\mathbf{O} - \\mathbf{R}^\\top\\|_F``
+with automatic selection of the solution method.
+
+With ``\\mathbf{D}`` of size ``m \\times n`` and ``\\mathbf{R}^\\top`` of size ``m \\times p``,
+the method is chosen in this order:
+1. backslash `D \\ Rt` if the GPU is active or `use_backslash=true`;
+2. matrix-free normal equations (`solve_normal_equations`) if `use_normal_equations=true`
+   and ``m > 3n``;
+3. QR decomposition with batched triangular solves (`solve_qr_batch`) if ``p >`` `chunk_size`;
+4. otherwise a direct LinearSolve.jl solve reusing the factorization (`solve_direct_batch`).
+
+If an `OutOfMemoryError` occurs, the solver falls back to the normal-equations method on
+the CPU.
 
 ## Arguments
-- `D::AbstractArray`: Data matrix (m × n)
-- `Rt::AbstractArray`: Target matrix (m × p)
-- `use_gpu::Bool`: Enable GPU acceleration (default: false)
-- `use_normal_equations::Bool`: Force normal equations method (default: false)
-- `chunk_size::Int`: Batch size for memory management (default: 1000)
-- `tolerance::Real`: Numerical tolerance (default: 1e-12)
-- `algorithm::Union{Function,Nothing}`: Custom solver method (default: nothing)
+- `D::AbstractArray{T}`: data matrix ``\\mathbf{D}`` of size ``m \\times n``.
+- `Rt::AbstractArray{T}`: right-hand-side matrix ``\\mathbf{R}^\\top`` of size ``m \\times p``.
+
+## Keyword Arguments
+- `use_gpu::Bool=false`: use the GPU (CUDA.jl or Metal.jl) if functional; the backslash solve is used on the GPU.
+- `use_normal_equations::Bool=false`: use the normal-equations method for strongly overdetermined systems (``m > 3n``).
+- `chunk_size::Int=400`: number of right-hand-side columns per batch; also the threshold on ``p`` above which the QR method is used.
+- `tolerance::Real=1e-12`: absolute tolerance of the iterative (normal-equations) solver.
+- `use_backslash::Bool=false`: solve with the backslash operator.
+- `algorithm::Union{Function,Nothing}=nothing`: LinearSolve.jl algorithm for the direct and normal-equations solves (`nothing` = LinearSolve.jl default).
+- `estimate_memory::Bool=false`: log an estimate of the memory usage (see `estimate_memory_usage`).
+- `max_iterations::Int=1000`: maximum number of iterations of the iterative solver.
 
 ## Returns
-- `O::AbstractArray`: Solution matrix (n × p) such that D*O ≈ Rt
+- `O::AbstractMatrix{T}`: solution of size ``n \\times p`` such that ``\\mathbf{D}\\mathbf{O} \\approx \\mathbf{R}^\\top``.
+
+## Notes
+- `LSOpInfOption` uses different defaults (`use_backslash=true`, `chunk_size=1000`) when this function is called from `opinf`.
 """
 function standard_least_squares(D::AbstractArray{T}, Rt::AbstractArray{T}; 
                                 use_gpu::Bool=false,
@@ -220,7 +301,14 @@ function standard_least_squares(D::AbstractArray{T}, Rt::AbstractArray{T};
         use_gpu, use_normal_equations, chunk_size, 
         tolerance, algorithm, max_iterations
     )
-    
+
+    # Materialize lazy Adjoint/Transpose wrappers for the LinearSolve.jl-based paths
+    # (LinearSolve.jl's default algorithm fails on a rectangular Adjoint matrix)
+    if !use_backslash
+        D = D isa Union{Adjoint,Transpose} ? Matrix(D) : D
+        Rt = Rt isa Union{Adjoint,Transpose} ? Matrix(Rt) : Rt
+    end
+
     # Setup GPU arrays if requested
     D_compute, Rt_compute, gpu_active = setup_gpu_arrays(D, Rt, use_gpu)
 
@@ -277,7 +365,23 @@ end
 # standard_least_squares(D::AbstractArray, Rt::AbstractArray; kwargs...) = 
 #     standard_least_squares(convert_to_compatible_types(D, Rt)...; kwargs...)
 
-# Convenience method for different numeric types
+"""
+$(SIGNATURES)
+
+Convenience method of `standard_least_squares` for inputs with different element types or
+`Adjoint` wrappers: materializes adjoints, promotes `D` and `Rt` to a common element type
+and calls the typed method with the same keyword arguments.
+
+## Arguments
+- `D::AbstractArray`: data matrix of size ``m \\times n``.
+- `Rt::AbstractArray`: right-hand-side matrix of size ``m \\times p``.
+
+## Keyword Arguments
+- `kwargs...`: forwarded to the typed `standard_least_squares` method.
+
+## Returns
+- `O::AbstractMatrix`: solution of size ``n \\times p``.
+"""
 function standard_least_squares(D::AbstractArray, Rt::AbstractArray; kwargs...)
     # Convert Adjoint to Matrix to avoid promotion issues
     D_matrix = D isa Adjoint ? Matrix(D) : D
@@ -292,9 +396,18 @@ function standard_least_squares(D::AbstractArray, Rt::AbstractArray; kwargs...)
 end
 
 """
-    estimate_memory_usage(D, Rt)
+$(SIGNATURES)
 
-Estimate memory usage for the least squares problem.
+Estimate the memory (in bytes) required by the least-squares problem
+``\\mathbf{D}\\mathbf{O} \\approx \\mathbf{R}^\\top``. Internal helper.
+
+## Arguments
+- `D::AbstractArray{T}`: data matrix of size ``m \\times n``.
+- `Rt::AbstractArray{T}`: right-hand-side matrix of size ``m \\times p``.
+
+## Returns
+- `mem::NamedTuple`: `(base, qr_method, normal_equations)` where `base = sizeof(T)*(mn + mp + np)`,
+  `qr_method = base + sizeof(T)*mn` and `normal_equations = base + sizeof(T)*n^2`.
 """
 function estimate_memory_usage(D::AbstractArray{T}, Rt::AbstractArray{T}) where T
     m, n = size(D)

@@ -4,21 +4,33 @@ export pod
 """
 $(SIGNATURES)
 
-Perform intrusive model reduction using Proper Orthogonal Decomposition (POD).
-This implementation is liimted to
-- state: up to 4th order
-- input: only B matrix
-- output: only C and D matrices
-- state-input-coupling: bilinear 
-- constant term: K matrix
+Perform intrusive model reduction by Galerkin projection of the full-order operators onto
+a Proper Orthogonal Decomposition (POD) basis.
 
-# Arguments
-- `op`: operators of the target system 
-- `Vr`: POD basis
-- `options`: options for the operator inference
+The reduced operators are ``\\hat{\\mathbf{A}} = \\mathbf{V}_r^\\top\\mathbf{A}\\mathbf{V}_r``,
+``\\hat{\\mathbf{B}} = \\mathbf{V}_r^\\top\\mathbf{B}``, ``\\hat{\\mathbf{C}} = \\mathbf{C}\\mathbf{V}_r``,
+``\\hat{\\mathbf{K}} = \\mathbf{V}_r^\\top\\mathbf{K}``,
+``\\hat{\\mathbf{A}}_k = \\mathbf{V}_r^\\top\\mathbf{A}_k(\\mathbf{V}_r\\otimes\\cdots\\otimes\\mathbf{V}_r)``
+for the polynomial terms and ``\\hat{\\mathbf{N}} = \\mathbf{V}_r^\\top\\mathbf{N}\\mathbf{V}_r``
+for the bilinear term. Only the terms listed in `sys_struct` are projected.
 
-# Return
-- `op_new`: new operator projected onto the basis
+## Arguments
+- `op::Operators`: full-order operators of the target system.
+- `Vr::AbstractArray`: POD basis of size ``n \\times r``.
+- `sys_struct::SystemStructure`: polynomial structure of the system (which operators to project).
+
+## Keyword Arguments
+- `nonredundant_operators::Bool=true`: project the non-redundant polynomial operators
+  (`A2u`, `A3u`, ...) of `op`; if `false`, project the redundant ones (`A2`, `A3`, ...).
+  Both forms are set in the result.
+
+## Returns
+- `op_new::Operators`: the reduced operators.
+
+## Notes
+- Limited to state terms up to 4th order, the ``\\mathbf{B}`` input matrix, the
+  ``\\mathbf{C}`` output matrix, bilinear state-input coupling and a constant term
+  ``\\mathbf{K}``. For multiple inputs `op.N` must be an ``n \\times n \\times m`` array.
 """
 function pod(op::Operators, Vr::AbstractArray, sys_struct::SystemStructure; 
              nonredundant_operators::Bool=true)::Operators

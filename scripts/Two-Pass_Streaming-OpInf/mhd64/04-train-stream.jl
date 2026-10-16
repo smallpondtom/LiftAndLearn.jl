@@ -8,7 +8,7 @@ using JLD2
 using ProgressMeter
 using Revise
 using IncrementalSVD
-using CUDA
+# using CUDA
 import LiftAndLearn as LnL
 
 #=============#
@@ -85,7 +85,7 @@ options.with_reg = true
 options.λ = LnL.TikhonovParameter(
     A=betas.b1, A2=betas.b2, A3=betas.b3, K=betas.b1
 )
-
+##
 # Dict to store streaming errors for each algorithm
 stream_errors = Dict(
     :rls    => zeros(n),
@@ -206,6 +206,9 @@ GC.gc()
 save(joinpath(FILEPATH, "data/results/stream_rom_training_states.jld2"), 
      "states", Xrom_train)
 
+## Load states 
+Xrom_train = load(joinpath(FILEPATH, "data/results/stream_rom_training_states.jld2"))["states"]
+
 #=============================#
 ## Simulate the testing data ##
 #=============================#
@@ -220,7 +223,8 @@ fn_test = joinpath(DATAPATH, "test")
 fn_test = readdir(fn_test, join=true)[1]
 ds_test = DataSource(fn_test)
 Xtest = load(joinpath(FILEPATH, "data/test_data.jld2"))["X"]["all"]
-# Integrate a single trajectory 
+
+## Integrate a single trajectory 
 x0 = V' * preprocess!(Xtest[:,1], vec(means["all"]), vec(shifts["all"]), 
                       vec(scales["all"]))
 
@@ -245,186 +249,240 @@ end
 save(joinpath(FILEPATH, "data/results/stream_rom_testing_states.jld2"), 
      "states", Xrom_test)
 
-#=============================#
-## Plot the sliced variables ##
-#=============================#
+## Load test states 
+Xrom_test = load(joinpath(FILEPATH, "data/results/stream_rom_testing_states.jld2"))["states"]
+
+##===================================================================#
+# Plot the sliced variables (train + test, w/ projection error)     ##
+# Layout: 6 columns (3 train + 3 test) x 5 rows                     ##
+#   Row 1: Original                                                 ##
+#   Row 2: Streaming OpInf                                          ##
+#   Row 3: POD Projection                                           ##
+#   Row 4: Streaming OpInf Error                                    ##
+#   Row 5: POD Projection Error                                     ##
+#====================================================================#
 using CairoMakie
 
-with_theme(theme_latexfonts()) do 
-    alg = "iqrrls"
+with_theme(theme_latexfonts()) do
+    #========================#
+    ## User configuration   ##
+    #========================#
+    alg = "iqrrls"           # "iqrrls" or "qrrls"
     algsym = Symbol(alg)
-
-    fig = Figure(size=(1200, 940))
-    # Pick trajectory
-    traj_idx = 1
-    # Get midpoint index for z-direction
+    traj_idx = 1             # Training trajectory to plot
+    # Slice direction: set exactly one to an Int, others to ranges
     x_slice = nx ÷ 2
     y_slice = 1:ny
     z_slice = 1:nz
-    # Pick state 
-    var = "rho"  # "rho", "z", "mx", "my", "mz", "Bx", "By", "Bz"
-    # Pick training or testing 
-    train_or_test = "test"
-    if train_or_test == "train"
-        Xrom = Xrom_train
-        ds = DataSource(fn)
-    else
-        Xrom = Xrom_test
-        ds = DataSource(fn_test)
-        traj_idx = 1  # Only one trajectory in test set
-    end
+    # State: "rho", "z", "mx", "my", "mz", "Bx", "By", "Bz"
+    var = "Bz"
 
-    if x_slice isa Int 
-        axis_label = [L"$y$", L"$z$"] 
-        horz_span = ds.grid["y"]
-        vert_span = ds.grid["z"]
+    fig = Figure(size=(1800, 950))
+
+    # Open both data sources
+    ds_train = DataSource(fn)
+    ds_test  = DataSource(fn_test)
+    n_time_train = ds_train.dims[5]
+    n_time_test  = ds_test.dims[5]
+
+    # Determine slice axes
+    if x_slice isa Int
+        axis_label = [L"$\omega_2$", L"$\omega_3$"]
+        horz_span = ds_train.grid["y"]
+        vert_span = ds_train.grid["z"]
     elseif y_slice isa Int
-        axis_label = [L"$x$", L"$z$"]
-        horz_span = ds.grid["x"]
-        vert_span = ds.grid["z"]
+        axis_label = [L"$\omega_1$", L"$\omega_3$"]
+        horz_span = ds_train.grid["x"]
+        vert_span = ds_train.grid["z"]
     else
-        axis_label = [L"$x$", L"$y$"]
-        horz_span = ds.grid["x"]
-        vert_span = ds.grid["y"]
+        axis_label = [L"$\omega_1$", L"$\omega_2$"]
+        horz_span = ds_train.grid["x"]
+        vert_span = ds_train.grid["y"]
     end
 
+    # Field index range and momentum/magnetic flags
     is_momentum = false
     is_magnetic = false
     if var == "rho"
-        start_idx = 1
-        end_idx = nxyz
+        start_idx = 1;            end_idx = nxyz
     elseif var == "z"
-        start_idx = nxyz + 1
-        end_idx = nxyz*2
+        start_idx = nxyz + 1;     end_idx = nxyz * 2
     elseif var == "mx"
-        start_idx = nxyz*2 + 1
-        end_idx = nxyz*3
-        c = 1
-        is_momentum = true
+        start_idx = nxyz * 2 + 1; end_idx = nxyz * 3; c = 1; is_momentum = true
     elseif var == "my"
-        start_idx = nxyz*3 + 1
-        end_idx = nxyz*4
-        c = 2
-        is_momentum = true
+        start_idx = nxyz * 3 + 1; end_idx = nxyz * 4; c = 2; is_momentum = true
     elseif var == "mz"
-        start_idx = nxyz*4 + 1
-        end_idx = nxyz*5
-        c = 3
-        is_momentum = true
+        start_idx = nxyz * 4 + 1; end_idx = nxyz * 5; c = 3; is_momentum = true
     elseif var == "Bx"
-        start_idx = nxyz*5 + 1
-        end_idx = nxyz*6
-        c = 1
-        is_magnetic = true
+        start_idx = nxyz * 5 + 1; end_idx = nxyz * 6; c = 1; is_magnetic = true
     elseif var == "By"
-        start_idx = nxyz*6 + 1
-        end_idx = nxyz*7
-        c = 2
-        is_magnetic = true
+        start_idx = nxyz * 6 + 1; end_idx = nxyz * 7; c = 2; is_magnetic = true
     elseif var == "Bz"
-        start_idx = nxyz*7 + 1
-        end_idx = nxyz*8
-        c = 3
-        is_magnetic = true
+        start_idx = nxyz * 7 + 1; end_idx = nxyz * 8; c = 3; is_magnetic = true
     end
 
-    # Select 3 time steps (beginning, middle, end)
-    time_indices = Int.([ceil(n_time / 3), ceil(n_time * 2 / 3), n_time-10])
+    # 3 training time indices + 3 testing time indices (first test snapshot included)
+    train_time_indices = Int.([ceil(n_time_train / 4),
+                               ceil(n_time_train / 2),
+                               n_time_train - 10])
+    test_time_indices  = Int.([1,
+                               ceil(n_time_test / 3),
+                               n_time_test - 20])
 
-    # Pre-calculate all data for colorbar scaling
-    all_full_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-    all_rom_data = Vector{Matrix{Float64}}(undef, length(time_indices))
-    all_error_data = Vector{Matrix{Float64}}(undef, length(time_indices))
+    all_time_data = [
+        (train_time_indices[1], "train"),
+        (train_time_indices[2], "train"),
+        (train_time_indices[3], "train"),
+        (test_time_indices[1],  "test"),
+        (test_time_indices[2],  "test"),
+        (test_time_indices[3],  "test"),
+    ]
+    n_cols = length(all_time_data)
 
-    unscale = (X, scale, shift) -> (scale .* X) .+ shift
-    uncenter = (X, Xbar) -> X .+ Xbar
+    unscale  = (X, scale, shift) -> (scale .* X) .+ shift
+    uncenter = (X, Xbar)         -> X .+ Xbar
 
-    # Collect all data first
-    for (i, t_idx) in enumerate(time_indices)
-        # Get full data
-        if is_momentum || is_magnetic
-            full_field = ds[var][c, :, :, :, t_idx, traj_idx]
+    # Full-state preprocessing parameters (for POD projection of test data)
+    means_all  = vec(means["all"])
+    shifts_all = vec(shifts["all"])
+    scales_all = vec(scales["all"])
+
+    # Pre-allocate
+    all_full_data      = Vector{Matrix{Float64}}(undef, n_cols)
+    all_rom_data       = Vector{Matrix{Float64}}(undef, n_cols)
+    all_pod_data       = Vector{Matrix{Float64}}(undef, n_cols)
+    all_error_data     = Vector{Matrix{Float64}}(undef, n_cols)
+    all_pod_error_data = Vector{Matrix{Float64}}(undef, n_cols)
+
+    for (col_idx, (t_idx, data_type)) in enumerate(all_time_data)
+        if data_type == "train"
+            ds_local    = ds_train
+            local_traj  = traj_idx
+            # Streaming OpInf reduced state (column from training matrix)
+            Xrom_col    = Xrom_train[algsym][:, (local_traj - 1) * n_time + t_idx]
+            # Preprocessed full state for POD projection (X is already preprocessed)
+            x_full_pre  = X[:, (local_traj - 1) * n_time + t_idx]
         else
-            full_field = ds[var][:, :, :, t_idx, traj_idx]
+            ds_local    = ds_test
+            local_traj  = 1  # only one trajectory in test set
+            Xrom_col    = Xrom_test[algsym][:, t_idx]
+            # Preprocess test snapshot for POD projection
+            x_full_pre  = preprocess!(copy(Xtest[:, t_idx]),
+                                      means_all, shifts_all, scales_all)
         end
-        all_full_data[i] = full_field[x_slice, y_slice, z_slice]
 
-        # Get ROM data
-        Xrom_traj = Xrom[algsym][:, (traj_idx-1) * n_time + t_idx]
-        Xrecon = V * Xrom_traj
-        Xrecon = Xrecon[start_idx:end_idx]
-        Xrecon = unscale(Xrecon, scales[var], shifts[var])
-        Xrecon = uncenter(Xrecon, means[var])
-        rom_field = reshape(Xrecon[1:nxyz], nx, ny, nz)
-        all_rom_data[i] = rom_field[x_slice, y_slice, z_slice]
+        # --- Original full data slice ---
+        if is_momentum || is_magnetic
+            full_field = ds_local[var][c, :, :, :, t_idx, local_traj]
+        else
+            full_field = ds_local[var][:, :, :, t_idx, local_traj]
+        end
+        all_full_data[col_idx] = full_field[x_slice, y_slice, z_slice]
 
-        # Compute error
-        all_error_data[i] = abs.(all_full_data[i] - all_rom_data[i])
+        # --- Streaming OpInf reconstruction ---
+        Xrecon = V * Xrom_col
+        Xrecon_f = Xrecon[start_idx:end_idx]
+        Xrecon_f = unscale(Xrecon_f, scales[var], shifts[var])
+        Xrecon_f = uncenter(Xrecon_f, means[var])
+        rom_field = reshape(Xrecon_f[1:nxyz], nx, ny, nz)
+        all_rom_data[col_idx] = rom_field[x_slice, y_slice, z_slice]
+
+        # --- POD projection (V * V' * x_full_pre) ---
+        Xpod   = V * (V' * x_full_pre)
+        Xpod_f = Xpod[start_idx:end_idx]
+        Xpod_f = unscale(Xpod_f, scales[var], shifts[var])
+        Xpod_f = uncenter(Xpod_f, means[var])
+        pod_field = reshape(Xpod_f[1:nxyz], nx, ny, nz)
+        all_pod_data[col_idx] = pod_field[x_slice, y_slice, z_slice]
+
+        # --- Errors ---
+        all_error_data[col_idx]     = abs.(all_full_data[col_idx] - all_rom_data[col_idx])
+        all_pod_error_data[col_idx] = abs.(all_full_data[col_idx] - all_pod_data[col_idx])
     end
 
-    # Calculate global min/max for each row type
+    # Aligned color ranges
     full_min, full_max = extrema(vcat(all_full_data...))
-    rom_min, rom_max = extrema(vcat(all_rom_data...))
-    error_min, error_max = extrema(vcat(all_error_data...))
+    rom_min,  rom_max  = extrema(vcat(all_rom_data...))
+    pod_min,  pod_max  = extrema(vcat(all_pod_data...))
+    err_min,  err_max  = extrema(vcat(all_error_data...))
+    perr_min, perr_max = extrema(vcat(all_pod_error_data...))
 
-    # Align the color ranges for first and second rows (full and ROM)
-    common_min = min(full_min, rom_min)
-    common_max = max(full_max, rom_max)
+    common_min = min(full_min, rom_min, pod_min)
+    common_max = max(full_max, rom_max, pod_max)
+    err_common_min = min(err_min, perr_min)
+    err_common_max = max(err_max, perr_max)
 
-    # Create axes and heatmaps
     hm_full = nothing
-    hm_rom = nothing
+    hm_rom  = nothing
+    hm_pod  = nothing
     hm_error = nothing
+    hm_pod_error = nothing
 
-    for (i, t_idx) in enumerate(time_indices)
-        # Create axes
-        time_value = ds.grid["time"][t_idx]
-        n_label = length(ds) ÷ ds.dims[end]
-        ax_full = Axis(fig[1, i], 
-            title = i == 1 ? 
-                    L"$t$=%$(round(time_value, digits=2)) \n snapshot %$(t_idx)/%$(n_label)" : 
-                    L"$t$=%$(round(time_value, digits=2)) \n %$(t_idx)/%$(n_label)",
-            ylabel = i == 1 ? axis_label[2] : "",
+    for (col_idx, (t_idx, data_type)) in enumerate(all_time_data)
+        ds_local   = data_type == "train" ? ds_train : ds_test
+        time_value = ds_local.grid["time"][t_idx]
+        col_title  = data_type == "train" ?
+            L"Train: $t$=%$(round(time_value, digits=2))" :
+            L"Test: $t$=%$(round(time_value, digits=2))"
+
+        ax_full = Axis(fig[1, col_idx],
+            title = col_title,
+            ylabel = col_idx == 1 ? axis_label[2] : "",
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
-            xlabelsize=30, ylabelsize=30, 
-            titlesize=30, 
+            xlabelsize=30, ylabelsize=30, titlesize=28,
         )
-        ax_rom = Axis(fig[2, i], 
-            ylabel = i == 1 ? axis_label[2] : "", 
+        ax_rom = Axis(fig[2, col_idx],
+            ylabel = col_idx == 1 ? axis_label[2] : "",
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
-            xlabelsize=30, ylabelsize=30, 
+            xlabelsize=30, ylabelsize=30,
         )
-        ax_error = Axis(fig[3, i], 
-            ylabel = i == 1 ? axis_label[2] : "", 
+        ax_pod = Axis(fig[3, col_idx],
+            ylabel = col_idx == 1 ? axis_label[2] : "",
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+            xlabelsize=30, ylabelsize=30,
+        )
+        ax_error = Axis(fig[4, col_idx],
+            ylabel = col_idx == 1 ? axis_label[2] : "",
+            xticklabelsvisible=false, xticksvisible=false,
+            yticklabelsvisible=false, yticksvisible=false,
+            xlabelsize=30, ylabelsize=30,
+        )
+        ax_pod_error = Axis(fig[5, col_idx],
+            ylabel = col_idx == 1 ? axis_label[2] : "",
             xlabel = axis_label[1],
             xticklabelsvisible=false, xticksvisible=false,
             yticklabelsvisible=false, yticksvisible=false,
-            xlabelsize=30, ylabelsize=30, 
+            xlabelsize=30, ylabelsize=30,
         )
 
-        # Create heatmaps with aligned color ranges
-        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max),
-            colorscale = is_momentum || is_magnetic ? identity : log10)
-        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[i], 
-            colormap = :viridis, colorrange = (common_min, common_max),
-            colorscale = is_momentum || is_magnetic ? identity : log10)
-        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[i], 
-            colormap = :matter, colorrange = (error_min, error_max),
-            colorscale = is_momentum || is_magnetic ? identity : log10)
+        hm_full = heatmap!(ax_full, horz_span, vert_span, all_full_data[col_idx],
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_rom = heatmap!(ax_rom, horz_span, vert_span, all_rom_data[col_idx],
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_pod = heatmap!(ax_pod, horz_span, vert_span, all_pod_data[col_idx],
+            colormap = :viridis, colorrange = (common_min, common_max))
+        hm_error = heatmap!(ax_error, horz_span, vert_span, all_error_data[col_idx],
+            colormap = :matter, colorrange = (err_common_min, err_common_max))
+        hm_pod_error = heatmap!(ax_pod_error, horz_span, vert_span, all_pod_error_data[col_idx],
+            colormap = :matter, colorrange = (err_common_min, err_common_max))
     end
-    
-    # Add colorbars at the end of each row
-    Colorbar(fig[1, length(time_indices) + 1], hm_full, label="Full", 
-             labelsize=30, ticklabelsize=20)
-    Colorbar(fig[2, length(time_indices) + 1], hm_rom, label="ROM", 
-             labelsize=30, ticklabelsize=20)
-    Colorbar(fig[3, length(time_indices) + 1], hm_error, label="Abs. Error", 
-             labelsize=30, ticklabelsize=20)
-    
-    save(joinpath(FILEPATH, "plots/$(train_or_test)_sliced_$(var)_$(alg).png"), fig)
+
+    Colorbar(fig[1, n_cols + 1], hm_full,
+             label="Original", labelsize=26, ticklabelsize=22)
+    Colorbar(fig[2, n_cols + 1], hm_rom,
+             label="Streaming\nOpInf", labelsize=26, ticklabelsize=22)
+    Colorbar(fig[3, n_cols + 1], hm_pod,
+             label="Projection", labelsize=26, ticklabelsize=22)
+    Colorbar(fig[4, n_cols + 1], hm_error,
+             label="Streaming\nOpInf Error", labelsize=26, ticklabelsize=22)
+    Colorbar(fig[5, n_cols + 1], hm_pod_error,
+             label="Projection\nError", labelsize=26, ticklabelsize=22)
+
+    save(joinpath(FILEPATH, "plots/train_test_sliced_$(var)_$(alg).png"),
+         fig, px_per_unit=4.0)
     display(fig)
 end
 

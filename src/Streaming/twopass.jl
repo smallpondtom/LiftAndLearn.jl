@@ -1,5 +1,23 @@
 export TwoPassStreamingOpInf
 
+"""
+$(TYPEDEF)
+
+Abstract supertype of the two-pass Streaming Operator Inference solvers.
+
+In two-pass Streaming OpInf the reduced basis ``\\mathbf{V}_r`` is computed in a first pass
+over the data (e.g., with an incremental SVD), and the reduced operators are learned in a
+second pass by solving the (regularized) OpInf least-squares problem recursively, one data
+stream at a time, with a Recursive Least-Squares (RLS) type algorithm.
+
+Concrete subtypes:
+- [`RLSOpInf`](@ref): standard (covariance-form) RLS.
+- [`QRRLSOpInf`](@ref): QR-decomposition RLS (QRRLS).
+- [`iQRRLSOpInf`](@ref): inverse QR-decomposition RLS (iQRRLS).
+
+Instances are created with the keyword constructor
+[`TwoPassStreamingOpInf`](@ref).
+"""
 abstract type TwoPassStreamingOpInf end
 
 # Import the algorithms
@@ -7,7 +25,26 @@ include("rls_algorithms/RLS/rls.jl")
 include("rls_algorithms/iQRRLS/iqrrls.jl")
 include("rls_algorithms/QRRLS/qrrls.jl")
 
-# Each Algorithm solver structs
+"""
+$(TYPEDEF)
+
+Two-pass Streaming OpInf solver based on the standard Recursive Least-Squares (RLS) algorithm.
+
+Supports rank-1 and block (rank-``k``) updates, a forgetting factor, and a noise covariance
+weighting. Construct it with [`TwoPassStreamingOpInf`](@ref)
+using `algorithm=:RLS`.
+
+## Fields
+- `cache::RLSCache{T}`: RLS state (operator matrix, inverse correlation matrix, gains, errors).
+- `dims::Dict{Symbol,Int}`: problem dimensions (`:n` state, `:m` input, `:l` output, `:d`
+  number of columns of the data matrix).
+- `termination_settings::Dict{Symbol,Any}`: operator dimensions (`:dims`) and symbols
+  (`:syms`) used by [`terminate_stream`](@ref) to unpack the operator matrix.
+- `options::LSOpInfOption`: standard (least-squares) OpInf options defining the model structure.
+- `variable_regularization::Bool`: enable the (experimental) variable-regularization RLS.
+- `initial_step::Bool`: `true` until the first update when no regularization is used, in which
+  case the first stream initializes the inverse correlation matrix by a batch solve.
+"""
 mutable struct RLSOpInf{T<:Real} <: TwoPassStreamingOpInf
     cache::RLSCache{T}
     # Dimensions
@@ -20,6 +57,24 @@ mutable struct RLSOpInf{T<:Real} <: TwoPassStreamingOpInf
     initial_step::Bool             # Flag for initial step when γs is zero
 end
 
+"""
+$(TYPEDEF)
+
+Two-pass Streaming OpInf solver based on the inverse QR-decomposition Recursive
+Least-Squares (iQRRLS) algorithm.
+
+Propagates a square-root factor of the inverse correlation matrix, which is numerically more
+robust than standard RLS. Only rank-1 updates (one snapshot per stream) are supported.
+Construct it with [`TwoPassStreamingOpInf`](@ref) using
+`algorithm=:iQRRLS`.
+
+## Fields
+- `cache::iQRRLSCache{T}`: iQRRLS state (operator matrix, square-root inverse correlation
+  matrix, gains, errors).
+- `dims::Dict{Symbol,Int}`: problem dimensions (`:n`, `:m`, `:l`, `:d`).
+- `termination_settings::Dict{Symbol,Any}`: operator dimensions (`:dims`) and symbols (`:syms`).
+- `options::LSOpInfOption`: standard (least-squares) OpInf options.
+"""
 mutable struct iQRRLSOpInf{T<:Real} <: TwoPassStreamingOpInf
     cache::iQRRLSCache{T}
     # Dimensions
@@ -30,6 +85,24 @@ mutable struct iQRRLSOpInf{T<:Real} <: TwoPassStreamingOpInf
     options::LSOpInfOption  # Standard (Least-Squares) Operator Inference options
 end
 
+"""
+$(TYPEDEF)
+
+Two-pass Streaming OpInf solver based on the QR-decomposition Recursive Least-Squares
+(QRRLS) algorithm.
+
+Propagates a square-root factor of the correlation matrix and recovers the operator matrix by
+a triangular solve at every step. Only rank-1 updates (one snapshot per stream) are supported.
+Construct it with [`TwoPassStreamingOpInf`](@ref) using
+`algorithm=:QRRLS`.
+
+## Fields
+- `cache::QRRLSCache{T}`: QRRLS state (operator matrix, square-root correlation matrix, gains,
+  errors).
+- `dims::Dict{Symbol,Int}`: problem dimensions (`:n`, `:m`, `:l`, `:d`).
+- `termination_settings::Dict{Symbol,Any}`: operator dimensions (`:dims`) and symbols (`:syms`).
+- `options::LSOpInfOption`: standard (least-squares) OpInf options.
+"""
 mutable struct QRRLSOpInf{T<:Real} <: TwoPassStreamingOpInf
     cache::QRRLSCache{T}
     # Dimensions
@@ -47,22 +120,66 @@ include("rls_algorithms/QRRLS/stream.jl")
 
 
 """
-$(TYPEDEF)
+$(SIGNATURES)
 
-Streaming Two-Pass Operator Inference/Lift And Learn.
+Construct a two-pass Streaming OpInf solver for the reduced state equation and, if `l > 0`,
+for the output equation.
 
-# Arguments:
-- `options::LSOpInfOption`: Standard (Least-Squares) Operator Inference options.
-- `n::Int`: State dimension.
-- `m::Int=0`: Input dimension (default is 0).
-- `l::Int=0`: Output dimension (default is 0).
-- `algorithm::Symbol=:RLS`: Algorithm type, can be `:RLS`, `:QRRLS`, or `:iQRRLS`.
-- `Γs::Union{T,AbstractArray{T}}=0.0`: Regularization term for state regression (default is 0).
-- `Γo::Union{T,AbstractArray{T}}=0.0`: Regularization term for output regression (default is 0).
-- `λ::T=1.0`: Forgetting factor (default is 1).
-- `rank::Int=1`: Rank of the update (default is 1).
-- `variable_regularize::Bool=false`: Variable regularization (only for `:RLS`) flag (default is false). This is experimental.
-- `qr_method::Symbol=:givens`: QR method for `iQRRLS` and `QRRLS` (default is `:qr` built-in or `givens`).
+The solver learns the operator matrix ``\\mathbf{O}`` of the regularized OpInf problem
+
+```math
+\\min_{\\mathbf{O}} \\sum_{k} \\lambda^{K-k} \\| \\mathbf{d}_k \\mathbf{O} - \\mathbf{r}_k \\|_2^2
+    + \\| \\boldsymbol{\\Gamma}^{1/2} \\mathbf{O} \\|_F^2
+```
+
+recursively, where ``\\mathbf{d}_k`` are rows of the data matrix built from the reduced
+state/input data (see [`get_data_matrix`](@ref)) and ``\\mathbf{r}_k`` are the corresponding
+reduced time-derivative data. Feed data with [`stream!`](@ref) / [`stream_all!`](@ref) and
+recover the operators with [`terminate_stream`](@ref).
+
+## Keyword Arguments
+- `options::LSOpInfOption`: standard OpInf options; `options.system` defines the model
+  structure (e.g., `state=[1,2]`, `control=1`, `constant=1`).
+- `n::Int`: reduced state dimension ``r``.
+- `m::Int=0`: input dimension.
+- `l::Int=0`: output dimension. If `l > 0` a second solver for the output equation is
+  returned as well.
+- `algorithm::Symbol=:RLS`: one of `:RLS`, `:QRRLS`, or `:iQRRLS`.
+- `Γs::Union{Real,AbstractArray}=0.0`: Tikhonov regularization for the state regression,
+  either a scalar ``\\gamma`` (meaning ``\\gamma\\mathbf{I}``) or a ``d\\times d`` matrix.
+  If `0` and `options.with_reg == true`, the Tikhonov matrix is built from `options.λ`
+  (see [`TikhonovParameter`](@ref)).
+- `Γo::Union{Real,AbstractArray}=0.0`: Tikhonov regularization for the output regression
+  (scalar or ``n\\times n`` matrix).
+- `λ::Real=1.0`: forgetting factor ``0 < \\lambda \\le 1`` (`1` means no forgetting).
+- `rank::Int=1`: number of snapshots per stream (block size) for `:RLS`. Every call to
+  `stream!` must then pass exactly `rank` snapshots. `:QRRLS`/`:iQRRLS` are rank-1 only.
+- `variable_regularize::Bool=false`: enable the variable-regularization RLS (`:RLS` only).
+  Experimental and not functional in this release.
+- `qr_method::Symbol=:qr`: factorization used by `:QRRLS`/`:iQRRLS`, either `:qr`
+  (LAPACK Householder QR) or `:givens` (Givens rotations).
+- `use_gpu::Bool=false`: store the solver state on a CUDA GPU.
+
+## Returns
+- `state_solver::TwoPassStreamingOpInf`: the solver for the state equation if `l == 0`.
+- `(state_solver, output_solver)`: a tuple of solvers if `l > 0`.
+
+## Notes
+- `:QRRLS` and `:iQRRLS` require a positive regularization (`Γs > 0`, `Γo > 0`, or
+  `options.with_reg = true`) because they are initialized with a square-root factor of the
+  regularization matrix.
+- `:RLS` with `Γs = 0` performs an unregularized batch solve on the first stream, so the first
+  stream must contain at least `d` linearly independent snapshots.
+- The constructor sets the number of BLAS threads to `Sys.CPU_THREADS`.
+
+## Examples
+```julia
+options = LSOpInfOption(system=SystemStructure(state=[1, 2], control=1))
+solver = TwoPassStreamingOpInf(options=options, n=r, m=1, algorithm=:iQRRLS, Γs=1e-8)
+LiftAndLearn.stream_all!(solver, LiftAndLearn.streamify(Xhat, 1),
+                         LiftAndLearn.streamify(Xhatdot, 1); U=LiftAndLearn.streamify(U, 1))
+op = LiftAndLearn.terminate_stream(solver)
+```
 """
 function TwoPassStreamingOpInf(;
     options::LSOpInfOption,             # Standard (Least-Squares) Operator Inference options
@@ -80,14 +197,14 @@ function TwoPassStreamingOpInf(;
     # Ensure BLAS multi-threading is enabled
     BLAS.set_num_threads(Sys.CPU_THREADS)
 
-    # Initialize the dimensions 
+    # Initialize the dimensions
     dims = Dict(:n => n, :m => m, :l => l)
-    state_dims = isa(options.system.state, Real) ? [options.system.state] : 
+    state_dims = isa(options.system.state, Real) ? [options.system.state] :
                  options.system.state
-    control_dims = isa(options.system.control, Real) ? [options.system.control] : 
+    control_dims = isa(options.system.control, Real) ? [options.system.control] :
                    options.system.control
-    coupled_input_dims = isa(options.system.coupled_input, Real) ? [options.system.coupled_input] : 
-                         options.system.coupled_input 
+    coupled_input_dims = isa(options.system.coupled_input, Real) ? [options.system.coupled_input] :
+                         options.system.coupled_input
 
     # Build operator info (!!!! with B after A !!!!)
     operator_info = Vector{Tuple{Int, Symbol}}()
@@ -138,6 +255,16 @@ function TwoPassStreamingOpInf(;
               " If you want to use a dense Tikhonov matrix, set `with_reg=false`."
     end
 
+    # The square-root (QR-based) algorithms are initialized from a factor of Γ, so they
+    # cannot be used without regularization.
+    if algorithm in (:QRRLS, :iQRRLS)
+        iszero(Γs) && throw(ArgumentError(
+            "`$(algorithm)` requires a positive state regularization: pass `Γs > 0` " *
+            "or set `options.with_reg = true` with a nonzero `options.λ`."))
+        (l > 0 && iszero(Γo)) && throw(ArgumentError(
+            "`$(algorithm)` requires a positive output regularization `Γo > 0` when `l > 0`."))
+    end
+
     # Termination settings
     term_setting = Dict{Symbol,Any}(
         :dims => operator_dimensions, :syms => operator_symbols,
@@ -157,10 +284,10 @@ function TwoPassStreamingOpInf(;
         end
 
         # State regression
-        state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, λ=λ, 
+        state_cache = RLSCache{T}(N=d, M=rank, n=n, P=Ps, λ=λ,
                                   use_gpu=use_gpu)
         state_rls = RLSOpInf{T}(
-            state_cache, dims, term_setting, options, 
+            state_cache, dims, term_setting, options,
             variable_regularize, iszero(Γs)
         )
         if iszero(l)  # If no output regression, return only state
@@ -180,16 +307,16 @@ function TwoPassStreamingOpInf(;
         end
 
         # Output regression
-        output_cache = RLSCache{T}(N=n, M=rank, n=l, P=Po, λ=λ, 
+        output_cache = RLSCache{T}(N=n, M=rank, n=l, P=Po, λ=λ,
                                    use_gpu=use_gpu)
         output_rls = RLSOpInf{T}(
-            output_cache, dims, Dict{Symbol,Any}(), options, 
+            output_cache, dims, Dict{Symbol,Any}(), options,
             variable_regularize, iszero(Γo)
         )
         return state_rls, output_rls
 
     elseif algorithm == :QRRLS  # QR Decomposition Recursive Least-Squares (QRRLS)
-        # Initialize the inverse correlation matrices (P) 
+        # Initialize the inverse correlation matrices (P)
         # and square-root correlation matrices (Φsq)
         # for state
         Ps = if isa(Γs, UniformScaling) || (isa(Γs, Real) && Γs > 0)
@@ -208,14 +335,14 @@ function TwoPassStreamingOpInf(;
         end
 
         # State regression
-        state_cache = QRRLSCache{T}(N=d, n=n, P=Ps, Φsq=Φsqs, λ=λ, 
+        state_cache = QRRLSCache{T}(N=d, n=n, P=Ps, Φsq=Φsqs, λ=λ,
                                     method=qr_method, use_gpu=use_gpu)
         state_qrrls = QRRLSOpInf{T}(state_cache, dims, term_setting, options)
         if iszero(l)
             return state_qrrls
         end
 
-        # Initialize the inverse correlation matrices (P) 
+        # Initialize the inverse correlation matrices (P)
         # and square-root correlation matrices (Φsq)
         # for output
         Po = if isa(Γo, UniformScaling) || (isa(Γo, Real) && Γo > 0)
@@ -248,7 +375,7 @@ function TwoPassStreamingOpInf(;
         end
 
         # State regression
-        state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, λ=λ, 
+        state_cache = iQRRLSCache{T}(N=d, n=n, Psq=Psqs, λ=λ,
                                      method=qr_method, use_gpu=use_gpu)
         state_iqrrls = iQRRLSOpInf{T}(state_cache, dims, term_setting, options)
         if iszero(l)
@@ -264,7 +391,7 @@ function TwoPassStreamingOpInf(;
         end
 
         # Output regression
-        output_cache = iQRRLSCache{T}(N=n, n=l, Psq=Psqo, λ=λ, 
+        output_cache = iQRRLSCache{T}(N=n, n=l, Psq=Psqo, λ=λ,
                                       method=qr_method, use_gpu=use_gpu)
         output_iqrrls = iQRRLSOpInf{T}(output_cache, dims, Dict{Symbol,Any}(), options)
         return state_iqrrls, output_iqrrls
@@ -277,18 +404,37 @@ end
 """
 $(SIGNATURES)
 
-Update the streaming operator inference continuously with all the data streams using
-the Recursive Least-Squares (RLS) algorithm with regularization.
+Stream every data block in `X`/`R` (and optionally `U`) through an [`RLSOpInf`](@ref) solver.
+
+Equivalent to calling [`stream!`](@ref) on each `(X[i], R[i], U[i])` in order.
+
+## Arguments
+- `stream::RLSOpInf`: the solver to update (mutated).
+- `X::AbstractArray{<:AbstractArray}`: reduced state streams, e.g. from [`streamify`](@ref);
+  each element is ``r \\times k`` (``k`` snapshots per stream).
+- `R::AbstractArray{<:AbstractArray}`: reduced time-derivative streams matching `X`.
+
+## Keyword Arguments
+- `U::AbstractArray{<:AbstractArray}=Vector{T}[]`: input streams matching `X` (omit if the
+  model has no input).
+- `Γs=zeros(length(X))`: per-stream regularization values used only by the experimental
+  variable-regularization RLS.
+- `Q=0.0`: noise covariance weighting; `0` uses the default of [`stream!`](@ref), a single
+  matrix/scalar is used for every stream, otherwise `Q[i]` is used for stream `i`.
+- `verbose::Bool=false`: show a progress bar.
+
+## Returns
+- `D::AbstractMatrix`: the data matrix of the last stream.
 """
-function stream_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, 
-                     R::AbstractArray{<:AbstractArray{T}}; 
-                     U::AbstractArray{<:AbstractArray{T}}=Vector{T}[], 
+function stream_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}},
+                     R::AbstractArray{<:AbstractArray{T}};
+                     U::AbstractArray{<:AbstractArray{T}}=Vector{T}[],
                      Γs::Union{AbstractArray{T},AbstractArray{AbstractArray{T}}}=zeros(length(X)),
                      Q::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0,verbose::Bool=false
                      ) where T<:Real
     N = length(X)
     D = nothing # initialize the data matrix
-    flag = typeof(Q) <: AbstractArray{T}
+    flag = !(Q isa AbstractArray{<:AbstractArray})  # same Q for every stream
     no_input = isempty(U)
     if verbose
         p = Progress(N; desc="Streaming data...")
@@ -310,12 +456,28 @@ end
 """
 $(SIGNATURES)
 
-Update the streaming operator inference continuously with all the data streams using
-the inverse and QR Decomposition Recursive Least-Squares (iQRRLS/QRRLS) algorithm.
+Stream every data block in `X`/`R` (and optionally `U`) through a [`QRRLSOpInf`](@ref) or
+[`iQRRLSOpInf`](@ref) solver.
+
+Equivalent to calling [`stream!`](@ref) on each `(X[i], R[i], U[i])` in order.
+
+## Arguments
+- `stream::Union{iQRRLSOpInf,QRRLSOpInf}`: the solver to update (mutated).
+- `X::AbstractArray{<:AbstractArray}`: reduced state streams with one snapshot each
+  (``r \\times 1``), e.g. `streamify(Xhat, 1)`.
+- `R::AbstractArray{<:AbstractArray}`: reduced time-derivative streams matching `X`.
+
+## Keyword Arguments
+- `U::AbstractArray{<:AbstractArray}=Vector{T}[]`: input streams matching `X` (omit if the
+  model has no input).
+- `verbose::Bool=false`: show a progress bar.
+
+## Returns
+- `D::AbstractMatrix`: the data matrix of the last stream.
 """
-function stream_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, 
-                     X::AbstractArray{<:AbstractArray{T}}, 
-                     R::AbstractArray{<:AbstractArray{T}}; 
+function stream_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf},
+                     X::AbstractArray{<:AbstractArray{T}},
+                     R::AbstractArray{<:AbstractArray{T}};
                      U::AbstractArray{<:AbstractArray{T}}=Vector{T}[],
                      verbose::Bool=false) where T<:Real
     N = length(X)
@@ -337,15 +499,31 @@ end
 """
 $(SIGNATURES)
 
-Streaming all the data for the output system using the Recursive Least-Squares (RLS) algorithm.
+Stream every block of reduced state `X` and output `Y` through the output-equation
+[`RLSOpInf`](@ref) solver, learning ``\\hat{\\mathbf{C}}`` in
+``\\mathbf{y} = \\hat{\\mathbf{C}}\\hat{\\mathbf{x}}``.
+
+## Arguments
+- `stream::RLSOpInf`: the output solver returned by `TwoPassStreamingOpInf(...; l=l)` (mutated).
+- `X::AbstractArray{<:AbstractArray}`: reduced state streams (``r \\times k`` each).
+- `Y::AbstractArray{<:AbstractArray}`: output streams (``l \\times k`` each).
+
+## Keyword Arguments
+- `Γo=zeros(length(X))`: per-stream regularization values used only by the experimental
+  variable-regularization RLS.
+- `Z=0.0`: noise covariance weighting; `0` uses the default of [`stream_output!`](@ref).
+- `verbose::Bool=false`: show a progress bar.
+
+## Returns
+- `nothing`; mutates `stream`.
 """
-function stream_output_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}}, 
-                            Y::AbstractArray{<:AbstractArray{T}}; 
+function stream_output_all!(stream::RLSOpInf, X::AbstractArray{<:AbstractArray{T}},
+                            Y::AbstractArray{<:AbstractArray{T}};
                             Γo::Union{AbstractArray{T},AbstractArray{AbstractArray{T}}}=zeros(length(X)),
                             Z::Union{AbstractArray{<:AbstractArray{T}},AbstractArray{T},Real}=0.0,
                             verbose::Bool=false) where T<:Real
     N = length(X)
-    flag = typeof(Z) <: AbstractArray{T}
+    flag = !(Z isa AbstractArray{<:AbstractArray})  # same Z for every stream
     if verbose
         p = Progress(N; desc="Streaming data...")
     end
@@ -366,12 +544,23 @@ end
 """
 $(SIGNATURES)
 
-Streaming all the data for the output system using the inverse and 
-QR Decomposition Recursive Least-Squares (iQRRLS/QRRLS) algorithm.
+Stream every snapshot of reduced state `X` and output `Y` through the output-equation
+[`QRRLSOpInf`](@ref)/[`iQRRLSOpInf`](@ref) solver.
+
+## Arguments
+- `stream::Union{iQRRLSOpInf,QRRLSOpInf}`: the output solver (mutated).
+- `X::AbstractArray{<:AbstractArray}`: reduced state streams (``r \\times 1`` each).
+- `Y::AbstractArray{<:AbstractArray}`: output streams (``l \\times 1`` each).
+
+## Keyword Arguments
+- `verbose::Bool=false`: show a progress bar.
+
+## Returns
+- `nothing`; mutates `stream`.
 """
-function stream_output_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf}, 
-                            X::AbstractArray{<:AbstractArray{T}}, 
-                            Y::AbstractArray{<:AbstractArray{T}}; 
+function stream_output_all!(stream::Union{iQRRLSOpInf,QRRLSOpInf},
+                            X::AbstractArray{<:AbstractArray{T}},
+                            Y::AbstractArray{<:AbstractArray{T}};
                             verbose::Bool=false) where T<:Real
     N = length(X)
     if verbose
@@ -390,14 +579,24 @@ end
 """
 $(SIGNATURES)
 
-Terminate the streaming operator inference and return the operators.
+Finish streaming and return the learned reduced operators.
+
+The current operator matrix of the solver is unpacked into the individual operators (`A`,
+`B`, `A2u`, `K`, ...) according to `obj.options.system`.
+
+## Arguments
+- `obj::TwoPassStreamingOpInf`: the state-equation solver.
+
+## Returns
+- `operators::Operators`: the learned operators; `operators.O` holds the full operator
+  matrix ``\\mathbf{O} \\in \\mathbb{R}^{r \\times d}`` (same orientation as [`opinf`](@ref)).
 """
-function terminate_stream(obj::TwoPassStreamingOpInf) 
-    # Extract the operators
-    operators = Operators(O=Array(obj.cache.O))
+function terminate_stream(obj::TwoPassStreamingOpInf)
+    # Extract the operators (the cache stores the transposed operator matrix Oᵀ)
+    O = Matrix(Array(obj.cache.O)')
+    operators = Operators(O=O)
     unpack_operators!(
-        operators, Array(obj.cache.O'),  # remember to transpose the operator matrix
-        obj.termination_settings[:dims], obj.termination_settings[:syms])
+        operators, O, obj.termination_settings[:dims], obj.termination_settings[:syms])
     return operators
 end
 
@@ -405,15 +604,19 @@ end
 """
 $(SIGNATURES)
 
-Terminate the streaming operator inference and return the operators (dispatch)
+Finish streaming for both the state and output equations and return the learned operators.
+
+## Arguments
+- `state_obj::TwoPassStreamingOpInf`: the state-equation solver.
+- `output_obj::TwoPassStreamingOpInf`: the output-equation solver.
+
+## Returns
+- `operators::Operators`: the learned state operators (see the single-argument method) with
+  the output operator stored in `operators.C` (``l \\times r``).
 """
-function terminate_stream(state_obj::TwoPassStreamingOpInf, 
-                          output_obj::TwoPassStreamingOpInf) 
-    # Extract the operators
-    operators = Operators(O=Array(obj.cache.O))
-    unpack_operators!(
-        operators, Array(state_obj.cache.O'),  # remember to transpose the operator matrix
-        state_obj.termination_settings[:dims], state_obj.termination_settings[:syms])
-    operators.C = output_obj.cache.O'
+function terminate_stream(state_obj::TwoPassStreamingOpInf,
+                          output_obj::TwoPassStreamingOpInf)
+    operators = terminate_stream(state_obj)
+    operators.C = Matrix(Array(output_obj.cache.O)')
     return operators
 end

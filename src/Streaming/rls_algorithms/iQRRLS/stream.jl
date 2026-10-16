@@ -1,13 +1,33 @@
 """
 $(SIGNATURES)
 
-Update the streaming operator inference with new data by solving a recursive least-squares problem via 
-the inverse-QR Decomposition Recursive Least-Squares (iQRRLS) algorithm.
+Update a [`iQRRLSOpInf`](@ref) solver with one snapshot of reduced state/derivative data.
+
+Builds the data row ``\\mathbf{d}_k`` from `X` (and `U`) according to `obj.options` and
+performs one rank-1 iQRRLS update of the operator matrix with the right-hand side `R`.
+
+## Arguments
+- `obj::iQRRLSOpInf`: the solver (mutated).
+- `X::AbstractArray{T}`: one reduced state snapshot, ``r \\times 1``.
+- `R::AbstractArray{T}`: the matching reduced time derivative, ``r \\times 1``
+  (``1 \\times r`` also accepted).
+
+## Keyword Arguments
+- `U::AbstractArray{T}=T[]`: the input at this snapshot (length ``m``). Leave empty if the
+  model has no input.
+
+## Returns
+- `D::AbstractMatrix`: the data row ``\\mathbf{d}_k`` (``1 \\times d``).
+
+## Notes
+- Only rank-1 updates are supported; stream the data one snapshot at a time
+  (e.g., `streamify(Xhat, 1)`).
 """
 function stream!(obj::iQRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T}; 
                  U::AbstractArray{T}=T[]) where T<:Number
 
     tdim = size(X, 2)  # number of data points (time dimension)
+    @assert tdim == 1 "iQRRLS only supports rank-1 updates (one snapshot per stream)."
 
     # Construct the data matrix while checking the dimension of the input matrix
     foo, bar = checksize(U) 
@@ -15,7 +35,7 @@ function stream!(obj::iQRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T};
         if foo == bar && foo != 1
             @debug "Transposing while assuming the row dim is the input dim and the column dim is the number of data points."
         end
-        D  = get_data_matrix(X, U', obj.options; verbose=false)
+        D = get_data_matrix(X, U', obj.options; verbose=false)
     else
         D = get_data_matrix(X, U, obj.options; verbose=false)
     end
@@ -35,7 +55,6 @@ function stream!(obj::iQRRLSOpInf, X::AbstractArray{T}, R::AbstractArray{T};
         R = CUDA.CuArray(R)
     end
 
-    @assert tdim == 1 "iQRRLS is only for rank-1 update."
     iqrrls!(obj.cache, D, R)
 
     return D
@@ -45,10 +64,21 @@ end
 """
 $(SIGNATURES)
 
-Single stream update for the output data.
+Update the output-equation [`iQRRLSOpInf`](@ref) solver with one snapshot of reduced state
+`X` and output `Y`, learning ``\\hat{\\mathbf{C}}`` in
+``\\mathbf{y} = \\hat{\\mathbf{C}}\\hat{\\mathbf{x}}``.
+
+## Arguments
+- `obj::iQRRLSOpInf`: the output solver (mutated).
+- `X::AbstractArray{T}`: one reduced state snapshot, ``r \\times 1``.
+- `Y::AbstractArray{T}`: the matching output, ``l \\times 1`` (``1 \\times l`` also accepted).
+
+## Returns
+- `nothing`; mutates `obj`.
 """
 function stream_output!(obj::iQRRLSOpInf, X::AbstractArray{T}, Y::AbstractArray{T}) where T<:Number
     tdim = size(X, 2)  # number of data points (time dimension)
+    @assert tdim == 1 "iQRRLS only supports rank-1 updates (one snapshot per stream)."
     foo, bar = checksize(Y)
     if foo == obj.dims[:l] && bar == tdim
         if foo == bar && foo != 1
@@ -61,7 +91,12 @@ function stream_output!(obj::iQRRLSOpInf, X::AbstractArray{T}, Y::AbstractArray{
     end
     Xt = X'
 
-    @assert tdim == 1 "iQRRLS is only for rank-1 update."
+    # GPU support
+    if obj.cache.use_gpu
+        Xt = CUDA.CuArray(Xt)
+        Y = CUDA.CuArray(Y)
+    end
+
     iqrrls!(obj.cache, Xt, Y)
 
     return nothing

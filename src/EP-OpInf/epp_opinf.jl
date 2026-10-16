@@ -1,21 +1,27 @@
 """
 $(SIGNATURES)
 
-Energy preserving penalty operator inference optimization (EPP)
+Solve the Energy-Preserving OpInf (EP-OpInf) problem with an energy-preserving penalty
+(EPP) using JuMP and Ipopt.
+
+Minimizes ``\\|\\mathbf{D}\\mathbf{O}^\\top - \\mathbf{R}^\\top\\|_F^2 + \\lambda_{\\text{lin}}\\|\\hat{\\mathbf{A}}\\|_F^2 + \\lambda_{\\text{quad}}\\|\\hat{\\mathbf{F}}\\|_F^2 + \\alpha\\sum_{i,j,k}(h_{ijk} + h_{jik} + h_{kji})^2``
+over ``1 \\leq k \\leq j \\leq i \\leq n``, with ``\\alpha`` = `options.α`.
 
 ## Arguments
-- `D`: data matrix
-- `Rt`: transpose of the derivative matrix (or residual matrix)
-- `dims`: dimensions of the operators
-- `operators_symbols`: symbols of the operators
-- `options`: options for the operator inference set by the user
-- `IG`: Initial Guesses
+- `D::Matrix`: data matrix of size ``K \\times d``.
+- `Rt::Union{Matrix,Transpose}`: transposed derivative data ``\\mathbf{R}^\\top`` of size ``K \\times r``.
+- `dims::AbstractArray`: number of columns of `D` belonging to each operator.
+- `operators_symbols::AbstractArray`: operator symbols in the same order as `dims`.
+- `options::AbstractOption`: an `EPPOpInfOption`.
+- `IG::Operators`: initial guess of the operators (used if `options.optim.initial_guess=true`).
 
 ## Returns
-- Inferred operators
+- `op::Operators`: the inferred operators.
 
-## Note
-- This is currently implemented for linear + quadratic operators only
+## Notes
+- Implemented for linear + quadratic state operators (plus optional linear input and constant terms) only.
+- In the redundant form (`options.optim.nonredundant_operators=false`) the second term of the
+  penalty is coded as `Hhat[k, n*(k-1)+i]`, whereas `epsic_opinf` uses `Hhat[j, n*(k-1)+i]`.
 """
 function epp_opinf(D::Matrix, Rt::Union{Matrix,Transpose},
                    dims::AbstractArray, operators_symbols::AbstractArray,
@@ -73,7 +79,7 @@ function epp_opinf(D::Matrix, Rt::Union{Matrix,Transpose},
         if !options.optim.nonredundant_operators
             @variable(model, Hhat[1:n, 1:v])
             if options.optim.initial_guess
-                set_start_value.(Hhat, IG.H)
+                set_start_value.(Hhat, IG.A2)
             end
             tmp = (@isdefined tmp) ? hcat(tmp, Hhat) : Hhat
         else
@@ -82,13 +88,13 @@ function epp_opinf(D::Matrix, Rt::Union{Matrix,Transpose},
             if options.optim.initial_guess
                 if options.optim.SIGE
                     # Insert the lower dimension initial guess into optimization variable F
-                    ni = size(IG.F, 1)
+                    ni = size(IG.A2u, 1)
                     xsq_idx = [1 + (n + 1) * (k - 1) - k * (k - 1) / 2 for k in 1:n]
                     insert_idx = [collect(x:x+(ni-i)) for (i, x) in enumerate(xsq_idx[1:ni])]
                     idx = Int.(reduce(vcat, insert_idx))
-                    set_start_value.(Fhat[1:ni, idx], IG.F)
+                    set_start_value.(Fhat[1:ni, idx], IG.A2u)
                 else
-                    set_start_value.(Fhat, IG.F)
+                    set_start_value.(Fhat, IG.A2u)
                 end
             end
 
@@ -165,7 +171,7 @@ function epp_opinf(D::Matrix, Rt::Union{Matrix,Transpose},
     termination_status   = $(termination_status(model))
     primal_status        = $(primal_status(model))
     dual_state           = $(dual_status(model))
-    dual objective value = $(dual_objective_value(model))
+    dual objective value = $(_dual_objective_or_na(model))
     objective_value      = $(objective_value(model))
     """
 

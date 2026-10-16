@@ -38,6 +38,11 @@ nx, ny, nz, n_fields, n_time, n_traj = ds.dims
 nxyz = nx * ny * nz
 n = n_time * n_traj
 
+##
+foo = X - V * (V' * X)
+bar = norm(foo) / norm(X) # / sqrt(size(X,2))
+println(bar)
+
 #===============#
 ## Set Options ##
 #===============#
@@ -77,132 +82,56 @@ end
 Xhat = reduce(hcat, Xhat)
 Xhatdot = reduce(hcat, Xhatdot)
 
-#========================================#
-## Grid Search Regularization Parameters
-#========================================#
-include("integrate.jl")
-
-function simulate_opinf(x0, n_time, op, tspan=nothing)
-    states, final_idx = rk4_integrate(x0, tspan, op.A, op.A2u, op.A3u, op.K)
-    contains_nan = final_idx < n_time ? true : false
-    return contains_nan, states, final_idx
-end
-
-
-function find_best_opinf_model(reg_pairs, Xhat, Xhatdot, n_time, n_time_pred, 
-                               max_growth, opinf_options, tspan=nothing)
-
-    @assert options.with_reg == true "Regularization must be enabled in options."
-    
-    best_train_err = 1e20
-    best_beta1, best_beta2, best_beta3 = nothing, nothing, nothing
-    best_final_idx = 0
-    Xtilde_opt = nothing
-    eval_time_opt = nothing
-    best_model = nothing
-
-    mean_Xhat = mean(Xhat, dims=2)
-    max_diff_Xhat = maximum(abs.(Xhat .- mean_Xhat), dims=2)
-    
-    # Loop over all regularization pairs
-    for (beta1, beta2, beta3) in reg_pairs
-        
-        # Construct a regularizer that penalizes the linear and constant reduced
-        # operators using beta1 and the quadratic operator using beta2
-        reg = LnL.TikhonovParameter(A=beta1, A2=beta2, A3=beta3, K=beta1)
-        opinf_options.λ = reg
-        
-        # Solve the regularized OpInf problem
-        ops = LnL.opinf(Xhat, opinf_options; Xhatdot=Xhatdot)
-        
-        # Extract the reduced initial condition from Qhat_1
-        xhat0 = Xhat[:,1]
-        
-        # Compute the reduced solution over the trial time horizon
-        start_eval_time = time()
-        contains_nans, Xtilde, fidx = simulate_opinf(xhat0, n_time_pred, ops, tspan)
-        end_eval_time = time()
-        time_opinf_eval = end_eval_time - start_eval_time
-        
-        # If the model produced an unstable solution, move on to the next
-        # regularization candidates
-        if contains_nans
-            @info "OpInf model with (β1, β2, β3) = ($beta1, $beta2, $beta3) produced NaNs. Skipping."
-            ops = nothing
-            GC.gc() 
-            continue
-        end
-        
-        # If the ratio of the maximum coefficient growth exceeds the allowed
-        # threshold, move on to the next regularization candidates
-        max_diff_Xhat_trial = maximum(abs.(Xtilde .- mean_Xhat), dims=2)
-        max_growth_trial = maximum(max_diff_Xhat_trial) / maximum(max_diff_Xhat)
-        if max_growth_trial > max_growth
-            ops = nothing
-            GC.gc() 
-            continue
-        end
-        
-        # At this point we know the model produced a stable solution without too
-        # much growth. Compute the training error and, if it's better than the
-        # current best error, save the regularization, reduced solution, and
-        # the learning times
-        train_err = norm(
-                Xhat[:, 1:n_time] - Xtilde[:, 1:n_time]
-            )^2 / norm(Xhat[:, 1:n_time])^2
-        if train_err < best_train_err
-            best_beta1 = beta1
-            best_beta2 = beta2
-            best_beta3 = beta3
-            best_train_err = train_err
-            Xtilde_opt = Xtilde
-            eval_time_opt = time_opinf_eval
-            best_model = ops
-        end
-
-        if best_final_idx < fidx
-            best_final_idx = fidx
-        end
-
-        @info "Regularization pair (β1, β2, β3) = ($beta1, $beta2, $beta3): \
-               training error = $train_err, evaluation time = $time_opinf_eval, \
-               max growth = $max_growth_trial, final index = $fidx"
-        ops = nothing
-        GC.gc() 
-    end
-
-    if isnothing(Xtilde_opt)
-        @error "No suitable OpInf model found with the given regularization pairs."
-    else
-        @info "Best OpInf model found with β1 = $best_beta1, β2 = $best_beta2, \
-               β3 = $best_beta3, training error = $best_train_err, evaluation time = $eval_time_opt"
-    end
-    best_betas = (b1 = best_beta1, b2 = best_beta2, b3 = best_beta3)
-    return (best_model, best_betas, best_train_err, 
-            Xtilde_opt, eval_time_opt, best_final_idx)
-end
 
 ## Run grid Search
-B1 = 10.0 .^ range(12.0, 16.0, length=8)
-B2 = 10.0 .^ range(12.0, 16.0, length=8)
-B2 = 10.0 .^ range(12.0, 16.0, length=8)  
-reg_pairs_global = vec([(b1, b2, b3) for b1 in B1, b2 in B2, b3 in B2])
-max_growth = 1.2
-options.with_reg = true
-op, best_betas, best_train_err, states, eval_time, fidx = 
-    find_best_opinf_model(reg_pairs_global, Xhat, Xhatdot,
-                          100, 100, max_growth, options,
-                          ds.grid["time"])
+GRID_SEARCH = true
 
-## Save results
-save(joinpath(FILEPATH, "data/results", 
-     "reg_grid_search.jld2"), 
-     "betas", best_betas,
-     "train_err", best_train_err, "states", states, 
-     "eval_time", eval_time, "final_idx", fidx)
+if GRID_SEARCH
+    @info "Running grid search for regularization parameters"
+    include(joinpath(FILEPATH, "grid_search.jl"))
+    B1 = 10.0 .^ range(12.0, 16.0, length=8)
+    B2 = 10.0 .^ range(12.0, 16.0, length=8)
+    B2 = 10.0 .^ range(12.0, 16.0, length=8)  
+    reg_pairs_global = vec([(b1, b2, b3) for b1 in B1, b2 in B2, b3 in B2])
+    n_reg_global = length(reg_pairs_global)
+    max_growth = 2.0
+    options.with_reg = true
+    op, best_betas, best_train_err, states, eval_time, fidx = 
+        find_best_opinf_model(reg_pairs_global, Xhat, Xhat, Xhatdot,
+                            n_train, n_train, max_growth, options,
+                            ds["times"][1:n_train])
 
-## Save the trained model
-save(joinpath(FILEPATH, "data/models/batch_opinf_mdl.jld2"), "op", op)
+    ## Save results
+    save(joinpath(FILEPATH, "data/results", 
+        "reg_grid_search_r$(r).jld2"), 
+        "betas", best_betas,
+        "train_err", best_train_err, "states", states, 
+        "eval_time", eval_time, "final_idx", fidx)
+
+    ## Save the best model
+    save(joinpath(FILEPATH, "data/models", 
+        "op_stream_r$(r)_lamGS.jld2"), 
+        "op_stream", op)
+else
+    @info "No grid search, using fixed regularization parameters"
+    ## Solve the OpInf problem 
+    options.with_reg = true
+
+    # r = 120
+    beta1 = 1.0e10
+    beta2 = 1.623776739188722e12
+
+    # r= 200
+    beta1 = 1.4384498882876628e5
+    beta2 = 3.1622776601683794e12
+
+    options.λ = LnL.TikhonovParameter(A=beta1, K=beta1, A2=beta2)
+    op = LnL.opinf(Xhat, options; Xhatdot=Xhatdot)
+
+    ## Save operators
+    save(joinpath(FILEPATH, "data/models/op_stream_r$(r).jld2"), "op_stream", op)
+end
+
 
 #================#
 ## Simulate ROM ##

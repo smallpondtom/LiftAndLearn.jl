@@ -1,14 +1,21 @@
 """
-    proj_error(Xf, Vr) → PE
+$(SIGNATURES)
 
-Compute the projection error
+Compute the relative projection error of the snapshot data onto a basis.
 
-# Arguments
-- `Xf`: reference state data
-- `Vr`: POD basis
+The error is measured as
+```math
+\\frac{\\| \\mathbf{X}_f - \\mathbf{V}_r \\mathbf{V}_r^\\top \\mathbf{X}_f \\|}{\\| \\mathbf{X}_f \\|}
+```
+where ``\\|\\cdot\\|`` is `norm(·, 2)`, i.e., the Frobenius norm for matrices (the entries are
+treated as one long vector).
 
-# Return
-- `PE`: projection error
+## Arguments
+- `Xf`: reference state snapshot matrix of size ``n \\times K`` (columns are snapshots), or a single state vector.
+- `Vr`: basis matrix of size ``n \\times r`` (e.g., the POD basis), assumed to have orthonormal columns.
+
+## Returns
+- `PE::Real`: the relative projection error.
 """
 function proj_error(Xf, Vr)
     # Projection error
@@ -19,17 +26,21 @@ end
 
 
 """
-    rel_state_error(Xf, X, Vr) → SE
+$(SIGNATURES)
 
-Compute the relative state error
+Compute the relative state error of a reduced-order solution lifted back to the full space.
 
-# Arguments
-- `Xf`: reference state data
-- `X`: testing state data
-- `Vr`: POD basis
+The error is ``\\| \\mathbf{X}_f - \\mathbf{V}_r[1:n,:] \\, \\mathbf{X} \\| / \\| \\mathbf{X}_f \\|`` in the
+Frobenius norm, where ``n`` is the number of rows of `Xf`. Only the first ``n`` rows of `Vr` are
+used, so a basis of a lifted (larger) state can be compared against the original state data.
 
-# Return
-- `SE`: state error
+## Arguments
+- `Xf`: reference (full-order) state snapshot matrix of size ``n \\times K`` (columns are snapshots).
+- `X`: reduced-order state trajectory of size ``r \\times K``.
+- `Vr`: basis matrix with at least ``n`` rows and ``r`` columns (e.g., the POD basis).
+
+## Returns
+- `SE::Real`: the relative state error.
 """
 function rel_state_error(Xf, X, Vr)
     n = size(Xf, 1)
@@ -40,16 +51,19 @@ end
 
 
 """
-    rel_output_error(Yf, Y) → OE
+$(SIGNATURES)
 
-Compute relative output error
+Compute the relative output error ``\\| \\mathbf{Y}_f - \\mathbf{Y}[1:n,:] \\| / \\| \\mathbf{Y}_f \\|``
+in the Frobenius norm.
 
-# Arguments
-- `Yf`: reference output data
-- `Y`: testing output data
+Only the first ``n`` rows of `Y` are compared, where ``n`` is the number of rows of `Yf`.
 
-# Return
-- `OE`: output error
+## Arguments
+- `Yf`: reference output data of size ``n \\times K`` (columns are time instances).
+- `Y`: output data to test, with at least ``n`` rows and ``K`` columns.
+
+## Returns
+- `OE::Real`: the relative output error.
 """
 function rel_output_error(Yf, Y)
     n = size(Yf, 1)
@@ -60,25 +74,30 @@ end
 
 
 """
-    compute_all_errors(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr) → PE, ISE, IOE, OSE, OOE
+$(SIGNATURES)
 
-Compute all projection, state, and output errors
+Compute the projection error and the relative state and output errors of an intrusive model
+and an Operator Inference (OpInf) model in one call.
 
-# Arguments
-- `Xf`: reference state data
-- `Yf`: reference output data
-- `Xint`: intrusive model state data
-- `Yint`: intrusive model output data
-- `Xinf`: inferred model state data
-- `Xint`: inferrred model output data
-- `Vr`: POD basis
+All errors are relative errors in the Frobenius norm (see [`proj_error`](@ref),
+[`rel_state_error`](@ref), and [`rel_output_error`](@ref)). Reduced states are lifted back to
+the full space with `Vr` before comparison.
 
-# Return
-- `PE`: projection error
-- `ISE`: intrusive state error
-- `IOE`: intrusive output error
-- `OSE`: operator inference state error
-- `OOE`: operator inference output error
+## Arguments
+- `Xf`: reference state snapshot matrix of size ``n \\times K`` (columns are snapshots).
+- `Yf`: reference output data of size ``q \\times K``.
+- `Xint`: reduced state trajectory of the intrusive model, size ``r \\times K``.
+- `Yint`: output data of the intrusive model, size ``q \\times K``.
+- `Xinf`: reduced state trajectory of the inferred (OpInf) model, size ``r \\times K``.
+- `Yinf`: output data of the inferred (OpInf) model, size ``q \\times K``.
+- `Vr`: basis matrix of size ``n \\times r`` (e.g., the POD basis).
+
+## Returns
+- `PE::Real`: projection error of `Xf` onto `Vr`.
+- `ISE::Real`: intrusive model state error.
+- `IOE::Real`: intrusive model output error.
+- `OSE::Real`: OpInf model state error.
+- `OOE::Real`: OpInf model output error.
 """
 function compute_all_errors(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
     # Projection error
@@ -86,7 +105,7 @@ function compute_all_errors(Xf, Yf, Xint, Yint, Xinf, Yinf, Vr)
     Yf_norm = norm(Yf, 2)
     PE = norm(Xf - Vr * Vr' * Xf, 2) / Xf_norm
 
-    # State and output error of the intrusive model 
+    # State and output error of the intrusive model
     ISE = norm(Xf - Vr * Xint, 2) / Xf_norm
     IOE = norm(Yf - Yint, 2) / Yf_norm
 
@@ -101,20 +120,29 @@ end
 """
 $(SIGNATURES)
 
-Compute the constraint residual which is the residual of the energy-preserving constraint 
+Compute the residual of the energy-preserving constraint of a quadratic operator.
+
+The residual is
 ```math
-\\sum \\left| \\hat{h}_{ijk} + \\hat{h}_{jik} + \\hat{h}_{kji} \\right| \\quad 1 \\leq i,j,k \\leq r
+\\sum_{i,j,k=1}^{r} \\left| \\hat{h}_{ijk} + \\hat{h}_{jik} + \\hat{h}_{kji} \\right|
 ```
+where ``\\hat{h}_{ijk}`` are the entries of the quadratic operator viewed as a third-order tensor.
+A quadratic operator is energy-preserving when this residual is zero.
 
 ## Arguments
-- `X::AbstractArray`: the matrix to compute the constraint residual
-- `r::Real`: the dimension of the system
-- `redundant::Bool`: redundant or nonredundant operator
-- `with_moment::Bool`: whether to compute the moment of the constraint residual
+- `X::AbstractArray`: quadratic operator matrix, of size ``r \\times r^2`` if `redundant=true` or
+  ``r \\times r(r+1)/2`` (unique Kronecker / `vech` ordering) if `redundant=false`.
+- `r::Real`: the reduced dimension (number of rows of `X`).
+- `redundant::Bool=false`: whether `X` acts on the redundant Kronecker product
+  ``\\mathbf{x}\\otimes\\mathbf{x}`` (`true`) or on the non-redundant (unique) product (`false`).
+
+## Keyword Arguments
+- `with_moment::Bool=false`: if `true`, also return the moment (the sum of the residual terms
+  without the absolute value).
 
 ## Returns
-- `ϵX`: the constraint residual
-- `mmt`: the moment which is the sum of the constraint residual without absolute value
+- `ϵX::Real`: the constraint residual.
+- `mmt::Real`: the moment of the constraint residual (only returned when `with_moment=true`).
 """
 function ep_constraint_residual(X::AbstractArray, r::Real, redundant::Bool=false; with_moment::Bool=false)
     ϵX = 0
@@ -155,18 +183,23 @@ end
 """
 $(SIGNATURES)
 
-Compute the constraint violation which is the violation of the energy-preserving constraint
+Evaluate the energy-preserving constraint violation of a quadratic operator on each snapshot.
+
+For every snapshot ``\\mathbf{x}`` (column of `Data`) this computes
 ```math
-\\sum \\langle \\mathbf{x}, \\mathbf{H}(\\mathbf{x}\\otimes\\mathbf{x})\\rangle \\quad \\forall \\mathbf{x} \\in \\mathcal{D}
+\\langle \\mathbf{x}, \\mathbf{H}(\\mathbf{x}\\otimes\\mathbf{x})\\rangle ,
 ```
+which vanishes for an energy-preserving quadratic operator ``\\mathbf{H}``.
 
 ## Arguments
-- `Data::AbstractArray`: the data
-- `X::AbstractArray`: the matrix to compute the constraint violation
-- `redundant::Bool`: redundant or nonredundant operator
+- `Data::AbstractArray`: state snapshot matrix of size ``r \\times m`` (columns are snapshots).
+- `X::AbstractArray`: quadratic operator matrix, of size ``r \\times r^2`` if `redundant=true` or
+  ``r \\times r(r+1)/2`` if `redundant=false`.
+- `redundant::Bool=false`: whether `X` acts on ``\\mathbf{x}\\otimes\\mathbf{x}`` (`true`) or on
+  the unique Kronecker product `UniqueKronecker.vech(x * x')` (`false`).
 
 ## Returns
-- `viol`: the constraint violation
+- `viol::Matrix`: an ``m \\times 1`` matrix whose ``i``-th entry is the violation for snapshot ``i``.
 """
 function ep_constraint_violation(Data::AbstractArray, X::AbstractArray, redundant::Bool=false)
     _, m = size(Data)
@@ -187,15 +220,19 @@ end
 """
 $(SIGNATURES)
 
-Check if the matrix is energy-preserving.
+Check whether a quadratic operator is energy-preserving, i.e., whether its
+[`ep_constraint_residual`](@ref) is below a tolerance.
 
 ## Arguments
-- `X::AbstractArray`: the matrix to check if it is energy-preserving
-- `redundant::Bool`: redundant or nonredundant operator
-- `tol::Real`: the tolerance
+- `X::AbstractArray`: quadratic operator matrix; the reduced dimension is taken as `size(X, 1)`.
+- `redundant::Bool=false`: whether `X` acts on the redundant (`true`) or the non-redundant
+  (`false`) Kronecker product.
+
+## Keyword Arguments
+- `tol::Real=1e-8`: tolerance on the constraint residual.
 
 ## Returns
-- `Bool`: whether the matrix is energy-preserving
+- `::Bool`: `true` if the constraint residual is strictly less than `tol`.
 """
 function isenergypreserving(X::AbstractArray, redundant::Bool=false; tol=1e-8)
     r = size(X, 1)

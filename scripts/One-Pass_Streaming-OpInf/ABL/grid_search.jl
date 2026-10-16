@@ -11,7 +11,8 @@ end
 
 function find_best_opinf_model(
     reg_pairs, Xhat, Xhat1, Xhat2, 
-    n_time, n_time_pred, max_growth, opinf_options, tspan=nothing,)
+    n_time, n_time_pred, max_growth, opinf_options, tspan=nothing,
+)
 
     @assert options.with_reg == true "Regularization must be enabled in options."
     
@@ -72,14 +73,29 @@ function find_best_opinf_model(
             GC.gc() 
             continue
         end
+
+        #! NOT for turbulent flows
+        # train_err = norm(
+        #         Xhat[:, 1:n_time] - Xtilde[:, 1:n_time]
+        #     )^2 / norm(Xhat[:, 1:n_time])^2
         
         # At this point we know the model produced a stable solution without too
-        # much growth. Compute the training error and, if it's better than the
-        # current best error, save the regularization, reduced solution, and
-        # the learning times
-        train_err = norm(
-                Xhat[:, 1:n_time] - Xtilde[:, 1:n_time]
-            )^2 / norm(Xhat[:, 1:n_time])^2
+        # much growth. Compute the statistical training error by discarding the
+        # initial transient and comparing time-averaged mean and variance.
+        transient_idx = max(1, div(n_time, 10))
+
+        true_mean = mean(Xhat[:, transient_idx:n_time], dims=2)
+        pred_mean = mean(Xtilde[:, transient_idx:n_time], dims=2)
+        err_mean = norm(true_mean - pred_mean) / norm(true_mean)
+
+        true_var = var(Xhat[:, transient_idx:n_time], dims=2)
+        pred_var = var(Xtilde[:, transient_idx:n_time], dims=2)
+        # Avoid division by zero if true variance norm is nearly zero
+        norm_true_var = norm(true_var)
+        err_var = norm_true_var > 1e-12 ? norm(true_var - pred_var) / norm_true_var : norm(true_var - pred_var)
+
+        train_err = err_mean + err_var
+
         if train_err < best_train_err
             best_beta1 = beta1
             best_beta2 = beta2

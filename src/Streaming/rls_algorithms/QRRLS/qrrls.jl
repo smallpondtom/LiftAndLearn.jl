@@ -1,7 +1,30 @@
 """
 $(TYPEDEF)
 
-QR Decomposition Recursive Least-Squares (QRRLS) cache struct to solve for DO = R.
+State of a QR-decomposition Recursive Least-Squares (QRRLS) solver for
+``\\mathbf{D}\\mathbf{O} = \\mathbf{R}`` with rank-1 (one data row per step) updates.
+
+QRRLS propagates the upper-triangular square root ``\\boldsymbol{\\Phi}^{1/2}`` of the
+correlation matrix together with ``\\mathbf{q} = \\boldsymbol{\\Phi}^{1/2}\\mathbf{O}`` by
+QR-factorizing an augmented pre-array, and recovers ``\\mathbf{O}`` by a triangular solve.
+
+## Fields
+- `N::Int`: number of features (columns of ``\\mathbf{D}``).
+- `n::Int`: number of right-hand sides (columns of ``\\mathbf{R}``).
+- `λ::T`: forgetting factor.
+- `O`: operator matrix estimate, ``N \\times n``.
+- `P::Symmetric`: inverse correlation matrix, ``N \\times N`` (tracked for the gain).
+- `K`: gain vector, ``N \\times 1``.
+- `Φsq::UpperTriangular`: square-root correlation matrix, ``N \\times N``.
+- `q`: auxiliary matrix ``\\boldsymbol{\\Phi}^{1/2}\\mathbf{O}``, ``N \\times n``.
+- `ξpre`: a-priori error, ``1 \\times n``.
+- `ξpost`: a-posteriori error, ``1 \\times n``.
+- `C::T`: conversion factor.
+- `J::T`: accumulated cost.
+- `A`, `temp_dO`, `temp_Kd`: preallocated work arrays.
+- `mthd::Symbol`: factorization method, `:qr` or `:givens`.
+- `use_gpu::Bool`: whether the arrays live on a CUDA device.
+- `tau`: workspace for `CUSOLVER.geqrf!` (GPU only, otherwise `nothing`).
 """
 mutable struct QRRLSCache{T<:AbstractFloat}
     N::Int                                              # Number of features (total dimension of operators)
@@ -29,7 +52,23 @@ end
 
 
 """
-Constructor: initialize all fields
+$(SIGNATURES)
+
+Construct a [`QRRLSCache`](@ref) with all work arrays preallocated.
+
+## Keyword Arguments
+- `N::Int=1`: number of features.
+- `n::Int=1`: number of right-hand sides.
+- `λ::T=one(T)`: forgetting factor.
+- `P::AbstractMatrix{T}=Matrix{T}(I, N, N)`: initial inverse correlation matrix
+  (``\\boldsymbol{\\Gamma}^{-1}``).
+- `Φsq::AbstractMatrix=Matrix{T}(I, N, N)`: initial square-root correlation matrix
+  (``\\boldsymbol{\\Gamma}^{1/2}``).
+- `method::Symbol=:qr`: `:qr` or `:givens`; any other value falls back to `:qr`.
+- `use_gpu::Bool=false`: allocate the arrays on a CUDA device.
+
+## Returns
+- `cache::QRRLSCache{T}`: the initialized cache with ``\\mathbf{O} = \\mathbf{0}``.
 """
 function QRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T),
                         P::AbstractMatrix{T}=Matrix{T}(I, N, N),
@@ -80,13 +119,30 @@ function QRRLSCache{T}(;N::Int=1, n::Int=1, λ::T=one(T),
 end
 
 
-# Public entry point: route to CPU/GPU and method
+"""
+$(SIGNATURES)
+
+Perform one rank-1 QRRLS update of `obj` with data row `d` (``1 \\times N``) and right-hand
+side row `r` (``1 \\times n``), dispatching to the CPU or GPU implementation.
+
+## Arguments
+- `obj::QRRLSCache{T}`: the QRRLS state (mutated).
+- `d`: data row, ``1 \\times N``.
+- `r`: right-hand side row, ``1 \\times n``.
+
+## Returns
+- `nothing`; mutates `obj`.
+"""
 function qrrls!(obj::QRRLSCache{T}, d, r) where T<:AbstractFloat
     return obj.use_gpu ? qrrls_step_gpu!(obj, d, r) : qrrls_step!(obj, d, r)
 end
 
 
-# CPU implementation (existing logic, with minor fixes)
+"""
+$(SIGNATURES)
+
+CPU implementation of one rank-1 QRRLS update (see [`qrrls!`](@ref)). Internal helper.
+"""
 function qrrls_step!(obj::QRRLSCache{T}, d::AbstractArray{T},
                    r::AbstractArray{T}) where T<:AbstractFloat
     # d: 1 x N (row vector)
@@ -158,7 +214,11 @@ function qrrls_step!(obj::QRRLSCache{T}, d::AbstractArray{T},
 end
 
 
-# GPU implementation (CUDA/cuSOLVER)
+"""
+$(SIGNATURES)
+
+CUDA implementation of one rank-1 QRRLS update (see [`qrrls!`](@ref)). Internal helper.
+"""
 function qrrls_step_gpu!(obj::QRRLSCache{T}, d::CUDA.CuArray{T,2},
                        r::CUDA.CuArray{T,2}) where T<:Union{Float32,Float64}
     N, n = obj.N, obj.n
@@ -230,11 +290,21 @@ function qrrls_step_gpu!(obj::QRRLSCache{T}, d::CUDA.CuArray{T,2},
 end
 
 
+"""
+$(SIGNATURES)
+
+Annihilate the last row of the QRRLS pre-array `A` (``(N+1) \\times (N+n+1)``) with Givens
+rotations against the diagonal, turning the upper ``N \\times N`` block back into upper
+triangular form. Internal helper.
+
+## Arguments
+- `A::AbstractMatrix{T}`: QRRLS pre-array (overwritten with the post-array).
+
+## Returns
+- `A`; the input matrix modified in place. Rows below the triangle are not zeroed and signs
+  may differ from `qr!`, which does not affect the QRRLS update.
+"""
 function qrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
-    """
-    In-place Givens rotation applied to the first column.
-    Modifies A directly and returns it.
-    """
     np1, nprp1 = size(A)
     n = np1 - 1
     r = nprp1 - np1
@@ -278,7 +348,12 @@ function qrrls_givens_fast!(A::AbstractMatrix{T}) where {T<:AbstractFloat}
     return A
 end
 
-# GPU kernel for applying Givens rotation to eliminate A[np1, j] using A[j, j]
+"""
+$(SIGNATURES)
+
+CUDA kernel applying one Givens rotation `(c, s)` to rows `row1` and `row2` of `A`, for
+`ncols` columns starting at `start_col`. Internal helper.
+"""
 function qrrls_givens_kernel!(A::CuDeviceMatrix{T}, c::T, s::T, 
                              row1::Int32, row2::Int32, 
                              start_col::Int32, ncols::Int32) where T
@@ -296,12 +371,19 @@ function qrrls_givens_kernel!(A::CuDeviceMatrix{T}, c::T, s::T,
 end
 
 
-# GPU-compatible Givens rotation for QRRLS
+"""
+$(SIGNATURES)
+
+GPU version of [`qrrls_givens_fast!`](@ref): annihilate the last row of the QRRLS pre-array
+`A` with Givens rotations. Internal helper.
+
+## Arguments
+- `A::CuArray{T,2}`: QRRLS pre-array on the GPU (overwritten).
+
+## Returns
+- `A`; modified in place.
+"""
 function qrrls_givens_gpu!(A::CuArray{T,2}) where {T<:AbstractFloat}
-    """
-    GPU implementation of Givens rotations for QRRLS.
-    Applies rotations to eliminate elements in the last row.
-    """
     np1, nprp1 = size(A)
     n = np1 - 1
     
@@ -331,12 +413,19 @@ function qrrls_givens_gpu!(A::CuArray{T,2}) where {T<:AbstractFloat}
 end
 
 
-# Optimized GPU Givens using broadcasting (more efficient for larger matrices)
+"""
+$(SIGNATURES)
+
+Vectorized GPU version of [`qrrls_givens_gpu!`](@ref) that applies each rotation with
+broadcasting instead of a custom kernel (fewer kernel launches for large `A`). Internal helper.
+
+## Arguments
+- `A::CuArray{T,2}`: QRRLS pre-array on the GPU (overwritten).
+
+## Returns
+- `A`; modified in place.
+"""
 function qrrls_givens_gpu_optimized!(A::CuArray{T,2}) where {T<:AbstractFloat}
-    """
-    Optimized GPU implementation using vectorized operations.
-    More efficient for larger matrices by minimizing kernel launches.
-    """
     np1, nprp1 = size(A)
     n = np1 - 1
     

@@ -1,9 +1,27 @@
 """
 $(TYPEDEF)
 
-Maintain the state for a Recursive Least-Squares (RLS) update
-of an (N x n)-dimensional operator matrix `O`, forgetting factor λ,
-and optional regularization Γ (scalar or N x N). 
+State of a Recursive Least-Squares (RLS) solver for ``\\mathbf{D}\\mathbf{O} = \\mathbf{R}``,
+where ``\\mathbf{O} \\in \\mathbb{R}^{N \\times n}`` is updated with blocks of ``M`` rows of the
+data matrix at a time.
+
+All work arrays are preallocated so that [`rls!`](@ref) runs allocation-light on the CPU or,
+with `use_gpu=true`, on a CUDA device.
+
+## Fields
+- `N::Int`: number of features (columns of the data matrix ``\\mathbf{D}``).
+- `M::Int`: block size (number of data rows per update).
+- `n::Int`: number of right-hand sides (columns of ``\\mathbf{R}``).
+- `λ::T`: forgetting factor.
+- `O`: current operator matrix estimate, ``N \\times n`` (note: transposed w.r.t. [`Operators`](@ref)).
+- `P::Symmetric`: inverse correlation matrix, ``N \\times N`` (upper triangle stored).
+- `K`: gain matrix, ``N \\times M``.
+- `ξpre`: a-priori error, ``M \\times n``.
+- `ξpost`: a-posteriori error, ``M \\times n``.
+- `C`: innovation covariance (``M \\times M``) of the latest update.
+- `J`: accumulated cost (``M \\times M``).
+- `u`, `temp_DP`, `temp_PD`, `temp_update`, `temp_Ke`: preallocated temporaries.
+- `use_gpu::Bool`: whether the arrays live on a CUDA device.
 """
 mutable struct RLSCache{T<:Real}
     N::Int                           # number of features
@@ -31,9 +49,21 @@ end
 
 
 """
-RLSCache constructor
+$(SIGNATURES)
 
-Set use_gpu=true to allocate on the GPU.
+Construct an [`RLSCache`](@ref) with all work arrays preallocated.
+
+## Keyword Arguments
+- `N::Int=1`: number of features (columns of the data matrix).
+- `M::Int=1`: block size (data rows per update).
+- `n::Int=1`: number of right-hand sides.
+- `λ::T=one(T)`: forgetting factor.
+- `P::AbstractMatrix=Matrix{T}(I, N, N)`: initial inverse correlation matrix, typically
+  ``\\boldsymbol{\\Gamma}^{-1}``.
+- `use_gpu::Bool=false`: allocate the arrays on a CUDA device.
+
+## Returns
+- `cache::RLSCache{T}`: the initialized cache with ``\\mathbf{O} = \\mathbf{0}``.
 """
 function RLSCache{T}(; N::Int=1, M::Int=1, n::Int=1, λ::T=one(T),
                       P::AbstractMatrix=Matrix{T}(I, N, N),
@@ -89,17 +119,48 @@ function RLSCache{T}(; N::Int=1, M::Int=1, n::Int=1, λ::T=one(T),
 end
 
 
-# Public entry point: route to CPU/GPU
+"""
+$(SIGNATURES)
+
+Perform one RLS update of `obj` with the data block `D` (``M \\times N``) and right-hand side
+`R` (``M \\times n``), dispatching to [`rls_cpu!`](@ref) or [`rls_gpu!`](@ref).
+
+## Arguments
+- `obj::RLSCache{T}`: the RLS state (mutated).
+- `D`: data block, ``M \\times N`` with ``M`` equal to `obj.M`.
+- `R`: right-hand side block, ``M \\times n``.
+- `Q`: noise covariance of the block (scalar for ``M = 1`` or ``M \\times M`` matrix).
+
+## Returns
+- `nothing`; mutates `obj`.
+"""
 function rls!(obj::RLSCache{T}, D, R, Q) where T<:Real
+    size(D, 1) == obj.M || throw(DimensionMismatch(
+        "RLS block size mismatch: the stream has $(size(D, 1)) snapshot(s) but the solver " *
+        "was built for blocks of $(obj.M) (set `rank` in `TwoPassStreamingOpInf`)."))
     return obj.use_gpu ? rls_gpu!(obj, D, R, Q) : rls_cpu!(obj, D, R, Q)
 end
 
 
 """
-    rls_cpu!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractArray{T}, 
-             Q::Union{T,AbstractMatrix{T}}) where T<:Real
+$(SIGNATURES)
 
-CPU implementation (original logic).
+CPU implementation of one RLS update (rank-1 or block). Internal helper.
+
+With ``\\mathbf{G} = \\mathbf{P}\\mathbf{D}^\\top/\\lambda`` and
+``\\mathbf{C} = \\mathbf{D}\\mathbf{P}\\mathbf{D}^\\top/\\lambda + \\mathbf{Q}``, the update is
+``\\mathbf{K} = \\mathbf{G}\\mathbf{C}^{-1}``,
+``\\mathbf{O} \\leftarrow \\mathbf{O} + \\mathbf{K}(\\mathbf{R} - \\mathbf{D}\\mathbf{O})``, and
+``\\mathbf{P} \\leftarrow (\\mathbf{P} - \\lambda\\mathbf{K}\\mathbf{G}^\\top)/\\lambda``.
+
+## Arguments
+- `obj::RLSCache{T}`: the RLS state (mutated).
+- `D::AbstractArray{T}`: data block, ``M \\times N``.
+- `R::AbstractArray{T}`: right-hand side block, ``M \\times n``.
+- `Q::Union{T,AbstractMatrix{T}}`: noise covariance of the block.
+
+## Returns
+- `nothing`; mutates `obj`.
 """
 function rls_cpu!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractArray{T},
                   Q::Union{T,AbstractMatrix{T}}) where T<:Real
@@ -117,13 +178,8 @@ function rls_cpu!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractArray{T},
         denom = (isa(Q, Number) ? T(Q) : Q[1,1]) * obj.λ + dot(d,obj.u)
         obj.C[1,1] = inv(denom)
 
-        # Kalman gain K[:,1] = (P*d') * (1/Q) * C
-        if isa(Q, Number)
-            mul!(view(obj.K, :, 1), obj.P, d, obj.C[1,1]/T(Q), zero(T))
-        else
-            mul!(view(obj.K, :, 1), obj.P, d, obj.C[1,1], zero(T))
-            obj.K .*= inv(Q)
-        end
+        # Kalman gain K[:,1] = (P*d') / (λQ + d P d') = u * C
+        obj.K[:, 1] .= obj.u .* obj.C[1,1]
 
         # P ← (P – u*uᵀ/denom) / λ via BLAS
         BLAS.syr!('U', -one(T)/denom, obj.u, obj.P.data)
@@ -141,18 +197,19 @@ function rls_cpu!(obj::RLSCache{T}, D::AbstractArray{T}, R::AbstractArray{T},
         # factor C once
         F = cholesky(Symmetric(obj.C, :U))
 
-        # temp_PD = P * Dᵀ
-        mul!(obj.temp_PD, obj.P, D', one(T), zero(T))   # N×M
+        # temp_PD = G = P * Dᵀ / λ
+        mul!(obj.temp_PD, obj.P, D', one(T)/obj.λ, zero(T))   # N×M
 
-        # K = (temp_PD/λ) * inv(C) via two triangular solves
-        BLAS.scal!(one(T)/obj.λ, obj.temp_PD)
-        BLAS.trsm!('L','U','N','N', one(T), F.L, obj.temp_PD) # solve L * X = temp_PD
-        BLAS.trsm!('U','U','T','N', one(T), F.U, obj.temp_PD) # solve Uᵀ * X = prev
-        copy!(obj.K, obj.temp_PD)                             # N×M
+        # With C = UᵀU:  L = G * U⁻¹  so that  K Gᵀ = G C⁻¹ Gᵀ = L Lᵀ
+        rdiv!(obj.temp_PD, F.U)
 
-        # P ← (P – K * Kᵀ) / λ   (obj.temp_PD holds K)
-        BLAS.syrk!('U', 'N', -one(T), obj.temp_PD, one(T), obj.P.data)
+        # P ← (P – λ K Gᵀ) / λ = (P – λ L Lᵀ) / λ
+        BLAS.syrk!('U', 'N', -obj.λ, obj.temp_PD, one(T), obj.P.data)
         BLAS.scal!(one(T)/obj.λ, obj.P.data)
+
+        # K = G C⁻¹ = L U⁻ᵀ
+        rdiv!(obj.temp_PD, F.U')
+        copy!(obj.K, obj.temp_PD)                             # N×M
     end
 
     # 3) update operator: O += K * ξpre
@@ -172,8 +229,19 @@ end
 
 
 """
-GPU implementation using CUDA/CuArrays.
-D, R must be CuArray{T,2}. Q may be scalar T or CuArray{T,2} (MxM).
+$(SIGNATURES)
+
+CUDA implementation of one RLS update (rank-1 or block); same algorithm as
+[`rls_cpu!`](@ref). Internal helper.
+
+## Arguments
+- `obj::RLSCache{T}`: the RLS state allocated with `use_gpu=true` (mutated).
+- `D::CuArray{T,2}`: data block, ``M \\times N``.
+- `R::CuArray{T,2}`: right-hand side block, ``M \\times n``.
+- `Q::Union{T,CuArray{T,2}}`: noise covariance of the block.
+
+## Returns
+- `nothing`; mutates `obj`.
 """
 function rls_gpu!(obj::RLSCache{T}, D::CUDA.CuArray{T,2}, R::CUDA.CuArray{T,2},
                   Q::Union{T,CUDA.CuArray{T,2}}) where T<:Union{Float32,Float64}
@@ -193,13 +261,8 @@ function rls_gpu!(obj::RLSCache{T}, D::CUDA.CuArray{T,2}, R::CUDA.CuArray{T,2},
         denom = q11 * obj.λ + dot(d, obj.u)
         obj.C[1:1,1:1] = inv(denom)
 
-        # K[:,1] - avoid view, use direct assignment
-        K_col = obj.P.data * d * (obj.C[1:1,1:1] / (isa(Q, Number) ? q11 : one(T)))
-        obj.K[:,1] .= K_col
-        
-        if !isa(Q, Number)
-            obj.K .*= inv(Q)   # Q is 1×1; inv(Q) is safe
-        end
+        # K[:,1] = (P*d') / (λQ + d P d') = u / denom
+        obj.K[:,1] .= obj.u ./ denom
 
         # P ← (P – u*uᵀ/denom) / λ  (all on device)
         obj.P.data .-= (one(T)/denom) .* (obj.u * obj.u')
@@ -217,17 +280,19 @@ function rls_gpu!(obj::RLSCache{T}, D::CUDA.CuArray{T,2}, R::CUDA.CuArray{T,2},
         # cholesky factorization on GPU
         F = cholesky(Symmetric(obj.C, :U))
 
-        # temp_PD = P * Dᵀ
-        mul!(obj.temp_PD, obj.P.data, D', one(T), zero(T))       # Use .data
-        obj.temp_PD .*= one(T)/obj.λ
+        # temp_PD = G = P * Dᵀ / λ
+        mul!(obj.temp_PD, obj.P.data, D', one(T)/obj.λ, zero(T))  # Use .data
 
-        # Solve C \ temp_PD in-place to get K
-        ldiv!(F, obj.temp_PD)                               # temp_PD = C \ temp_PD
-        copy!(obj.K, obj.temp_PD)                           # N×M
+        # With C = UᵀU:  L = G * U⁻¹  so that  K Gᵀ = L Lᵀ
+        rdiv!(obj.temp_PD, F.U)
 
-        # P ← (P – K*Kᵀ) / λ
-        obj.P.data .-= obj.temp_PD * obj.temp_PD'
+        # P ← (P – λ L Lᵀ) / λ
+        obj.P.data .-= obj.λ .* (obj.temp_PD * obj.temp_PD')
         obj.P.data .*= one(T)/obj.λ
+
+        # K = G C⁻¹ = L U⁻ᵀ
+        rdiv!(obj.temp_PD, F.U')
+        copy!(obj.K, obj.temp_PD)                           # N×M
     end
 
     # 3) O += K * ξpre
@@ -247,9 +312,25 @@ end
 
 
 """
-Variable-regularization RLS.
+$(SIGNATURES)
 
-WARNING: Experimental, not yet tested.
+Variable-regularization RLS update, where the regularization changes from `γ_km1` to `γ_k`
+at this step. Internal helper.
+
+## Arguments
+- `obj::RLSCache{T}`: the RLS state (mutated).
+- `D::AbstractMatrix{T}`: data block, ``M \\times N``.
+- `R::AbstractMatrix{T}`: right-hand side block, ``M \\times n``.
+- `Q::Union{Real,AbstractMatrix{T}}`: noise covariance of the block.
+- `γ_k::Real`: regularization at the current step.
+- `γ_km1::Real`: regularization at the previous step.
+
+## Returns
+- `nothing`; mutates `obj`.
+
+## Notes
+- Experimental and not functional in this release: it reads and writes a regularization field
+  that [`RLSCache`](@ref) does not have.
 """
 function vrrls!(obj::RLSCache{T}, D::AbstractMatrix{T}, R::AbstractMatrix{T},
                 Q::Union{Real,AbstractMatrix{T}}, γ_k::Real, γ_km1::Real) where T<:Number

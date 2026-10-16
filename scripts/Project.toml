@@ -2,7 +2,6 @@
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 BlockDiagonals = "0a1fb500-61f7-11e9-3c65-f5ef3456f9f0"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 ChaosGizmo = "8ecd6707-8bba-4952-86a9-a0db37d1bb12"
 ColorSchemes = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
@@ -27,7 +26,9 @@ LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LiftAndLearn = "192fc49d-b0e9-4795-8347-9ce9b8a8946d"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
+MathTeXEngine = "0a4f8689-d25c-4efe-a92b-7142dfc1aa53"
 MatrixEquations = "99c1a7ee-ab34-5fd5-8076-27c950a045f4"
+NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 NPCFs = "e414b0ab-d40c-4bbc-9f57-095db2c1b88c"
 NPZ = "15e1cf62-19b3-5cfa-8e77-841668bca605"
 NaNStatistics = "b946abbf-3ea7-4610-9019-9858bfdeaf2d"
@@ -49,3 +50,4 @@ UniqueKronecker = "dd29a912-d12a-442e-ae57-6933397c0393"
 ChaosGizmo = {url = "https://github.com/smallpondtom/ChaosGizmo.jl"}
 IncrementalSVD = {url = "https://github.com/smallpondtom/IncrementalSVD.jl"}
 NPCFs = {url = "https://github.com/smallpondtom/NPCFs.jl"}
+LiftAndLearn = {path = ".."}

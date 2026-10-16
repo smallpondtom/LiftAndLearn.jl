@@ -9,24 +9,29 @@ include("tikhonov.jl")
 include("reproject.jl")
 
 """
-    leastsquares_solve(D::AbstractArray, Rt::AbstractArray, 
-                       Y::AbstractArray, Xhat_t::AbstractArray, 
-                       dims::AbstractArray, operator_symbols::AbstractArray, 
-                       options::AbstractOption)
+$(SIGNATURES)
 
-Solve the standard Operator Inference with/without regularization
+Solve the Operator Inference (OpInf) regression ``\\mathbf{D}\\mathbf{O}^\\top \\approx \\mathbf{R}^\\top``
+with or without Tikhonov regularization and unpack the result into an `Operators` structure.
+
+If `options.with_reg` is `true`, a diagonal Tikhonov matrix ``\\boldsymbol{\\Gamma}`` is
+built from `options.λ` with `tikhonov_matrix!` and the problem is solved with `tikhonov`;
+otherwise `standard_least_squares` is used. The solver settings (`use_gpu`,
+`use_normal_equations`, `use_backslash`, `chunk_size`, `tolerance`, ...) are taken from
+`options`. If `options.system.output` is nonzero, the output operator ``\\mathbf{C}`` is
+also fitted from `Yt` and `Xhat_t` (see `unpack_operators!`).
 
 ## Arguments
-- `D::AbstractArray`: data matrix
-- `Rt::AbstractArray`: derivative data matrix (tall)
-- `Yt::AbstractArray`: output data matrix (tall)
-- `Xhat_t::AbstractArray`: projected data matrix (tall)
-- `dims::AbstractArray`: dimensions of the operators
-- `operator_symbols::AbstractArray`: symbols of the operators
-- `options::AbstractOption`: options for the operator inference set by the user
+- `D::AbstractArray`: data matrix ``\\mathbf{D}`` of size ``K \\times d`` (rows = time).
+- `Rt::AbstractArray`: transposed derivative data ``\\mathbf{R}^\\top`` of size ``K \\times r``.
+- `Yt::AbstractArray`: transposed output data of size ``K \\times l``.
+- `Xhat_t::AbstractArray`: transposed reduced state data of size ``K \\times r``.
+- `dims::AbstractArray`: number of columns of ``\\mathbf{D}`` belonging to each operator.
+- `operator_symbols::AbstractArray`: operator symbols (e.g. `:A`, `:B`, `:A2u`) in the same order as `dims`.
+- `options::AbstractOption`: OpInf options (typically an `LSOpInfOption`).
 
 ## Returns
-- `operators::Operators`: All learned operators
+- `operators::Operators`: the inferred operators; the full operator matrix ``\\mathbf{O}`` is stored in `operators.O`.
 """
 function leastsquares_solve(D::AbstractArray, Rt::AbstractArray, 
                             Yt::AbstractArray, Xhat_t::AbstractArray, 
@@ -79,23 +84,29 @@ end
 
 
 """
-    opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
-        U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
-        Xdot::AbstractArray=[]) → op::Operators
+$(SIGNATURES)
 
-Infer the operators with derivative data given. NOTE: Make sure the data is 
-constructed such that the row is the state vector and the column is the time.
+Infer the reduced operators by Operator Inference (OpInf) from full-order state data.
+
+The state data is projected onto the basis `Vn` (``\\hat{\\mathbf{X}} = \\mathbf{V}_n^\\top\\mathbf{X}``).
+If `Xdot` is empty, the time-derivative data is approximated from `X` by finite
+differences with `time_derivative_approx` using `options.data.deriv_type` and
+`options.data.Δt`, and the state, input and output data are restricted to the time
+indices returned by the scheme. The regression is then built with `get_data_matrix` and
+solved with `leastsquares_solve`.
 
 ## Arguments
-- `X::AbstractArray`: state data matrix
-- `Vn::AbstractArray`: POD basis
-- `options::AbstractOption`: options for the operator inference defined by the user
-- `U::AbstractArray`: input data matrix
-- `Y::AbstractArray`: output data matix
-- `Xdot::AbstractArray`: derivative data matrix
+- `X::AbstractArray`: full state snapshot matrix of size ``n \\times K`` (rows = state, columns = time).
+- `Vn::AbstractArray`: basis (e.g. POD basis) of size ``n \\times r``.
+- `options::AbstractOption`: OpInf options (typically an `LSOpInfOption`).
+
+## Keyword Arguments
+- `U::AbstractArray=[0.0]`: input data (``K \\times m`` or ``m \\times K``; fat matrices are transposed to tall).
+- `Y::AbstractArray=[0.0]`: output data (``K \\times l`` or ``l \\times K``; fat matrices are transposed to tall).
+- `Xdot::AbstractArray=[]`: full time-derivative data of size ``n \\times K``; if empty it is approximated by finite differences.
 
 ## Returns
-- `op::Operators`: inferred operators
+- `op::Operators`: the inferred reduced operators.
 """
 function opinf(X::AbstractArray, Vn::AbstractArray, options::AbstractOption; 
                U::AbstractArray=[0.0], Y::AbstractArray=[0.0],
@@ -124,22 +135,25 @@ end
 
 
 """
-    opinf(Xhat::AbstractArray, options::AbstractOption; 
-               U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
-               Xhatdot::AbstractArray=[]) → op::Operators
+$(SIGNATURES)
 
-Infer the operators with derivative data given. NOTE: This function dispatch
-accepts the reduced data matrices.
+Infer the operators by Operator Inference (OpInf) directly from reduced (already
+projected) state and derivative data.
 
 ## Arguments
-- `Xhat::AbstractArray`: reduced state data matrix
-- `options::AbstractOption`: options for the operator inference defined by the user
-- `U::AbstractArray`: input data matrix
-- `Y::AbstractArray`: output data matix
-- `Xhatdot::AbstractArray`: reduced derivative data matrix
+- `Xhat::AbstractArray`: reduced state snapshot matrix of size ``r \\times K`` (rows = reduced state, columns = time).
+- `options::AbstractOption`: OpInf options (typically an `LSOpInfOption`).
+
+## Keyword Arguments
+- `U::AbstractArray=zeros(1,1)`: input data (fat matrices are transposed to tall).
+- `Y::AbstractArray=zeros(1,1)`: output data (fat matrices are transposed to tall).
+- `Xhatdot::AbstractArray=[]`: reduced time-derivative data of size ``r \\times K``; required.
 
 ## Returns
-- `op::Operators`: inferred operators
+- `op::Operators`: the inferred operators.
+
+## Notes
+- `Xhatdot` must be provided; an error is thrown if it is empty.
 """
 function opinf(Xhat::AbstractArray, options::AbstractOption; 
                U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1),
@@ -148,7 +162,7 @@ function opinf(Xhat::AbstractArray, options::AbstractOption;
     Yt = fat2tall(Y)
 
     if isempty(Xhatdot)
-        @error "Xhatdot is required for this function. Please provide the time derivative data."
+        error("Xhatdot is required for this function. Please provide the time derivative data.")
     else
         Xhat_t = Xhat'
         Rt = Xhatdot'
@@ -161,23 +175,32 @@ end
 
 
 """
-    opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options::AbstractOption;
-        U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1)) → op::Operators
+$(SIGNATURES)
 
-Infer the operators with reprojection method (dispatch). NOTE: Make sure the data is
-constructed such that the row is the state vector and the column is the time.
+Infer the reduced operators by Operator Inference (OpInf) with the reprojection scheme.
+
+Instead of using finite differences, the derivative data is generated by evaluating the
+full-order model `full_op` at the reconstructed reduced states and projecting back onto
+`Vn` (see `reproject`).
 
 ## Arguments
-- `X::AbstractArray`: state data matrix
-- `Vn::AbstractArray`: POD basis
-- `full_op::Operators`: full order model operators
-- `options::AbstractOption`: options for the operator inference defined by the user
-- `U::AbstractArray`: input data matrix
-- `Y::AbstractArray`: output data matix
-- `return_derivative::Bool=false`: return the derivative matrix (or residual matrix)
+- `X::AbstractArray`: full state snapshot matrix of size ``n \\times K`` (rows = state, columns = time).
+- `Vn::AbstractArray`: basis (e.g. POD basis) of size ``n \\times r``.
+- `full_op::Operators`: full-order model operators.
+- `options::AbstractOption`: OpInf options (typically an `LSOpInfOption`).
+
+## Keyword Arguments
+- `U::AbstractArray=zeros(1,1)`: input data (fat matrices are transposed to tall).
+- `Y::AbstractArray=zeros(1,1)`: output data (fat matrices are transposed to tall).
+- `return_derivative::Bool=false`: also return the reprojected derivative data ``\\mathbf{R}^\\top``.
 
 ## Returns
-- `op::Operators`: inferred operators
+- `op::Operators`: the inferred reduced operators.
+- `Rt::AbstractArray`: reprojected derivative data of size ``K \\times r`` (only if `return_derivative=true`).
+
+## Notes
+- `reproject` reads one input row per snapshot, so `U` must have ``K`` time samples (pass
+  zeros for an autonomous system); the default `zeros(1,1)` only works for ``K = 1``.
 """
 function opinf(X::AbstractArray, Vn::AbstractArray, full_op::Operators, options::AbstractOption;
                U::AbstractArray=zeros(1,1), Y::AbstractArray=zeros(1,1), return_derivative::Bool=false)

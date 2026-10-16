@@ -1,19 +1,30 @@
 """
 $(SIGNATURES)
 
-Get the data matrix for the regression problem
+Assemble the data matrix ``\\mathbf{D}`` of the Operator Inference (OpInf) regression problem.
+
+The column blocks of ``\\mathbf{D}`` are stacked in the following order, according to
+`options.system`:
+1. linear state ``\\hat{\\mathbf{X}}^\\top`` (symbol `:A`),
+2. input ``\\mathbf{U}^\\top`` (symbol `:B`),
+3. polynomial state terms of order ``i \\geq 2`` (symbols `:Aiu` with the non-redundant
+   Kronecker product if `options.optim.nonredundant_operators`, otherwise `:Ai`),
+4. state-input coupling terms (symbol `:N` for bilinear, `:Ni` for higher orders),
+5. a column of ones for the constant term (symbol `:K`).
 
 ## Arguments
-- `Xhat::AbstractArray`: projected data matrix
-- `Xhat_t::AbstractArray`: projected data matrix (transposed)
-- `Ut::AbstractArray`: input data matrix (transposed)
-- `options::AbstractOption`: options for the operator inference set by the user
-- `verbose::Bool=false`: verbose mode returning the dimension breakdown and operator symbols
+- `Xhat::AbstractArray`: reduced state snapshot matrix of size ``r \\times K`` (columns = snapshots).
+- `Xhat_t::AbstractArray`: transpose of `Xhat` (size ``K \\times r``).
+- `Ut::AbstractArray`: tall input data matrix of size ``K \\times m``.
+- `options::AbstractOption`: OpInf options defining the system structure.
+
+## Keyword Arguments
+- `verbose::Bool=true`: if `true`, also return the dimension breakdown and the operator symbols.
 
 ## Returns
-- `D`: data matrix for the regression problem
-- `dims`: dimension breakdown of the data matrix
-- `operator_symbols`: operator symbols corresponding to `dims` for the regression problem
+- `D::AbstractMatrix`: data matrix of size ``K \\times d``.
+- `dims::Vector`: number of columns of each block of `D` (only if `verbose=true`).
+- `operator_symbols::Vector{Symbol}`: operator symbol of each block, in the same order as `dims` (only if `verbose=true`).
 """
 function get_data_matrix(Xhat::AbstractArray, Xhat_t::AbstractArray, Ut::AbstractArray, options::AbstractOption;
                          verbose::Bool=true)
@@ -122,5 +133,21 @@ end
 
 """
 $(SIGNATURES)
+
+Assemble the data matrix ``\\mathbf{D}`` from `Xhat` and the tall input data `Ut`; same as
+the four-argument method with `Xhat_t = Xhat'`.
+
+## Arguments
+- `Xhat::AbstractArray`: reduced state snapshot matrix of size ``r \\times K`` (columns = snapshots).
+- `Ut::AbstractArray`: tall input data matrix of size ``K \\times m``.
+- `options::AbstractOption`: OpInf options defining the system structure.
+
+## Keyword Arguments
+- `verbose::Bool`: (required) if `true`, also return the dimension breakdown and the operator symbols.
+
+## Returns
+- `D::AbstractMatrix`: data matrix of size ``K \\times d``.
+- `dims::Vector`: number of columns of each block of `D` (only if `verbose=true`).
+- `operator_symbols::Vector{Symbol}`: operator symbol of each block (only if `verbose=true`).
 """
 get_data_matrix(Xhat::AbstractArray, Ut::AbstractArray, options::AbstractOption; verbose::Bool) = get_data_matrix(Xhat, Xhat', Ut, options; verbose)

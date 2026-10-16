@@ -36,12 +36,16 @@ n = n_time * n_traj
 preprocessed_file = joinpath(FILEPATH, "data/preprocessed_data.jld2")
 X = load(preprocessed_file, "X")
 
-#===========================#
-## Compute singular values ##
-#===========================#
+#=====================================#
+## Compute singular values per field ##
+#=====================================#
 singular_values = Dict(
     fld => svdvals(X[fld]) for fld in ds.fields
 )
+
+## Monolithic SVD
+svdvals_all = svdvals(X["all"])
+
 
 #===============================#
 ## Check the energy retainment ##
@@ -56,13 +60,13 @@ end
 spectrum = Dict(fn => zeros(length(singular_values[fn])) for fn in ds.fields)
 target_r = Dict(fn => 0 for fn in ds.fields)
 
-target_energy = 0.95
+target_energy = 0.85
 for fld in ds.fields
     svals = singular_values[fld]
     spectrum[fld], target_r[fld] = check_energy_retainment(svals, target_energy)
 end
 
-# Save target ranks
+## Save target ranks
 target_r_file = joinpath(FILEPATH, "data/target_ranks.jld2")
 save(target_r_file, "target_ranks", target_r)
 
@@ -151,5 +155,42 @@ with_theme(theme_latexfonts()) do
     
     # Display figure
     display(fig)
-    save(joinpath(FILEPATH, "plots/energy_spectrum.png"), fig, px_per_inch=200)
+    # save(joinpath(FILEPATH, "plots/energy_spectrum.png"), fig, px_per_inch=200)
 end
+
+
+## Plot energy spectrum for monolithic SVD
+
+with_theme(theme_latexfonts()) do 
+    fig = Figure(size=(1400, 500))
+    ax1 = Axis(
+        fig[1, 1], # xlabel=L"singular value index, $i$", 
+        ylabel="energy retainment",
+        limits=(-50, length(spectrum["rho"])+10, 0.18, nothing),
+        topspinevisible=false, rightspinevisible=false,
+        titlesize=30, xlabelsize=30, ylabelsize=30, 
+        xticklabelsize=25, yticklabelsize=25,
+        yticks=(0:0.1:1, ["0%", "10%", "20%", "30%", "40%", 
+                          "50%", "60%", "70%", "80%", "90%", "100%"])
+    )
+
+    spectrum_all, target_r_all = check_energy_retainment(svdvals_all, target_energy)
+    # Find index where energy retention exceeds target_energy
+    target_idx = findfirst(x -> x > target_energy, spectrum_all) + 1
+    lines!(ax1, 1:length(svdvals_all), spectrum_all, linewidth=7)
+
+    # Add horizontal line at 99.9% energy retention
+    hlines!(ax1, [target_energy], color=:black, linestyle=:dash, linewidth=4)
+
+    # Add vertical line for target rank
+    vlines!(ax1, [target_idx], linestyle=:dash, color=:black, linewidth=4)
+    
+    # Add xlabel for target rank
+    text!(ax1, "$target_idx", position=(target_idx+4, 0.22), 
+           align=(:left, :center), fontsize=30)
+
+    # Display figure
+    display(fig)
+    save(joinpath(FILEPATH, "plots/energy_spectrum_all.png"), fig, px_per_inch=200)
+end
+
