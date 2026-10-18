@@ -19,6 +19,9 @@ module LiftAndLearn
 using Combinatorics: binomial
 using LinearAlgebra
 using LinearSolve
+# Explicit imports: AppleAccelerate (loaded on Apple CPUs below) also exports `solve` and
+# `solve!`, which would make the bare names ambiguous and therefore undefined on macOS.
+using LinearSolve: LinearProblem, init, solve, solve!, KrylovJL_GMRES
 using BlockDiagonals
 using Kronecker
 using Parameters
