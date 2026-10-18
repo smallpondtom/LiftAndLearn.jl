@@ -54,7 +54,9 @@ end
         @test s.num_of_snapshots == K
         @test size(s.V) == (n, rank)
         @test size(s.W) == (K, rank)
-        @test norm(s.V' * s.V - I) < 1e-10
+        # The iSVD accumulates rounding error in V over the 200 updates (worst when the data
+        # are exactly rank n, as here); the amount is BLAS/CPU dependent (~1e-11 to ~2e-10).
+        @test norm(s.V' * s.V - I) < 1e-8
         if rank == n
             # no truncation: the iSVD is exact
             @test s.Σ ≈ F.S rtol=1e-8
@@ -91,7 +93,7 @@ end
     for k in 2:K
         LnL.stream!(s, X[:, k], Xdot[:, k])
     end
-    @test norm(s.V' * s.V - I) < 1e-10
+    @test norm(s.V' * s.V - I) < 1e-8   # see the BLAS-dependent rounding note above
     @test s.Σ ≈ svdvals(X) rtol=1e-8
     @test s.S ≈ svdvals(Xdot) rtol=1e-8
     op = LnL.compute_stream_operators(s; U=Matrix(U'))
