@@ -26,23 +26,23 @@ using Random
 LnL = LiftAndLearn
 W = round.(rand(30,100), digits=4)
 LnL.lifted_basis(W, 3, 10, [2,3,4])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">30×9 BlockDiagonals.BlockDiagonal{Float64, Matrix{Float64}}:
- -0.296225   0.559623     0.0  0.0  …   0.0         0.0         0.0
- -0.335308  -0.297296     0.0  0.0      0.0         0.0         0.0
- -0.325074  -0.66396      0.0  0.0      0.0         0.0         0.0
- -0.325272  -0.11359      0.0  0.0      0.0         0.0         0.0
- -0.347772   0.187093     0.0  0.0      0.0         0.0         0.0
- -0.316698   0.000514527  0.0  0.0  …   0.0         0.0         0.0
- -0.312494  -0.044677     0.0  0.0      0.0         0.0         0.0
- -0.300867   0.0156875    0.0  0.0      0.0         0.0         0.0
- -0.310871   0.301263     0.0  0.0      0.0         0.0         0.0
- -0.286858   0.129172     0.0  0.0      0.0         0.0         0.0
-  ⋮                                 ⋱                          
-  0.0        0.0          0.0  0.0     -0.0660856   0.500665   -0.160359
-  0.0        0.0          0.0  0.0      0.180592   -0.0611279  -0.286425
-  0.0        0.0          0.0  0.0     -0.30584     0.1378      0.0855687
-  0.0        0.0          0.0  0.0      0.226331   -0.405153    0.364112
-  0.0        0.0          0.0  0.0  …  -0.349109   -0.13079    -0.0736454
-  0.0        0.0          0.0  0.0      0.330342    0.42214     0.521049
-  0.0        0.0          0.0  0.0      0.379124   -0.0811965   0.108424
-  0.0        0.0          0.0  0.0     -0.634874   -0.127618    0.220278
-  0.0        0.0          0.0  0.0      0.150934   -0.552969   -0.22481</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../Options/">« Options</a><a class="docs-footer-nextpage" href="../Intrusive/">Intrusive »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Sunday 18 October 2026 16:08">Sunday 18 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ -0.322404   0.48424     0.0  0.0  0.0  …   0.0         0.0         0.0
+ -0.314491   0.08658     0.0  0.0  0.0      0.0         0.0         0.0
+ -0.304867   0.131814    0.0  0.0  0.0      0.0         0.0         0.0
+ -0.330675   0.379944    0.0  0.0  0.0      0.0         0.0         0.0
+ -0.313166  -0.101098    0.0  0.0  0.0      0.0         0.0         0.0
+ -0.304741  -0.564589    0.0  0.0  0.0  …   0.0         0.0         0.0
+ -0.325635  -0.202577    0.0  0.0  0.0      0.0         0.0         0.0
+ -0.302579   0.195719    0.0  0.0  0.0      0.0         0.0         0.0
+ -0.324831  -0.433493    0.0  0.0  0.0      0.0         0.0         0.0
+ -0.317513   0.00661062  0.0  0.0  0.0      0.0         0.0         0.0
+  ⋮                                     ⋱                          
+  0.0        0.0         0.0  0.0  0.0      0.3731      0.469102   -0.220562
+  0.0        0.0         0.0  0.0  0.0      0.0572569  -0.200605    0.706297
+  0.0        0.0         0.0  0.0  0.0     -0.113623   -0.146518   -0.191451
+  0.0        0.0         0.0  0.0  0.0     -0.579609    0.42766    -0.193374
+  0.0        0.0         0.0  0.0  0.0  …   0.529971    0.309358   -0.014319
+  0.0        0.0         0.0  0.0  0.0     -0.356765    0.0193633   0.194562
+  0.0        0.0         0.0  0.0  0.0     -0.0399778  -0.407093   -0.460673
+  0.0        0.0         0.0  0.0  0.0      0.146114   -0.507861   -0.184919
+  0.0        0.0         0.0  0.0  0.0     -0.186888    0.115551    0.24202</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../Options/">« Options</a><a class="docs-footer-nextpage" href="../Intrusive/">Intrusive »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Sunday 18 October 2026 16:09">Sunday 18 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
