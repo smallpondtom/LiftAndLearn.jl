@@ -43,7 +43,7 @@ FILEPATH = occursin("scripts", pwd()) ? joinpath(pwd(),"EP-OpInf/") : joinpath(p
 Ω = (0.0, 1.0)
 Nx = 2^7; dt = 1e-4
 burger = BurgersModel(
-    spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=((Ω[2]-Ω[1]) + 1/Nx)/Nx, Δt=dt,
+    spatial_domain=Ω, time_domain=(0.0, 1.0), Δx=((Ω[2]-Ω[1]))/Nx, Δt=dt,
     diffusion_coeffs=0.1, BC=:periodic,
 )
 
@@ -163,6 +163,12 @@ Data = Dict(
         "Xtr_all" => Xtr_all, "IC_train" => IC_train
         )
 
+#%%
+using JLD2
+Data = load(
+    joinpath(FILEPATH, "../../../../RESULTS/EP_OpInf/burger_final_data/burgers_EpOpInf_final_data.jld2"), 
+)
+
 #=====================#
 ## Plot data to check
 #=====================#
@@ -172,19 +178,30 @@ plot!(
     p1, burger.xspan, Xtr_all[1,1][:, timestamps], color=:roma, line_z=(burger.Δt*timestamps)', 
     lw=1.5, label="", colorbar_ticks=0:0.1:1.0, clims=(0,1.0),
 ) 
-plot!(p1, xlabel=L"\omega"*", spatial coordinate", ylabel=L"x(\omega,t)", grid=true, minorgrid=true)
+plot!(p1, xlabel=L"\omega"*", spatial coordinate", ylabel=L"s(\omega,t)", grid=true, minorgrid=true)
 plot!(p1, guidefontsize=16, tickfontsize=13,  legendfontsize=13, fontfamily="Computer Modern")
 plot!(p1, colorbar_title=L"t", colorbar_titlefontsize=16)
 display(p1)
-savefig(p1, joinpath(FILEPATH, "plots/burgers/burgers_training_data.pdf"))
+# savefig(p1, joinpath(FILEPATH, "plots/burgers/burgers_training_data.pdf"))
 
+##
 p2 = plot()
-plot!(contourf!(p2, burger.tspan, burger.xspan, Xtr_all[1,1], lw=0), xlabel=L"t", ylim=[0, 1.0],
-    ylabel=L"\omega, \mathrm{spatial~coordinate}", zlabel=L"u(x,t)")
+plot!(
+    contourf!(
+        p2, burger.tspan, burger.xspan, Xtr_all[1,1], lw=0,
+    ), 
+    xlabel=L"t", ylim=[0, 1.0],
+    ylabel=L"\omega, \mathrm{spatial~coordinate}", 
+    zlabel=L"s(\omega,t)",
+    xguidefontsize=18,
+    yguidefontsize=18
+)
+plot!(p2, colorbar_title=L"s(\omega,t)", colorbar_titlefontsize=18, 
+      colorbar_tickfontsize=16)
 yticks!(p2, 0:0.2:1.0)
-plot!(p2, guidefontsize=13, fontfamily="Computer Modern")
+plot!(p2, xtickfontsize=16, ytickfontsize=16, fontfamily="Computer Modern")
 display(p2)
-savefig(p2, joinpath(FILEPATH, "plots/burgers/burgers_training_data_contour.pdf"))
+savefig(p2, joinpath(FILEPATH, "plots/burgers/burgers_training_data_contour.png"))
 
 #=====================#
 ## Check enery levels

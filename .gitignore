@@ -1,3 +1,24 @@
+# old or archived files
+__old__/
+__archive__/
+
+## Images 
+*.png 
+*.jpg 
+*.jpeg
+*.gif
+*.tiff
+*.bmp
+*.svg
+*.pdf
+
+## Other data files
+*.inp
+*.csv
+*.hdf5
+*.nc
+*.precursor
+
 ## JULIA
 debug.log
 *.jld2
@@ -55,6 +76,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.CondaPkg/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -224,3 +246,7 @@ octave-workspace
 
 # VSCode
 .vscode/
+.qodo
+
+# vidoe
+*.mp4

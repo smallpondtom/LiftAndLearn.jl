@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '1.8'  # replace this with the minimum Julia version your package works with
+          - '1.10'  # minimum supported Julia version (LTS)
           - '1' # automatically expands to the latest stable 1.x release of Julia
         os:
           - ubuntu-latest
@@ -24,7 +24,7 @@ jobs:
         include:
           # test macOS and Windows with latest Julia only
           - os: macOS-latest
-            arch: x64
+            arch: aarch64
             version: 1
           - os: windows-latest
             arch: x64
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
-          version: '1.8'
+          version: '1'
       - run: |
           julia --project=docs -e '
             using Pkg

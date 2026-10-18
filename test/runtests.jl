@@ -14,11 +14,29 @@ end
 defaultname(file) = uppercasefirst(replace(splitext(basename(file))[1], '_' => ' '))
 
 @testset "LiftAndLearn" begin
+    # Utilities
     testfile("utilities/matrix_dimensions.jl")
     testfile("utilities/analysis.jl")
+    testfile("utilities/interp.jl")
+    testfile("utilities/spline.jl")
+    testfile("utilities/linalg.jl")
+
+    # Operator Inference building blocks
+    testfile("opinf/leastsquares.jl")
+    testfile("opinf/tikhonov.jl")
+    testfile("opinf/time_derivative.jl")
+    testfile("opinf/operators.jl")
+    testfile("opinf/regressions.jl")
+
+    # Intrusive, OpInf, Lift & Learn, EP-OpInf
     testfile("intrusive/pod.jl")
     testfile("LnL/lifting.jl")
     testfile("LnL/opinf.jl")
     testfile("LnL/lnl.jl")
     testfile("LnL/epopinf.jl")
+
+    # Streaming OpInf
+    testfile("streaming/streamify.jl")
+    testfile("streaming/twopass.jl")
+    testfile("streaming/onepass.jl")
 end

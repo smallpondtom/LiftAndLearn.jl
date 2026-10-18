@@ -8,8 +8,11 @@ Operator Inference is a scientific machine-learning framework used in data-drive
 ### Lift and Learn (LnL)
 Lift and Learn is a physics-informed method for learning low-dimensional models for large-scale dynamical systems. Lifting refers to the transformation of the original nonlinear system to a linear, quadratic, bilinear, or polynomial system by mapping the original state space to a new space with additional auxiliary variables. After lifting the system to a more approachable form, we can learn a reduced model using the OpInf approach. For more info, head over to the documentation on [LnL](manual/nonintrusive/LnL.md).
 
+### Streaming Operator Inference (Streaming-OpInf)
+Streaming OpInf learns the same reduced models as OpInf from data that arrive sequentially or are too large to hold in memory. Snapshots are processed in a single pass (incremental SVD of the snapshot matrix, see [One-Pass Streaming OpInf](manual/streaming/OnePass.md)) or in two passes (recursive least-squares updates of the operators from reduced data, see [Two-Pass Streaming OpInf](manual/streaming/TwoPass.md)). Start with the [Streaming OpInf overview](manual/streaming/Overview.md).
+
 ## Requirements
-- julia versions 1.8.5 >
+- Julia 1.10 or newer
 - We use [Ipopt](https://github.com/jump-dev/Ipopt.jl) for the optimization (e.g., EP-OpInf)
     - This requires additional proprietary linear-solvers including `ma86` and `ma97`. 
     - You can run the code without it by changing the options. By default Ipopt will use `MUMPS` but we recommend you obtain and download `HSL_jll.jl`. You can find the instructions [here](https://licences.stfc.ac.uk/product/libhsl).
@@ -31,9 +34,13 @@ Features included in this package are the following:
 - Intrusive model reduction using Proper Orthogonal Decomposition (POD)
 - Non-intrusive model reduction using the standard Operator Inference
 - Non-intrusive model reduction for non-polynomial systems using Lift And Learn
+- Tikhonov-regularized Operator Inference with a choice of memory-aware (and GPU-capable) least-squares solvers
 - Physics-informed Operator Inference approaches
     - Energy-preserving
     - More to come in the future ...
+- Streaming Operator Inference for large-scale and streaming data
+    - Two-pass: recursive least-squares solvers (RLS, QRRLS, iQRRLS)
+    - One-pass: incremental (Baker) and randomized (sketchy) SVD
 
 !!! note
     We are actively working to incorporate new features into this package.
@@ -44,6 +51,7 @@ If you wish to give this package a try see our [Jupyter Notebook examples](https
 - Viscous Burgers' equation
 - FitzHugh-Nagumo equation
 - Kuramoto-Sivashinksy equation (chaotic system)
+- Streaming Operator Inference (two-pass and one-pass) on the viscous Burgers' equation
 
 If you prefer running scripts rather then notebooks, then see the [example scripts](https://github.com/smallpondtom/LiftAndLearn.jl/tree/main/scripts).
 

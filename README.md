@@ -26,8 +26,11 @@ Operator Inference is a scientific machine-learning framework used in data-drive
 ### Lift and Learn (LnL)
 Lift and Learn is a physics-informed method for learning low-dimensional models for large-scale dynamical systems. Lifting refers to the transformation of the original nonlinear system to a linear, quadratic, bilinear, or polynomial system by mapping the original state space to a new space with additional auxiliary variables. After lifting the system to a more approachable form we can learn a reduced model using the OpInf approach. 
 
+### Streaming Operator Inference (Streaming-OpInf)
+Streaming-OpInf learns the same reduced models as OpInf from data that arrive sequentially or are too large to hold in memory. The **two-pass** variant (`TwoPassStreamingOpInf`) updates the operators with recursive least-squares solvers (RLS, QRRLS, iQRRLS) as reduced snapshots stream in; the **one-pass** variant (`OnePassStreamingOpInf`) builds the POD basis and the reduced data with an incremental SVD in a single sweep over the full-order data. See the [documentation](https://smallpondtom.github.io/LiftAndLearn.jl/stable/manual/streaming/Overview/) and the example notebook [`examples/08_burgers_Streaming-OpInf.ipynb`](examples/08_burgers_Streaming-OpInf.ipynb).
+
 ### Requirements
-- julia versions 1.8.5 >
+- Julia 1.10 or newer
 - We use [Ipopt](https://github.com/jump-dev/Ipopt.jl) for the optimization (e.g., EP-OpInf)
     - This requires additional proprietary linear-solvers including `ma86` and `ma97`. 
     - You can run the code without it by changing the options. By default Ipopt will use `MUMPS` but we recommend you obtain and download `HSL_jll.jl`. You can find the instructions [here](https://licences.stfc.ac.uk/product/libhsl).

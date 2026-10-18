@@ -3,15 +3,31 @@ export lifting, lifted_basis
 """
 $(TYPEDEF)
 
-Lifting map structure.
+Lifting map for Lift & Learn (LnL).
+
+Constructed as `lifting(N, Nl, lift_funcs)`, where `lift_funcs` contains the `Nl - N`
+functions that compute the additional lifted variables. Each lifting function receives the
+original variables as a vector `x` of length `N` (one entry per variable, each a vector or
+matrix of grid values) and returns the new lifted variable, e.g. `x -> x[1] .^ 2`.
 
 ## Fields
-- `N`: number of variables of the original nonlinear dynamics
-- `Nl`: number of variables of the lifted system
-- `lift_funcs`: array of lifting transformation functions 
-- `map`: function to map the data to the new mapped states including original states
-- `mapNL`: function to map the data to only the additional lifted states 
+- `N::Int64`: number of variables of the original nonlinear dynamics.
+- `Nl::Int64`: number of variables of the lifted system.
+- `lift_funcs::AbstractArray{Function}`: the `Nl - N` lifting functions.
+- `map::Function`: map the data to all lifted variables (original variables followed by the
+  additional lifted ones). Accepts a vector of per-variable arrays, or a stacked array
+  `map(x, gp)` whose rows are split into `N` blocks of `gp` grid points.
+- `mapNL::Function`: map the data to only the additional lifted variables; same call
+  signatures as `map`.
 
+## Notes
+- Throws an error if `Nl - N != length(lift_funcs)`.
+
+## Examples
+```julia
+lifter = lifting(2, 3, [x -> x[1] .^ 2])
+W = lifter.map(X, gp)   # X has 2*gp rows, W has 3*gp rows
+```
 """
 struct lifting
     N::Int64
@@ -73,19 +89,22 @@ end
 
 
 """
-    lifted_basis(W, Nl, gp, ro) → Vr
+$(SIGNATURES)
 
-Create the block-diagonal POD basis for the new lifted system data
+Create the block-diagonal Proper Orthogonal Decomposition (POD) basis of the lifted
+snapshot data, with one POD basis per lifted variable.
+
+The rows of `W` are split into `Nl` blocks of `gp` rows; the leading `ro[i]` left singular
+vectors of block `i` form the `i`-th diagonal block of the basis.
 
 ## Arguments
-- `w`: lifted data matrix
-- `Nl`: number of variables of the lifted state dynamics
-- `gp`: number of grid points for each variable
-- `ro`: vector of the reduced orders for each basis
+- `W::Matrix`: lifted snapshot matrix of size ``(N_l \\cdot gp) \\times K`` (columns = snapshots).
+- `Nl::Real`: number of lifted variables.
+- `gp::Integer`: number of grid points of each variable.
+- `ro::Vector`: reduced dimension of each variable's basis (each `ro[i] <= gp`).
 
-## Return
-- `Vr`: block diagonal POD basis
-
+## Returns
+- `Vr::BlockDiagonal`: block-diagonal basis of size ``(N_l \\cdot gp) \\times \\sum_i ro_i``.
 """
 function lifted_basis(W::Matrix, Nl::Real, gp::Integer, ro::Vector)
     @assert size(W, 1) == Nl*gp "Number of rows of W must be equal to Nl*gp"
