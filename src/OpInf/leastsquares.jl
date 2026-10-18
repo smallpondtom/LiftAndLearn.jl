@@ -173,6 +173,8 @@ function solve_normal_equations(D::AbstractArray{T}, Rt::AbstractArray{T},
         mul!(tmp, D, x)      # y = D*x
         mul!(y, D', tmp)     # y = D'*(D*x) = D'*D*x
     end
+    # SciMLOperators ≥ 1.0 calls in-place operators as op(w, v, u, p, t)
+    matvec!(w, v, u, p, t) = matvec!(w, v, p, t)
 
     # Create prototype arrays for input and output
     input_prototype = zeros(T, n)

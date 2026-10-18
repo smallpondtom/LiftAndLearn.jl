@@ -358,14 +358,14 @@ function solve_iterative_normal_form(M::AbstractMatrix{T}, Atb::AbstractArray{T}
     ls = nothing
     for i in 1:p
         if i == 1
-            prob = LinearProblem(M, view(Atb, :, i))
+            prob = LinearProblem(M, Atb[:, i])
             if solver.preconditioning
                 ls = init(prob, Pl=P)
             else
                 ls = init(prob)
             end
         else
-            ls.b = view(Atb, :, i)
+            ls.b = Atb[:, i]
         end
         sol = solve!(ls; maxiters=solver.max_iterations, abstol=solver.tolerance)
         O[:, i] .= sol.u
@@ -415,6 +415,8 @@ function solve_iterative_tikhonov(A::AbstractMatrix{T},
         mul!(y, A', temp)
         y .+= Γ * x
     end
+    # SciMLOperators ≥ 1.0 calls in-place operators as op(w, v, u, p, t)
+    matvec!(w, v, u, p, t) = matvec!(w, v, p, t)
     
     # Create prototype arrays for input and output
     input_prototype = zeros(T, n)
@@ -433,10 +435,10 @@ function solve_iterative_tikhonov(A::AbstractMatrix{T},
     
     for i in 1:p
         if i == 1
-            prob = LinearProblem(op, view(Atb, :, i))
+            prob = LinearProblem(op, Atb[:, i])
             ls = init(prob)
         else
-            ls.b = view(Atb, :, i)
+            ls.b = Atb[:, i]
         end
         sol = solve!(ls; maxiters=solver.max_iterations, abstol=solver.tolerance)
         O[:, i] .= sol.u
